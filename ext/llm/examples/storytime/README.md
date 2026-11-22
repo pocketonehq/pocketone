@@ -85,6 +85,10 @@ can also be a clone: record a passage on the screen, and every story is read in 
 call, from the `voices` collection). **Export** and **Import** move the saved settings and the recordings between copies
 of the app as one JSON file.
 
+`profiles/` holds settings files to Import: `pocketone.json` turns the app into PocketOne Stories, stories about
+PocketOne told by its creator (the front page, the prompts, the sample text). Import lays a file over the current
+settings, so a profile changes only what it has: the voice, models, budget and lengths stay.
+
 The screen is a superuser UI extension registered from `pb_hooks`, the way
 [PocketHost's guide](https://pockethost.io/docs/admin-extensions) shows: `$app.onServe()` pushes
 `{ name: "storytime", fs: $os.dirFS(...) }` onto `e.uiExtensions`, and PocketBase loads `pb_admin_ext/storytime/main.js`

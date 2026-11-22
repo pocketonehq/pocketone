@@ -1,6 +1,7 @@
 // POST /admin/import {app: "storytime", version: 1, settings, voices}: what /admin/export wrote. Each recording is added
 // unless the same one (same name and audio) is already here; the narrator's recording is pointed at the copy here.
-// Then the settings are saved (known keys only, like Save). Superusers only.
+// Then the file's settings are laid over the current ones and saved: a partial file (a profile with only the front
+// page and prompts, say) changes just what it has. Superusers only.
 export function post(ctx: any) {
   ctx.resolve('admin').superuserOnly(ctx)
   const story = ctx.resolve('story')
@@ -36,6 +37,6 @@ export function post(ctx: any) {
 
   const t = body.settings && typeof body.settings === 'object' ? JSON.parse(JSON.stringify(body.settings)) : {}
   if (t.voice && t.voice.clip) t.voice.clip = ids[t.voice.clip] || ''
-  const values = story.saveTuning(ctx.app, t)
+  const values = story.saveTuning(ctx.app, story.merge(story.tuning(ctx.app), t))
   return ctx.res.json(200, { values, voices: { added, kept } })
 }

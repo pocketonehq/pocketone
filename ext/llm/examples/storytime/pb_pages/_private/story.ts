@@ -90,7 +90,7 @@ export function storyLength(t: Tuning, minutes?: any): { minutes: number; pictur
 const isObject = (v: any) => v && typeof v === 'object' && !Array.isArray(v)
 
 /** base with the saved values on top, key by key; only keys base has, of the same kind, are taken. */
-function merge(base: any, over: any): any {
+export function merge(base: any, over: any): any {
   if (!isObject(over)) return base
   const out: any = Array.isArray(base) ? [...base] : { ...base }
   for (const k of Object.keys(base)) {
