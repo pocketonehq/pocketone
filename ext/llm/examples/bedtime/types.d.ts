@@ -25723,9 +25723,16 @@ declare namespace contracts.llm.speech.v1 {
     format: string;
     speed: number;
     /**
-     * Instructions describe the delivery ("slow and calm, a bedtime voice"), for models that take them.
+     * Instructions describe the delivery ("slow and calm, a bedtime voice"), for models that take them. Not with a
+     * Reference: a cloned voice takes its delivery from the clip.
      */
     instructions: string;
+    /**
+     * Reference clones a voice: the model reads Text in the voice of this clip. Leave Voice empty (or the model's
+     * clone voice, Voices' Mode "clone"). Models that clone list a voice with that mode; a provider that doesn't clone
+     * refuses the call with llm.ErrNotSupported. Nothing is saved at the provider: send the clip with every call.
+     */
+    reference: VoiceReference | null;
     options: Record<string, any>;
   }
 
@@ -25741,6 +25748,28 @@ declare namespace contracts.llm.speech.v1 {
 
   interface LlmModelsInput {
     provider: string;
+  }
+
+  /**
+   * VoiceReference is a clip of the voice to imitate.
+   */
+  interface VoiceReference {
+    /**
+     * Audio is the clip, with its data: a short, clean recording (10 to 30 seconds) read the way the model should
+     * speak. Its Name's extension (me.wav) or Type tells the provider the format.
+     */
+    audio: LlmFile;
+    /**
+     * Text is what the clip says, word for word. Optional, but most models match the voice more closely with it.
+     */
+    text: string;
+  }
+
+  interface LlmFile {
+    name: string;
+    type: string;
+    data: any;
+    url: string;
   }
 }
 
@@ -26458,7 +26487,7 @@ declare var $mcp: {
   tools(): string[];
 };
 
-// ---- ext/pages: PocketPages (pb_pages) ----
+// ---- ext/pages: Pages (pb_pages) ----
 //
 // Types for page code: middleware, route code (.ts), +config, JS plugins and JSX/TSX components. Nothing here is a
 // global at runtime; use the types in your own files:
@@ -26946,7 +26975,7 @@ declare namespace $wasm {
 /** A generated or sent file: data is base64. $llm.file(f) makes it a PocketBase file for record.set. */
 type LlmFile = { name?: string; type?: string; data?: string; url?: string }
 
-type LlmUsage = { inputTokens?: number; outputTokens?: number; cachedTokens?: number; reasoningTokens?: number; seconds?: number; costUSD?: number }
+type LlmUsage = { inputTokens?: number; outputTokens?: number; cachedTokens?: number; reasoningTokens?: number; seconds?: number; /** what the call cost, in millionths of a US dollar (1000000 = $1); 0 when free or not known */ costMicroUSD: number; costEstimated?: boolean }
 
 type LlmModels = {
   models: { id: string; provider: string; type: string; name?: string; kinds: string[]; inputs?: string[]; reasoning?: boolean;
@@ -26958,7 +26987,7 @@ type LlmJob = { id: string; status: "queued" | "running" | "done" | "failed"; pr
 type LlmMessage = { role: "system" | "user" | "assistant"; content: string }
 
 type LlmTextInput = {
-  /** "provider/model", e.g. "vultr/glm-5.2". */
+  /** "provider/model", e.g. "vultr/glm-5.3". */
   model: string
   system?: string
   prompt?: string
@@ -26998,8 +27027,10 @@ declare var $llm: {
     modelsAsync(opts?: LlmModelsOpts): Promise<LlmModels>
   }
   speech: {
-    speakAsync(opts: { model: string; text: string; voice?: string; format?: string; speed?: number; instructions?: string; options?: Record<string, any> }): Promise<{ file: LlmFile; model: string; usage: LlmUsage }>
-    voicesAsync(model: string): Promise<{ id: string; name?: string; language?: string; gender?: string }[]>
+    /** reference clones a voice: the text is read in the voice of that clip (leave voice and instructions out). Providers that don't clone refuse it. */
+    speakAsync(opts: { model: string; text: string; voice?: string; format?: string; speed?: number; instructions?: string; reference?: { audio: LlmFile; text?: string }; options?: Record<string, any> }): Promise<{ file: LlmFile; model: string; usage: LlmUsage }>
+    /** A model clones when one of its voices has mode "clone". */
+    voicesAsync(model: string): Promise<{ id: string; name?: string; language?: string; gender?: string; mode?: "builtin" | "design" | "clone"; description?: string }[]>
     modelsAsync(opts?: LlmModelsOpts): Promise<LlmModels>
   }
   transcribe: {
@@ -27039,6 +27070,8 @@ declare var $llm: {
   file(f: LlmFile): any
   /** The same, downloading a file the provider gave only a URL for. */
   fileAsync(f: LlmFile): Promise<any>
+  /** A record's stored file (the first in a file field) as an LlmFile with its bytes, to send to a model: speakAsync({ reference: { audio: $llm.fromRecord(rec, "clip"), text } }). */
+  fromRecord(record: core.Record, field: string): LlmFile
   /** Stored conversations (llm.chat/v1, the llm-chat extension). Only sendAsync reaches a provider. */
   chat: {
     /** Starts a chat and returns its id. */

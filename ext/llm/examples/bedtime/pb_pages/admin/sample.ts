@@ -31,9 +31,11 @@ export async function post(ctx: any) {
       if (t.voice.voice === 'design' && !t.voice.instructions.trim()) {
         return ctx.res.json(400, { message: 'design makes a voice from Instructions: describe the voice there first' })
       }
-      const call = story.speechCall(t, t.voice.sample || story.DEFAULT_TUNING.voice.sample, 'en')
+      const call = story.speechCall(t, t.voice.sample || story.DEFAULT_TUNING.voice.sample, 'en', ctx.app)
       const r = await $llm.speech.speakAsync(call)
-      return done(r, { audio: await audioURL(ctx.app, what, r.file), call: { ...call, text: undefined } })
+      // never send the recording back: show which one it was
+      const shown = { ...call, text: undefined, reference: call.reference ? story.clipName(ctx.app, t.voice.clip) : undefined }
+      return done(r, { audio: await audioURL(ctx.app, what, r.file), call: shown })
     }
     if (what === 'music') {
       const r = await $llm.music.createAsync(story.musicCall(t, prompt || 'Quiet ambient music on soft piano and strings', 20))

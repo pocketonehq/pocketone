@@ -37,8 +37,9 @@ export type Tuning = {
   models: { text: string; idea: string; image: string; speech: string; speechOther: string; align: string; music: string }
   /** the narrator, for the speech model (not speechOther, which reads other languages with its own voice) */
   voice: {
-    voice: string // the model's voice id: "default", a built-in speaker, or "design" (a voice made from instructions)
-    instructions: string // how to read (a built-in voice), or the voice itself (design)
+    voice: string // the model's voice id: "default", a built-in speaker, "design" (a voice made from instructions) or "clone"
+    instructions: string // how to read (a built-in voice), or the voice itself (design); not used by a clone
+    clip: string // with "clone": the voices record whose recording the narrator imitates
     seed: number | null // the same seed gives the same generated voice every time
     speed: number | null // 1 is normal
     sample: string // what Sample reads
@@ -70,6 +71,7 @@ export const DEFAULT_TUNING: Tuning = {
   voice: {
     voice: 'default',
     instructions: '',
+    clip: '',
     seed: null,
     speed: null,
     sample: 'In the summer of 1859, the sky over the Rockies turned red and green at midnight. Miners woke, ' +
@@ -208,16 +210,45 @@ const PLACE_SCHEMA = {
   required: ['style', 'music', 'pictures'],
 }
 
+/** A recording the narrator imitates: the voices record, as a speech call's reference (the clip and what it says). */
+export function cloneReference(app: any, clip: string): { reference: any; name: string } {
+  if (!clip) throw new Error('the clone voice needs a recording: record one on Settings → Bedtime Story → Narrator')
+  let r: any
+  try {
+    r = app.findRecordById('voices', clip)
+  } catch (_) {
+    throw new Error('the narrator\'s recording is gone: pick or record another on Settings → Bedtime Story → Narrator')
+  }
+  return { reference: { audio: $llm.fromRecord(r, 'audio'), text: r.getString('passage') }, name: r.getString('name') }
+}
+
+/** A recording's name, for the story's splash (without reading the clip). */
+export function clipName(app: any, clip: string): string {
+  try {
+    return app.findRecordById('voices', clip).getString('name')
+  } catch (_) {
+    return 'a recording'
+  }
+}
+
 /**
  * The speech call's options for text in language: the tuned voice on the main speech model; the other model (for
- * languages the main one doesn't speak) gets only the language and seed, since it reads with its own voice.
+ * languages the main one doesn't speak) gets only the language and seed, since it reads with its own voice. A clone
+ * goes to both: the other model (chatterbox) clones too, so a story in another language is still read in that voice.
  */
-export function speechCall(t: Tuning, text: string, language = 'en'): any {
+export function speechCall(t: Tuning, text: string, language = 'en', app?: any): any {
   const other = SPEAKS[t.models.speech]?.includes(language) === false
   const options: any = { language }
   if (t.voice.seed !== null) options.seed = t.voice.seed
-  if (other) return { model: t.models.speechOther, text, options }
+  const clone = t.voice.voice === 'clone' ? cloneReference(app, t.voice.clip) : null
+  if (other) return clone ? { model: t.models.speechOther, text, options, reference: clone.reference } : { model: t.models.speechOther, text, options }
   const call: any = { model: t.models.speech, text, options }
+  if (clone) {
+    // a cloned voice takes its delivery from the recording: no voice id or instructions
+    call.reference = clone.reference
+    if (t.voice.speed !== null) call.speed = t.voice.speed
+    return call
+  }
   // design without a description has nothing to design from: the default voice reads instead
   const designWithout = t.voice.voice === 'design' && !t.voice.instructions.trim()
   if (t.voice.voice && t.voice.voice !== 'default' && !designWithout) call.voice = t.voice.voice
@@ -401,7 +432,7 @@ export async function make(app: any, id: string): Promise<void> {
 
     // 2. one voiceover of the whole story, in the tuned voice (or the other model, told the language, for a language
     // the main one doesn't speak)
-    const call = speechCall(t, story.sentences.join(' '), story.language)
+    const call = speechCall(t, story.sentences.join(' '), story.language, app)
     const voice = await $llm.speech.speakAsync(call)
     spent += record(app, 'speech', voice, id)
     save({ progress: 'Listening for when each word is said', cost: spent })
@@ -476,7 +507,9 @@ export async function make(app: any, id: string): Promise<void> {
     app.save(r)
     const names = app.findRecordById('stories', id).get('pictures')
     pictures.forEach((p, i) => { p.image = names[i] })
-    const voiceName = call.model !== t.models.speech ? `${call.model}'s own voice (${story.language})`
+    const voiceName = call.reference ? [`clone of "${clipName(app, t.voice.clip)}"`,
+          call.model !== t.models.speech ? `(${story.language})` : '', call.speed ? `speed ${call.speed}` : ''].filter(Boolean).join(' ')
+      : call.model !== t.models.speech ? `${call.model}'s own voice (${story.language})`
       : [call.voice || 'default', call.instructions ? `"${call.instructions}"` : '', t.voice.seed !== null ? `seed ${t.voice.seed}` : '',
           call.speed ? `speed ${call.speed}` : ''].filter(Boolean).join(', ')
     story.made = {

@@ -45,6 +45,10 @@
             message: null, // { kind, text }
             voices: [],
             voiceChoice: "", // the voice picked on the page, for its help text
+            clips: [], // recordings a clone can imitate: { id, name, passage, created, file }
+            clipChoice: "", // the recording picked on the page
+            fileToken: "", // lets the superuser's browser play a recording (superusers only)
+            rec: { state: "idle" }, // the recorder: idle, recording, recorded (url, blob, seconds), saving; error
             spent: 0,
             version: 0, // bumped when the values are replaced, so the form redraws with them
             samples: {}, // what -> { busy, meta, error, audio, image, idea, story }
@@ -72,6 +76,7 @@
                 const out = await send("/admin/tuning");
                 v = out.values;
                 data.voices = out.voices || [];
+                data.clips = out.clips || [];
                 data.spent = out.spentToday || 0;
                 data.version++;
             } catch (err) {
@@ -147,6 +152,7 @@
 
         // what each of auk's voices does (Vultr's own descriptions)
         function voiceHelp(id) {
+            if (id === "clone") return "Reads in the voice of one of your recordings, below. The delivery comes from how the recording sounds, so Instructions don't apply; speed and seed still do.";
             if (id === "design") return "A new voice made from the description in Instructions (required). The same seed gives the same voice.";
             if (id === "default") return "A calm middle-aged woman with a low, clear voice, generated afresh each time: set a seed to keep it the same. Instructions change how she reads, not who she is.";
             const x = data.voices.find((y) => y.id === id);
@@ -155,11 +161,119 @@
 
         function voiceOptions() {
             const current = get("voice.voice") || "default";
+            const clones = data.voices.some((x) => x.mode === "clone") || current === "clone";
             const ids = new Set(["default", ...data.voices.filter((x) => x.mode !== "clone" && x.id !== "clone").map((x) => x.id), current]);
-            return [...ids].map((id) => {
+            ids.delete("clone");
+            const out = [...ids].map((id) => {
                 const x = data.voices.find((y) => y.id === id) || { id };
                 return { value: id, label: x.name ? `${x.name} (${id})` : id };
             });
+            if (clones) out.push({ value: "clone", label: "A recording of a real voice (clone)" });
+            return out;
+        }
+
+        // ---- the clone's recordings: pick one, play it, record a new one in the browser, delete one
+        const PASSAGE = "It's late, and the house is quiet. Somewhere a server hums along, answering requests one at a time, " +
+            "never in a hurry. Let's slow down too. Take a breath. Tonight I'm going to tell you a story, nice and easy, and you " +
+            "don't have to remember any of it. Just listen, and let the day go.";
+        let recorder = null;
+        const cloneOn = () => (data.voiceChoice || get("voice.voice")) === "clone";
+        const clipURL = (c) => `/api/files/voices/${c.id}/${encodeURIComponent(c.file)}?token=${data.fileToken}`;
+
+        async function refreshClips() {
+            const list = await app.pb.collection("voices").getFullList({ sort: "-created", requestKey: null });
+            data.clips = list.map((r) => ({ id: r.id, name: r.name, passage: r.passage, created: r.created, file: r.audio }));
+        }
+
+        function pickClip(id) {
+            put("voice.clip", id);
+            data.clipChoice = id;
+        }
+
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true } });
+                const chunks = [];
+                const started = Date.now();
+                recorder = new MediaRecorder(stream);
+                recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+                recorder.onstop = () => {
+                    stream.getTracks().forEach((x) => x.stop());
+                    const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+                    data.rec = { state: "recorded", blob, url: URL.createObjectURL(blob), seconds: Math.round((Date.now() - started) / 1000) };
+                };
+                recorder.start();
+                data.rec = { state: "recording" };
+            } catch (err) {
+                data.rec = { state: "idle", error: "The browser didn't give the microphone: " + errText(err) };
+            }
+        }
+
+        async function saveRecording(name) {
+            const r = data.rec;
+            data.rec = { ...r, state: "saving" };
+            try {
+                const ext = r.blob.type.includes("mp4") ? "m4a" : r.blob.type.includes("ogg") ? "ogg" : r.blob.type.includes("wav") ? "wav" : "webm";
+                const form = new FormData();
+                form.append("name", name || "My voice");
+                form.append("passage", PASSAGE);
+                form.append("audio", new File([r.blob], `voice.${ext}`, { type: r.blob.type }));
+                const saved = await app.pb.collection("voices").create(form, { requestKey: null });
+                await refreshClips();
+                pickClip(saved.id);
+                data.rec = { state: "idle" };
+            } catch (err) {
+                data.rec = { ...r, state: "recorded", error: errText(err) };
+            }
+        }
+
+        async function deleteClip(id) {
+            if (!confirm("Delete this recording? Stories already made keep their narration.")) return;
+            await app.pb.collection("voices").delete(id, { requestKey: null });
+            if ((data.clipChoice || get("voice.clip")) === id) pickClip("");
+            await refreshClips();
+        }
+
+        function clonePanel() {
+            const chosen = data.clipChoice || get("voice.clip");
+            const clip = data.clips.find((c) => c.id === chosen);
+            const r = data.rec;
+            return t.div({ className: "col-lg-12" },
+                t.div({ className: "grid" },
+                    t.div({ className: "col-md-6" }, field("Recording",
+                        t.select({ onchange: (e) => pickClip(e.target.value) },
+                            t.option({ value: "", selected: !clip }, data.clips.length ? "Pick a recording" : "No recordings yet: record one"),
+                            ...data.clips.map((c) => t.option({ value: c.id, selected: c.id === chosen }, `${c.name} (${c.created.slice(0, 10)})`))),
+                        "Sent with every story, so keep it to 10 to 30 seconds. Only superusers can hear it here.")),
+                    t.div({ className: "col-md-6" }, clip
+                        ? t.div({ className: "flex", style: "margin-top: 26px;" },
+                            t.audio({ controls: true, src: clipURL(clip), style: "flex: 1;" }),
+                            t.button({ type: "button", className: "btn sm transparent danger", onclick: () => deleteClip(clip.id) },
+                                t.span({ className: "txt" }, "Delete")))
+                        : null),
+                    t.div({ className: "col-lg-12" },
+                        t.p({ className: "m-b-xs" }, t.strong(null, "Record a new one. "),
+                            "Read this slowly and quietly, the way you want the stories told. A quiet room and a steady distance from the microphone help more than a good microphone."),
+                        t.blockquote({ className: "m-t-0", style: "font-size: 1.1em; line-height: 1.6;" }, PASSAGE),
+                        t.div({ className: "flex" },
+                            r.state === "recording"
+                                ? t.button({ type: "button", className: "btn sm danger", onclick: () => recorder && recorder.stop() },
+                                    t.i({ className: "ri-stop-circle-line", ariaHidden: true }), t.span({ className: "txt" }, "Stop"))
+                                : t.button({ type: "button", className: "btn sm secondary", disabled: r.state === "saving", onclick: startRecording },
+                                    t.i({ className: "ri-mic-line", ariaHidden: true }), t.span({ className: "txt" }, r.state === "recorded" ? "Record again" : "Record")),
+                            r.state === "recording" ? t.span({ className: "txt-hint" }, "Recording… read the passage, then Stop.") : null,
+                            r.state === "recorded" || r.state === "saving" ? t.span({ className: "txt-hint" }, `${r.seconds} s`) : null),
+                        r.state === "recorded" || r.state === "saving"
+                            ? t.div({ className: "flex m-t-sm" },
+                                t.audio({ controls: true, src: r.url, style: "flex: 1;" }),
+                                t.input({ type: "text", placeholder: "Name it (My voice)", id: "bedtime-clip-name", style: "max-width: 220px;" }),
+                                t.button({ type: "button", className: () => `btn sm ${data.rec.state === "saving" ? "loading" : ""}`, disabled: r.state === "saving",
+                                    onclick: () => saveRecording(document.getElementById("bedtime-clip-name")?.value.trim()) },
+                                    t.span({ className: "txt" }, "Save recording")))
+                            : null,
+                        r.error ? t.div({ className: "alert danger m-t-sm m-b-0" }, t.div({ className: "content" }, r.error)) : null,
+                    ),
+                ));
         }
 
         function form() {
@@ -174,6 +288,7 @@
                             t.select({ onchange: (e) => { put("voice.voice", e.target.value); data.voiceChoice = e.target.value } },
                                 ...voiceOptions().map((o) => t.option({ value: o.value, selected: o.value === (get("voice.voice") || "default") }, o.label))),
                             () => voiceHelp(data.voiceChoice || get("voice.voice") || "default"))),
+                        () => (cloneOn() ? clonePanel() : null),
                         t.div({ className: "col-md-4" }, field("Seed", num("voice.seed"), "Empty: a little different each time.")),
                         t.div({ className: "col-md-4" }, field("Speed", num("voice.speed", { step: "0.05", min: "0.5", max: "2" }), "Empty: normal (1).")),
                         t.div({ className: "col-lg-12" }, field("Instructions", area("voice.instructions", 3),
@@ -238,6 +353,7 @@
         }
 
         load();
+        app.pb.files.getToken({ requestKey: null }).then((x) => { data.fileToken = x; }).catch(() => {});
 
         return t.div(
             { className: "page page-bedtime-settings" },
