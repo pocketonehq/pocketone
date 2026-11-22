@@ -90,7 +90,7 @@ while a model works; there are no blocking versions to reach for. Each call name
 | `$llm.text.streamAsync(opts, onText, onReasoning?)` | The same, calling `onText` with each piece as it's written (`false` stops it). |
 | `$llm.text.count(text \| messages)` | About how many tokens (four characters each). Local, so not async. |
 | `$llm.image.generateAsync({ model, prompt, n?, size?, aspectRatio? })`, `editAsync({ ..., images })` | Pictures: `{ files, model, usage }`. |
-| `$llm.speech.speakAsync({ model, text, voice?, format?, speed?, instructions? })`, `voicesAsync(model)` | Audio: `{ file, model, usage }`. |
+| `$llm.speech.speakAsync({ model, text, voice?, format?, speed?, instructions?, reference? })`, `voicesAsync(model)` | Audio: `{ file, model, usage }`. `reference: { audio, text? }` reads in the voice of that clip (voice cloning). |
 | `$llm.transcribe.transcribeAsync({ model, audio, language?, prompt? })` | Text from audio: `{ text, language, model, usage }`. |
 | `$llm.align.alignAsync({ model, audio, text, mode?, language? })` | When each line and word of `text` is said in `audio`: `{ duration, lines, words, unaligned, model, usage }`, in seconds. For captions timed to a voice. |
 | `$llm.music.createAsync({ model, prompt, lyrics?, seconds?, wait? })`, `getAsync(id)`, `contentAsync(id, index)` | Music, as a job (below). |
@@ -98,6 +98,7 @@ while a model works; there are no blocking versions to reach for. Each call name
 | `$llm.embed.embedAsync({ model, input, dimensions? })` | One vector per text: `{ vectors, model, usage }`. |
 | `$llm.<kind>.modelsAsync({ provider? })` | The models your providers offer of that kind, with prices where the provider lists them. |
 | `$llm.file(file)`, `$llm.fileAsync(file)` | A generated file as a PocketBase file, for `record.set("field", ...)`; `fileAsync` also downloads one the provider gave only a URL for. |
+| `$llm.fromRecord(record, field)` | The other way: a record's stored file as a file with its bytes, to send to a model (a voice clip, audio to transcribe). |
 | `$llm.chat.*` | Stored conversations, from the [LLM Chat](../llm-chat/README.md) extension. |
 
 **`reasoning`** is how much a reasoning model thinks before answering: `"off"`, `"low"`, `"medium"`, `"high"`, or left
@@ -132,9 +133,9 @@ What each provider type covers:
 
 | | Text | Pictures | Speech | Transcription | Music | Video | Embeddings |
 |---|---|---|---|---|---|---|---|
-| `vultr` | yes | yes | yes, with voices | yes | yes (job) | yes (job) | yes |
+| `vultr` | yes | yes | yes, with voices and cloning | yes | yes (job) | yes (job) | yes |
 | `cloudflare` | yes | yes | yes | yes | | | yes |
-| `openrouter` | yes | yes (and edits) | yes, with voices | yes | | yes (job) | yes |
+| `openrouter` | yes | yes (and edits) | yes, with voices and cloning | yes | | yes (job) | yes |
 | `openai` | yes | yes | yes | yes | | | yes |
 
 An `openai` provider's model list names only ids, so each model's kind is guessed from its name (`whisper` is

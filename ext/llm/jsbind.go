@@ -5,7 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime"
+	"net/http"
 	"net/url"
+	"path"
 
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
 	"ganigeorgiev.com/pocketbase/pocketbase/tools/filesystem"
@@ -85,6 +89,16 @@ func (*Extension) BindJS(app core.App, rt js.Runtime) {
 		return filesystem.NewFileFromURL(context.Background(), v.URL)
 	})
 	bindHooksJS(app, n) // onCall, onCallDone
+	// fromRecord(record, field): a record's stored file as an LlmFile with its bytes, to send to a model (a voice clip
+	// for speech's reference, audio to transcribe or align). Read through the app's file system, so S3 storage works.
+	_ = n.Set("fromRecord", func(rec *core.Record, field string) (string, error) {
+		f, err := fileFromRecord(app, rec, field)
+		if err != nil {
+			return "", errors.New("$llm.fromRecord: " + err.Error())
+		}
+		b, err := json.Marshal(f)
+		return string(b), err
+	})
 	// subject(e): whom a request's calls are for ($llm.for(e)); sets the guest cookie when the request has none
 	_ = n.Set("subject", js.NativeFunc(func(c js.Call) (any, error) {
 		switch e := c.Arg(0).Export().(type) {
@@ -252,6 +266,7 @@ var jsPrelude = `(() => {
     embed: Object.freeze({ embedAsync: (o) => callAsync("embed", "embed", o), modelsAsync: modelsAsync("embed") }),
     file: (f) => n.file(S(f), false),
     fileAsync: (f) => n.file.async(S(f), true),
+    fromRecord: (record, field) => J(n.fromRecord(record, field)),
     chat,
     search,
     // the ledger: local reads, so plain calls; on $llm.for(e) they answer about that request's user or guest
@@ -268,3 +283,36 @@ var jsPrelude = `(() => {
   const eventOf = (e) => (e && e.req && e.req.event) || (e && e.event) || e;
   globalThis.$llm = Object.freeze({ ...base, for: (e) => build(n.subject(eventOf(e))), ...hooks });
 })()`
+
+// fileFromRecord reads the first file in a record's file field, with its name and media type.
+func fileFromRecord(app core.App, rec *core.Record, field string) (llmc.File, error) {
+	if rec == nil {
+		return llmc.File{}, errors.New("no record")
+	}
+	name := rec.GetString(field)
+	if names := rec.GetStringSlice(field); len(names) > 0 {
+		name = names[0]
+	}
+	if name == "" {
+		return llmc.File{}, fmt.Errorf("%s has no file in %q", rec.Id, field)
+	}
+	fsys, err := app.NewFilesystem()
+	if err != nil {
+		return llmc.File{}, err
+	}
+	defer fsys.Close()
+	r, err := fsys.GetReader(rec.BaseFilesPath() + "/" + name)
+	if err != nil {
+		return llmc.File{}, err
+	}
+	defer r.Close()
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return llmc.File{}, err
+	}
+	typ := mime.TypeByExtension(path.Ext(name))
+	if typ == "" {
+		typ = http.DetectContentType(data)
+	}
+	return llmc.File{Name: name, Type: typ, Data: data}, nil
+}

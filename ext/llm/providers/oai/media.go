@@ -111,7 +111,23 @@ type SpeechRequest struct {
 	Instructions   string         `json:"instructions,omitempty"`
 	ResponseFormat string         `json:"response_format,omitempty"` // mp3, opus, flac, wav, pcm
 	Speed          float64        `json:"speed,omitempty"`
-	Extra          map[string]any `json:"-"`
+	// InputReferences clone a voice (OpenRouter's shape, which Vultr takes too): one input_audio part with the clip
+	// and, optionally, a text part with what it says.
+	InputReferences []SpeechReference `json:"input_references,omitempty"`
+	Extra           map[string]any    `json:"-"`
+}
+
+// SpeechReference is one part of a voice-cloning reference.
+type SpeechReference struct {
+	Type       string      `json:"type"` // "input_audio" or "text"
+	InputAudio *InputAudio `json:"input_audio,omitempty"`
+	Text       string      `json:"text,omitempty"`
+}
+
+// InputAudio is a clip, base64-encoded, with its format (wav, mp3, flac, ogg, m4a, webm).
+type InputAudio struct {
+	Data   string `json:"data"`
+	Format string `json:"format,omitempty"`
 }
 
 // Speech turns text into audio and returns it whole.

@@ -40,6 +40,26 @@ page.set("narration", $llm.file(r.file))
 `$llm.speech.voicesAsync(model)` lists a model's voices, where the provider says. `format` picks `mp3` (the default), `wav`,
 `opus` or what else the model makes.
 
+### A voice of your own
+
+Some models read in the voice of a clip you give them (voice cloning). Record 10 to 30 seconds read the way the story
+should sound, store it in a file field, and send it as `reference` with what it says:
+
+```ts
+const clip = $app.findFirstRecordByData("voices", "name", "mine")
+const r = await $llm.speech.speakAsync({
+  model: "vultr/qwen3-tts-12hz-1.7b",
+  text: storyPage,
+  reference: { audio: $llm.fromRecord(clip, "audio"), text: clip.getString("passage") },
+})
+```
+
+`$llm.fromRecord(record, field)` reads a stored file with its bytes, ready to send to a model. Leave out `voice` and
+`instructions`: a cloned voice takes its delivery from the clip. A model clones when one of its voices from
+`voicesAsync` has `mode: "clone"`. Nothing is saved at the provider, so the clip goes along on every call. Vultr and
+OpenRouter clone; Cloudflare and other OpenAI-compatible APIs refuse a `reference` with `not_supported`. Clone only a
+voice you have the right to use.
+
 ## Transcription
 
 Send audio as a file with its bytes in `data` (base64) and a name that says its format:

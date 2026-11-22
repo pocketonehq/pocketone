@@ -87,6 +87,9 @@ func (d *cloudflareDriver) image(ctx context.Context, model string, in imagev1.G
 }
 
 func (d *cloudflareDriver) speak(ctx context.Context, model string, in speechv1.SpeakInput) (speechv1.Result, error) {
+	if in.Reference != nil {
+		return speechv1.Result{}, d.no("voice cloning")
+	}
 	f, err := d.c.Speech(ctx, cloudflare.SpeechRequest{Model: model, Text: in.Text, Voice: in.Voice, Encoding: in.Format, Extra: in.Options})
 	if err != nil {
 		return speechv1.Result{}, err

@@ -74,10 +74,10 @@ type LlmAPI = {
     modelsAsync(opts?: LlmModelsOpts): Promise<LlmModels>
   }
   speech: {
-    /** Reads text aloud in a voice, as an audio file. */
-    speakAsync(opts: { model: string; text: string; voice?: string; format?: string; speed?: number; instructions?: string; options?: Record<string, any> }): Promise<{ file: LlmFile; model: string; usage: LlmUsage }>
-    /** The voices a speech model offers. */
-    voicesAsync(model: string): Promise<{ id: string; name?: string; language?: string; gender?: string }[]>
+    /** reference clones a voice: the text is read in the voice of that clip (leave voice and instructions out). Providers that don't clone refuse it. */
+    speakAsync(opts: { model: string; text: string; voice?: string; format?: string; speed?: number; instructions?: string; reference?: { audio: LlmFile; text?: string }; options?: Record<string, any> }): Promise<{ file: LlmFile; model: string; usage: LlmUsage }>
+    /** A model clones when one of its voices has mode "clone". */
+    voicesAsync(model: string): Promise<{ id: string; name?: string; language?: string; gender?: string; mode?: "builtin" | "design" | "clone"; description?: string }[]>
     /** This kind's models across the providers in Settings → LLM (or one: { provider }), as provider/model. */
     modelsAsync(opts?: LlmModelsOpts): Promise<LlmModels>
   }
@@ -132,6 +132,8 @@ type LlmAPI = {
   file(f: LlmFile): any
   /** The same, downloading a file the provider gave only a URL for. */
   fileAsync(f: LlmFile): Promise<any>
+  /** A record's stored file (the first in a file field) as an LlmFile with its bytes, to send to a model: speakAsync({ reference: { audio: $llm.fromRecord(rec, "clip"), text } }). */
+  fromRecord(record: core.Record, field: string): LlmFile
   /** Stored conversations (llm.chat/v1, the llm-chat extension). Only sendAsync reaches a provider. */
   chat: {
     /** Starts a chat and returns its id. */

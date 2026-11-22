@@ -81,6 +81,10 @@ func (d *openAIDriver) image(ctx context.Context, model string, in imagev1.Gener
 }
 
 func (d *openAIDriver) speak(ctx context.Context, model string, in speechv1.SpeakInput) (speechv1.Result, error) {
+	// the OpenAI speech API has no clip-based cloning; a compatible server that has it can take input_references in Options
+	if in.Reference != nil {
+		return speechv1.Result{}, d.no("voice cloning")
+	}
 	f, err := d.c.Speech(ctx, oai.SpeechRequest{Model: model, Input: in.Text, Voice: voiceOrNil(in.Voice), Instructions: in.Instructions,
 		ResponseFormat: orDefault(in.Format, "mp3"), Speed: in.Speed, Extra: in.Options})
 	if err != nil {

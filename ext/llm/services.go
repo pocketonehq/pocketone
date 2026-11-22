@@ -189,6 +189,14 @@ func (s speechService) Speak(ctx context.Context, a extkit.Auth, in speechv1.Spe
 	if strings.TrimSpace(in.Text) == "" {
 		return speechv1.Result{}, badInput("give the text to say")
 	}
+	if in.Reference != nil {
+		if len(in.Reference.Audio.Data) == 0 {
+			return speechv1.Result{}, badInput("give the reference clip's data")
+		}
+		if strings.TrimSpace(in.Instructions) != "" {
+			return speechv1.Result{}, badInput("a cloned voice takes no instructions: its delivery comes from the reference clip")
+		}
+	}
 	t, err := s.r.begin(ctx, a, llmc.KindSpeech, "speak", in.Model, &in)
 	if err != nil {
 		return speechv1.Result{}, err

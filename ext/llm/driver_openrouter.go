@@ -126,7 +126,7 @@ func (d *openRouterDriver) image(ctx context.Context, model string, in imagev1.G
 
 func (d *openRouterDriver) speak(ctx context.Context, model string, in speechv1.SpeakInput) (speechv1.Result, error) {
 	f, err := d.c.Speech(ctx, oai.SpeechRequest{Model: model, Input: in.Text, Voice: voiceOrNil(in.Voice), Instructions: in.Instructions,
-		ResponseFormat: in.Format, Speed: in.Speed, Extra: in.Options})
+		ResponseFormat: in.Format, Speed: in.Speed, InputReferences: speechReferences(in.Reference), Extra: in.Options})
 	if err != nil {
 		return speechv1.Result{}, err
 	}

@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"path"
 	"strconv"
 	"strings"
 
@@ -132,8 +133,13 @@ func (d *vultrDriver) image(ctx context.Context, model string, in imagev1.Genera
 }
 
 func (d *vultrDriver) speak(ctx context.Context, model string, in speechv1.SpeakInput) (speechv1.Result, error) {
-	f, err := d.c.Speech(ctx, oai.SpeechRequest{Model: model, Input: in.Text, Voice: voiceOrNil(in.Voice), Instructions: in.Instructions,
-		ResponseFormat: orDefault(in.Format, "mp3"), Speed: in.Speed, Extra: in.Options})
+	voice := in.Voice
+	if in.Reference != nil && voice == "" {
+		voice = speechv1.ModeClone // Vultr's clone voice is named "clone" on every model that clones
+	}
+	f, err := d.c.Speech(ctx, oai.SpeechRequest{Model: model, Input: in.Text, Voice: voiceOrNil(voice), Instructions: in.Instructions,
+		ResponseFormat: orDefault(in.Format, "mp3"), Speed: in.Speed, InputReferences: speechReferences(in.Reference),
+		Extra: in.Options})
 	if err != nil {
 		return speechv1.Result{}, err
 	}
@@ -148,7 +154,7 @@ func (d *vultrDriver) voices(ctx context.Context, model string) ([]speechv1.Voic
 	}
 	out := make([]speechv1.Voice, 0, len(vs))
 	for _, v := range vs {
-		out = append(out, speechv1.Voice{ID: v.ID, Name: v.Name, Language: v.Language})
+		out = append(out, speechv1.Voice{ID: v.ID, Name: v.Name, Language: v.Language, Mode: v.Mode, Description: v.Description})
 	}
 	return out, nil
 }
@@ -280,6 +286,22 @@ func orDefault(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// speechReferences is a voice-cloning clip as OpenRouter's input_references (which Vultr takes too), or nil.
+func speechReferences(r *speechv1.VoiceReference) []oai.SpeechReference {
+	if r == nil {
+		return nil
+	}
+	format := strings.TrimPrefix(path.Ext(r.Audio.Name), ".")
+	if format == "" {
+		format = strings.TrimPrefix(extFor(r.Audio.Type), ".")
+	}
+	refs := []oai.SpeechReference{{Type: "input_audio", InputAudio: &oai.InputAudio{Data: b64(r.Audio.Data), Format: strings.ToLower(format)}}}
+	if t := strings.TrimSpace(r.Text); t != "" {
+		refs = append(refs, oai.SpeechReference{Type: "text", Text: t})
+	}
+	return refs
 }
 
 func voiceOrNil(v string) any {

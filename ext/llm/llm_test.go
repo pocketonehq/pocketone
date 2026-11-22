@@ -21,6 +21,7 @@ import (
 	embedv1 "pocketone.dev/ext/contracts/llm/embed/v1"
 	imagev1 "pocketone.dev/ext/contracts/llm/image/v1"
 	musicv1 "pocketone.dev/ext/contracts/llm/music/v1"
+	speechv1 "pocketone.dev/ext/contracts/llm/speech/v1"
 	textv1 "pocketone.dev/ext/contracts/llm/text/v1"
 	settingsv1 "pocketone.dev/ext/contracts/settings/v1"
 	"pocketone.dev/ext/extkit"
@@ -207,6 +208,21 @@ func TestMediaAndErrors(t *testing.T) {
 	_, err = al.Align(ctx, extkit.Internal, alignv1.AlignInput{Model: "fake/x", Audio: llmc.File{Data: []byte("a")}, Text: "hi"})
 	if xe, ok := err.(*extkit.Error); !ok || xe.Code != "not_supported" {
 		t.Fatalf("align: %v", err)
+	}
+	// voice cloning: the clip and its rules are checked for every provider, then an OpenAI-compatible API says it can't
+	sp := speechv1.Contract.Must(app)
+	clip := &speechv1.VoiceReference{Audio: llmc.File{Name: "me.wav", Data: []byte("RIFF")}, Text: "Once upon a time"}
+	if _, err := sp.Speak(ctx, extkit.Internal, speechv1.SpeakInput{Model: "fake/tts", Text: "hi", Reference: &speechv1.VoiceReference{}}); err == nil ||
+		!strings.Contains(err.Error(), "clip") {
+		t.Fatalf("clone without a clip: %v", err)
+	}
+	if _, err := sp.Speak(ctx, extkit.Internal, speechv1.SpeakInput{Model: "fake/tts", Text: "hi", Reference: clip, Instructions: "softly"}); err == nil ||
+		!strings.Contains(err.Error(), "no instructions") {
+		t.Fatalf("clone with instructions: %v", err)
+	}
+	_, err = sp.Speak(ctx, extkit.Internal, speechv1.SpeakInput{Model: "fake/tts", Text: "hi", Reference: clip})
+	if xe, ok := err.(*extkit.Error); !ok || xe.Code != "not_supported" || !strings.Contains(xe.Message, "voice cloning") {
+		t.Fatalf("clone on an OpenAI-compatible API: %v", err)
 	}
 	// a wrong key: the provider's error, with its name
 	s, _ := llm.LoadSettings(app)
