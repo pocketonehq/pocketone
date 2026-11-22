@@ -1,12 +1,12 @@
-// Settings → Bedtime Story in the PocketBase dashboard: tune the narrator's voice, the prompts, the pictures, the music,
+// Settings → Story Time in the PocketBase dashboard: the front page's title and caption, story lengths, the narrator's voice, the prompts, the pictures, the music,
 // the models and the daily budget, and try each with Sample before saving. A superuser UI extension, registered from
-// pb_hooks/admin_plugins.pb.js (pb_admin_ext/bedtime); it calls the app's /admin/tuning and /admin/sample (superusers only), and the dashboard
+// pb_hooks/admin_plugins.pb.js (pb_admin_ext/storytime); it calls the app's /admin/tuning and /admin/sample (superusers only), and the dashboard
 // sends the signed-in superuser's token with each call.
 (() => {
-    const GROUP = "Bedtime Story";
+    const GROUP = "Story Time";
     app.store.settingsNavGroups[GROUP] = [
         ...(app.store.settingsNavGroups[GROUP] || []),
-        { href: "#/settings/bedtime", icon: "ri-moon-clear-line", label: "Tuning" },
+        { href: "#/settings/storytime", icon: "ri-moon-clear-line", label: "Settings" },
     ];
 
     const send = (path, body) => app.pb.send(path, body ? { method: "POST", body, requestKey: null } : { requestKey: null });
@@ -37,8 +37,8 @@
         return t.div(null, t.div({ className: "field" }, t.label({}, label), input), hint ? t.div({ className: "field-help" }, hint) : null);
     }
 
-    app.routes.superuserOnly("#/settings/bedtime", () => {
-        app.store.title = "Bedtime Story";
+    app.routes.superuserOnly("#/settings/storytime", () => {
+        app.store.title = "Story Time";
         const data = store({
             loading: true,
             saving: false,
@@ -109,10 +109,10 @@
                 const out = await send("/admin/export");
                 const a = document.createElement("a");
                 a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: "application/json" }));
-                a.download = `bedtime-${out.exported.slice(0, 10)}.json`;
+                a.download = `storytime-${out.exported.slice(0, 10)}.json`;
                 a.click();
                 setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-                data.message = { kind: "success", text: `Exported the saved tuning and ${out.voices.length} recording${out.voices.length === 1 ? "" : "s"}. Unsaved changes on this page aren't in it.` };
+                data.message = { kind: "success", text: `Exported the saved settings and ${out.voices.length} recording${out.voices.length === 1 ? "" : "s"}. Unsaved changes on this page aren't in it.` };
             } catch (err) {
                 data.message = { kind: "danger", text: errText(err) };
             }
@@ -125,7 +125,7 @@
             input.onchange = async () => {
                 const file = input.files && input.files[0];
                 if (!file) return;
-                if (!confirm(`Import ${file.name}? It replaces the tuning on this page (saved) and adds its recordings.`)) return;
+                if (!confirm(`Import ${file.name}? It replaces the settings on this page (saved) and adds its recordings.`)) return;
                 data.saving = true;
                 data.message = null;
                 try {
@@ -357,9 +357,22 @@
         function form() {
             return t.div({ className: "grid" },
                 t.div({ className: "col-lg-12" }, t.p({ className: "m-t-0" },
-                    "How ", t.a({ href: "/", target: "_blank" }, "Bedtime Story"), " makes its stories. Sample tries a piece with what's on this page, ",
+                    "How ", t.a({ href: "/", target: "_blank" }, "Story Time"), " makes its stories. Sample tries a piece with what's on this page, ",
                     "saved or not; new stories use what's saved.")),
                 t.div({ className: "col-lg-12 accordions" },
+                    block("Front page", "What the front page says. The title's last word is highlighted.",
+                        t.div({ className: "col-md-6" }, field("Title", text("site.title"))),
+                        t.div({ className: "col-md-6" }, field("Prompt placeholder", text("site.placeholder"))),
+                        t.div({ className: "col-lg-12" }, field("Caption", area("site.caption", 3), "Under the title: what the app tells and how to ask.")),
+                        t.div({ className: "col-lg-12" }, field("Note", text("site.note"), "Beside the buttons, until a story starts.")),
+                    ),
+                    block("Story length", "Listeners pick a length on a slider from Short to Long. Pictures follow from the length.",
+                        t.div({ className: "col-md-4" }, field("Shortest, minutes", num("length.minMinutes", { min: "1", max: "30", step: "1" }), "The slider's Short end.")),
+                        t.div({ className: "col-md-4" }, field("Longest, minutes", num("length.maxMinutes", { min: "1", max: "30", step: "1" }), "The slider's Long end. The same as Shortest hides the slider.")),
+                        t.div({ className: "col-md-4" }, field("Starts at, minutes", num("length.defaultMinutes", { min: "1", max: "30", step: "1" }), "Where the slider starts.")),
+                        t.div({ className: "col-md-6" }, field("Pictures per minute", num("length.picturesPerMinute", { min: "0.1", max: "10", step: "0.5" }), "A 2-minute story at 1.5 gets 3 pictures.")),
+                        t.div({ className: "col-md-6" }, field("Most pictures", num("length.maxPictures", { min: "1", max: "20", step: "1" }), "However long the story.")),
+                    ),
                     block("Narrator", "The voice that reads every story in a language the speech model speaks. \"design\" makes a voice from the instructions; the same seed makes the same voice each time.",
                         // a plain <select>: the dashboard's own dropdown didn't keep the choice here
                         t.div({ className: "col-md-4" }, field("Voice",
@@ -440,14 +453,14 @@
         app.pb.files.getToken({ requestKey: null }).then((x) => { data.fileToken = x; }).catch(() => {});
 
         return t.div(
-            { className: "page page-bedtime-settings" },
+            { className: "page page-storytime-settings" },
             sidebar(),
             t.div(
                 { className: "page-content full-height" },
                 t.header({ className: "page-header" },
                     t.nav({ className: "breadcrumbs" },
                         t.div({ className: "breadcrumb-item" }, "Settings"),
-                        t.div({ className: "breadcrumb-item" }, "Bedtime Story"))),
+                        t.div({ className: "breadcrumb-item" }, "Story Time"))),
                 t.div({ className: "wrapper m-b-base" }, () => {
                     data.version; // redraw when the values are replaced
                     if (data.loading) return t.div({ className: "block txt-center" }, t.span({ className: "loader lg" }));

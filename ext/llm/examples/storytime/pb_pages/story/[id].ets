@@ -23,7 +23,7 @@ const data = status === 'done' ? {
   words: story.words,
   pictures: story.pictures.map((p: any) => ({ start: p.start, image: files(p.image) })),
 } : null
-const title = rec.getString('title') || 'Bedtime Story'
+const title = rec.getString('title') || ctx.resolve('story').tuning(ctx.app).site.title
 // how it was made, for the splash: when, how long it took, what it cost, and the models (older stories lack some)
 const made = (story && story.made) || null
 const when = new Date(rec.getString('created').replace(' ', 'T'))

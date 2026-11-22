@@ -1,10 +1,12 @@
-# Bedtime Story
+# Story Time
 
-A PocketOne app with no Go (`pb_pages`, one migration and the stock `pocketone` binary) that makes a bedtime story
-for adults: one topic (the universe, the mind, a moment in history) told slowly and in depth, from a prompt or a topic
-it picks itself. It's read aloud by one narrator, with pictures that slowly pan and zoom, the words lit up as they're said, and
-a quiet song underneath. You pick its length in minutes and how many pictures it gets. Each story is saved, so it can
-be replayed and shared. It runs live at [sleep.pocketone.dev](https://sleep.pocketone.dev).
+A PocketOne app with no Go (`pb_pages`, a few migrations and the stock `pocketone` binary) that tells a story from a
+prompt or a topic it picks itself. What kind of story is set, not coded: its title and caption, the story lengths, the
+narrator and the prompts are all on its settings screen, and the shipped defaults (`pb_pages/_private/defaults.json`)
+make it a bedtime story app for adults: one topic (the universe, the mind, a moment in history) told slowly and in
+depth. It's read aloud by one narrator, with pictures that slowly pan and zoom, the words lit up as they're said, and
+a quiet song underneath. A slider picks a short or a long story, within the lengths the admin allows; the pictures follow from the length. Each story is saved, so it can
+be replayed and shared. It runs live at [sleep.pocketone.dev](https://sleep.pocketone.dev), set up as Bedtime Story.
 
 It shows `$llm` doing a job longer than one request:
 
@@ -34,17 +36,17 @@ heard 10 seconds (time playing, not where the scrubber is), the player posts `/v
 pb_migrations/1763800000_stories.js   the stories collection: prompt, length, status, progress, the story with its timings, files
 pb_migrations/1763800001_stories_views.js   views: listens of 10 seconds or more
 pb_migrations/1763800002_costs.js       costs: each model call's cost, for the daily budget
-pb_migrations/1763800003_settings.js    settings: the saved tuning
+pb_migrations/1763800003_settings.js    settings: where saved settings go on a PocketOne without $kv
 pb_migrations/1763800004_samples.js     samples: audio samples the dashboard plays
 pb_migrations/1763800005_voices.js      voices: recordings a cloned narrator imitates (superusers only)
 pb_hooks/admin_plugins.pb.js            registers the dashboard screen (a superuser UI extension)
-pb_admin_ext/bedtime/main.js            Settings → Bedtime Story in the dashboard: tuning, with Sample buttons
+pb_admin_ext/storytime/main.js          Settings → Story Time in the dashboard: the settings, with Sample buttons
 pb_pages/
   index.ets            ask for a story (prompt, minutes, pictures, Inspire me); stories told, most listened to first
   inspire.ts           POST /inspire {avoid?}: a topic no story has covered yet (the model sees every title)
-  admin/tuning.ts      GET/POST /admin/tuning: the tuning, for the dashboard screen (superusers only)
-  admin/sample.ts      POST /admin/sample: tries a voice, music, a picture, a story's text or an idea with unsaved tuning
-  admin/export.ts      GET /admin/export: the saved tuning and every recording as one JSON file (superusers only)
+  admin/tuning.ts      GET/POST /admin/tuning: the settings, for the dashboard screen (superusers only)
+  admin/sample.ts      POST /admin/sample: tries a voice, music, a picture, a story's text or an idea with unsaved settings
+  admin/export.ts      GET /admin/export: the saved settings and every recording as one JSON file, the format of _private/defaults.json (superusers only)
   admin/import.ts      POST /admin/import: loads that file, keeping recordings already here (superusers only)
   admin/check.ts       POST /admin/check {clip}: transcribes a recording and compares it with its passage (superusers only)
   view.ts              POST /view {id}: counts a listen (the player sends it after 10 seconds heard)
@@ -56,7 +58,7 @@ pb_pages/
 ## Run it
 
 ```bash
-cd ext/llm/examples/bedtime
+cd ext/llm/examples/storytime
 pocketone superuser upsert admin@example.com password --dir=pb_data
 pocketone serve --dir=pb_data
 ```
@@ -73,24 +75,24 @@ with 5 pictures (`MAX`); the form and `POST /story` both hold to it.
 
 ## Tuning, in the dashboard
 
-Settings → Bedtime Story in the PocketBase dashboard (`/_/`) holds what shapes every story: the narrator (voice,
+Settings → Story Time in the PocketBase dashboard (`/_/`) holds what shapes the app: the front page's title and caption, the story lengths (the slider's shortest and longest, where it starts, pictures per minute, the most pictures), the narrator (voice,
 instructions, seed, speed), the writing, picture-choosing and Inspire me prompts, what's added to each picture and music
 prompt, the models and the daily budget. Each part has a **Sample** button that tries it with what's on the screen,
 saved or not: the voice reads a paragraph, the music plays 20 seconds, a picture is painted, a 1-minute story is
-written, or an idea suggested. **Save changes** stores it in the `settings` collection; new stories use it, on top of
-the defaults in `_private/story.ts`. A seed makes `auk`'s generated voice the same from story to story. The narrator
+written, or an idea suggested. **Save changes** stores it as one JSON blob in PocketOne's key-value store (`$kv`); new stories use it, on top of
+the defaults in `_private/defaults.json`. A seed makes `auk`'s generated voice the same from story to story. The narrator
 can also be a clone: record a passage on the screen, and every story is read in that voice (`reference` on the speech
-call, from the `voices` collection). **Export** and **Import** move the saved tuning and the recordings between copies
+call, from the `voices` collection). **Export** and **Import** move the saved settings and the recordings between copies
 of the app as one JSON file.
 
 The screen is a superuser UI extension registered from `pb_hooks`, the way
 [PocketHost's guide](https://pockethost.io/docs/admin-extensions) shows: `$app.onServe()` pushes
-`{ name: "bedtime", fs: $os.dirFS(...) }` onto `e.uiExtensions`, and PocketBase loads `pb_admin_ext/bedtime/main.js`
+`{ name: "storytime", fs: $os.dirFS(...) }` onto `e.uiExtensions`, and PocketBase loads `pb_admin_ext/storytime/main.js`
 into the dashboard. The dashboard only plays audio from its own origin, so audio samples are saved in a `samples`
 collection (the last 20, viewable by their random id) and played from `/api/files/...`.
 
 Each story also keeps how it was made (seconds taken, the models and the voice), shown on its splash with the date and
-cost, since the tuning can change.
+cost, since the settings can change.
 
 ## Guards
 

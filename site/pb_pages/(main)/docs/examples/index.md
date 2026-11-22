@@ -15,12 +15,12 @@ An app built on [`$llm`](/docs/extensions/llm), PocketOne's cloud models, runnin
 
 | App | Try it | Source |
 |---|---|---|
-| [**Bedtime Story**](/docs/examples/bedtime-story): one topic told slowly and in depth, read aloud with pictures and music | [sleep.pocketone.dev](https://sleep.pocketone.dev) | [`ext/llm/examples/bedtime`](https://github.com/pocketonehq/pocketone/tree/main/ext/llm/examples/bedtime) |
+| [**Story Time**](/docs/examples/story-time): a story on any topic, read aloud with pictures and music; set up at sleep.pocketone.dev as Bedtime Story | [sleep.pocketone.dev](https://sleep.pocketone.dev) | [`ext/llm/examples/storytime`](https://github.com/pocketonehq/pocketone/tree/main/ext/llm/examples/storytime) |
 
 To run it yourself:
 
 ```bash
-cd ext/llm/examples/bedtime
+cd ext/llm/examples/storytime
 pocketone superuser upsert admin@example.com password --dir=pb_data
 pocketone serve --dir=pb_data
 ```

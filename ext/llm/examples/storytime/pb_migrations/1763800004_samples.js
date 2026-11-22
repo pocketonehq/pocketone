@@ -1,5 +1,5 @@
 /// <reference path="../types.d.ts" />
-// samples: audio the dashboard's Bedtime Story screen plays after Sample (the voice, the music). The dashboard only
+// samples: audio the dashboard's Story Time screen plays after Sample (the voice, the music). The dashboard only
 // plays audio from its own origin, so each sample is saved here and played from /api/files/samples/<id>/<file>. Nobody
 // can list them; a sample is viewable by its random id only. The app keeps the last 20.
 migrate((app) => {

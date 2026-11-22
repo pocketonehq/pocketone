@@ -1,6 +1,12 @@
 <%
-// The front page: ask for a story, or pick one already told.
-const { DEFAULTS, MAX, refusal } = ctx.resolve('story')
+// The front page: ask for a story, or pick one already told. Its words and the story lengths come from the settings.
+const { refusal, tuning, storyLength } = ctx.resolve('story')
+const t = tuning(ctx.app)
+const L = t.length
+const start = storyLength(t)
+// the title's last word is highlighted
+const titleWords = t.site.title.trim().split(/\s+/)
+const titleLast = titleWords.length > 1 ? titleWords.pop() : ''
 // when no story can be made now (the models aren't there, or today's budget is spent), the form says why and is off
 const closed = await refusal(ctx.app, 'idea')
 // most listened to first (a view is 10 seconds of listening), then the newest
@@ -14,7 +20,7 @@ const making = ctx.app.findRecordsByFilter('stories', "status != 'done' && statu
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Bedtime Story</title>
+  <title><%= t.site.title %></title>
   <style>
     :root { color-scheme: dark; --bg: #0b1020; --ink: #e9e4d8; --dim: #a39d8f; --line: #232a44; --glow: #f2c46d; }
     * { box-sizing: border-box; }
@@ -28,6 +34,9 @@ const making = ctx.app.findRecordsByFilter('stories', "status != 'done' && statu
       background: #0f1530; color: var(--ink); font: inherit; resize: vertical; }
     textarea:focus { outline: 2px solid #3b4675; }
     label { color: var(--dim); font-size: 15px; }
+    .length { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 260px; }
+    .length input[type=range] { flex: 1; accent-color: var(--glow); }
+    .length b { color: var(--ink); font-weight: normal; min-width: 130px; }
     label input { width: 64px; margin-left: 6px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: #0f1530;
       color: var(--ink); font: inherit; }
     .row { display: flex; gap: 12px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
@@ -56,20 +65,27 @@ const making = ctx.app.findRecordsByFilter('stories', "status != 'done' && statu
 </head>
 <body>
 <main>
-  <h1>Bedtime <span>Story</span></h1>
-  <p class="sub">Something to fall asleep to: one topic, told slowly and in depth, with pictures and quiet music. The universe, the mind, a moment in history. Name one, or leave it empty and I'll pick.</p>
+  <h1><%= titleWords.join(' ') %><% if (titleLast) { %> <span><%= titleLast %></span><% } %></h1>
+  <p class="sub"><%= t.site.caption %></p>
 
   <% if (closed) { %><p class="closed"><%= closed.message %></p><% } %>
   <form id="ask"<% if (closed) { %> class="off"<% } %>>
-    <textarea id="prompt" maxlength="500" placeholder="The deep sea at night..."<% if (closed) { %> disabled<% } %>></textarea>
+    <textarea id="prompt" maxlength="500" placeholder="<%= t.site.placeholder %>"<% if (closed) { %> disabled<% } %>></textarea>
     <div class="row">
-      <label>Minutes <input id="minutes" type="number" min="1" max="<%= MAX.minutes %>" value="<%= DEFAULTS.minutes %>"></label>
-      <label>Pictures <input id="pictures" type="number" min="1" max="<%= MAX.pictures %>" value="<%= DEFAULTS.pictures %>"></label>
+      <% if (L.maxMinutes > L.minMinutes) { %>
+      <label class="length">Short
+        <input id="minutes" type="range" min="<%= L.minMinutes %>" max="<%= L.maxMinutes %>" step="1" value="<%= start.minutes %>"
+          data-per-minute="<%= L.picturesPerMinute %>" data-max-pictures="<%= L.maxPictures %>" aria-label="Story length">
+        Long</label>
+      <% } else { %>
+      <input id="minutes" type="hidden" value="<%= start.minutes %>" data-per-minute="<%= L.picturesPerMinute %>" data-max-pictures="<%= L.maxPictures %>">
+      <% } %>
+      <span class="note"><b id="length-label"><%= start.minutes %> min · <%= start.pictures %> <%= start.pictures === 1 ? 'picture' : 'pictures' %></b></span>
     </div>
     <div class="row">
       <button id="go"<% if (closed) { %> disabled<% } %>>Tell me a story</button>
       <button type="button" class="ghost" id="inspire"<% if (closed) { %> disabled<% } %>>Inspire me</button>
-      <span class="note" id="msg">A few cents a minute in model costs.</span>
+      <span class="note" id="msg"><%= t.site.note %></span>
     </div>
   </form>
 
@@ -141,6 +157,16 @@ const making = ctx.app.findRecordsByFilter('stories', "status != 'done' && statu
     inspire.disabled = false
     inspire.textContent = 'Inspire me'
   })
+  // the slider says how long, and how many pictures that length gets
+  const minutesInput = document.getElementById('minutes')
+  const lengthLabel = document.getElementById('length-label')
+  const showLength = () => {
+    const m = Number(minutesInput.value)
+    const p = Math.max(1, Math.min(Number(minutesInput.dataset.maxPictures), Math.round(m * Number(minutesInput.dataset.perMinute))))
+    lengthLabel.textContent = `${m} min · ${p} ${p === 1 ? 'picture' : 'pictures'}`
+  }
+  minutesInput.addEventListener('input', showLength)
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault()
     go.disabled = true
@@ -148,8 +174,7 @@ const making = ctx.app.findRecordsByFilter('stories', "status != 'done' && statu
     msg.textContent = 'Starting...'
     try {
       const res = await fetch('/story', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: prompt.value, minutes: document.getElementById('minutes').value,
-          pictures: document.getElementById('pictures').value }) })
+        body: JSON.stringify({ prompt: prompt.value, minutes: document.getElementById('minutes').value }) })
       const body = await res.json()
       if (!res.ok) throw new Error(body.message || res.statusText)
       location.href = '/story/' + body.id

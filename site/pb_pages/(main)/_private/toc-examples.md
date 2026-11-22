@@ -5,4 +5,4 @@
 
 # Apps
 
-- [Bedtime Story](/docs/examples/bedtime-story)
+- [Story Time](/docs/examples/story-time)

@@ -1,11 +1,11 @@
-// POST /admin/import {app: "bedtime", version: 1, tuning, voices}: what /admin/export wrote. Each recording is added
+// POST /admin/import {app: "storytime", version: 1, settings, voices}: what /admin/export wrote. Each recording is added
 // unless the same one (same name and audio) is already here; the narrator's recording is pointed at the copy here.
-// Then the tuning is saved (known keys only, like Save). Superusers only.
+// Then the settings are saved (known keys only, like Save). Superusers only.
 export function post(ctx: any) {
   ctx.resolve('admin').superuserOnly(ctx)
   const story = ctx.resolve('story')
   const body = ctx.req.body() || {}
-  if (body.app !== 'bedtime' || body.version !== 1) throw ctx.httpError(400, 'not a Bedtime Story export (app "bedtime", version 1)')
+  if (body.app !== 'storytime' || body.version !== 1) throw ctx.httpError(400, 'not a Story Time export (app "storytime", version 1)')
 
   // the recordings already here, by name and a hash of their audio
   const hash = (f: any) => $security.sha256(String(f && f.data || ''))
@@ -34,7 +34,7 @@ export function post(ctx: any) {
     added++
   }
 
-  const t = body.tuning && typeof body.tuning === 'object' ? JSON.parse(JSON.stringify(body.tuning)) : {}
+  const t = body.settings && typeof body.settings === 'object' ? JSON.parse(JSON.stringify(body.settings)) : {}
   if (t.voice && t.voice.clip) t.voice.clip = ids[t.voice.clip] || ''
   const values = story.saveTuning(ctx.app, t)
   return ctx.res.json(200, { values, voices: { added, kept } })

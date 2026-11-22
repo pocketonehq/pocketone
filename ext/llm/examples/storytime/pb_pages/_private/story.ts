@@ -1,4 +1,4 @@
-// Makes a bedtime story for adults (one topic, told in depth) from a prompt, in the background, saving each step on its
+// Makes a story (by default a bedtime story for adults: one topic, told in depth) from a prompt, in the background, saving each step on its
 // `stories` record so the page can show progress (it polls the record) and play the story once it's done.
 //
 //   1. write: the story, one sentence per line
@@ -8,15 +8,12 @@
 //      plus a prompt for the song
 //   5. paint the pictures (all at once), and 6. compose the song, at the same time
 //
-// The models, the narrator's voice, the prompts and the budget are the app's tuning: DEFAULT_TUNING below, with
-// whatever a superuser saved on /admin on top (the `settings` collection). Every $llm call is awaited, so the work runs
+// The title and caption, the story lengths, the models, the narrator's voice, the prompts and the budget are the app's
+// settings: _private/defaults.json (the same format as Export), with whatever a superuser saved on top (one JSON blob,
+// see loadSaved). Every $llm call is awaited, so the work runs
 // off the app's JS VM: the app keeps serving pages (and this story's own progress polls) while the models work. The
 // request that starts a story doesn't wait for it; see story.ts.
 
-/** A story's length in minutes, and how many pictures it gets, when the form doesn't say. */
-export const DEFAULTS = { minutes: 1, pictures: 3 }
-/** The most either may be. */
-export const MAX = { minutes: 5, pictures: 5 }
 /** About how many words a narrator reads in a minute at a bedtime pace. */
 const WORDS_PER_MINUTE = 140
 
@@ -33,6 +30,12 @@ const SPEAKS: { [model: string]: string[] } = { 'vultr/auk': ['en', 'zh'] }
 export const ANY_TOPIC = 'Your pick'
 
 export type Tuning = {
+  /** what the front page says: the title (its last word is highlighted), the caption under it, the prompt's placeholder
+   * and the note under the buttons */
+  site: { title: string; caption: string; placeholder: string; note: string }
+  /** how long a story may be: the front page's slider runs from minMinutes (short) to maxMinutes (long), starting at
+   * defaultMinutes; a story gets picturesPerMinute pictures a minute, at most maxPictures */
+  length: { minMinutes: number; maxMinutes: number; defaultMinutes: number; picturesPerMinute: number; maxPictures: number }
   /** each as provider/model: a provider added in Settings → LLM, then its model */
   models: { text: string; idea: string; image: string; speech: string; speechOther: string; align: string; music: string }
   /** the narrator, for the speech model (not speechOther, which reads other languages with its own voice) */
@@ -58,61 +61,31 @@ export type Tuning = {
   budget: number
 }
 
-export const DEFAULT_TUNING: Tuning = {
-  models: {
-    text: process.env.STORY_TEXT_MODEL || 'vultr/mimo-v2.6-flash', // fast, and writes without thinking first
-    idea: process.env.STORY_IDEA_MODEL || process.env.STORY_TEXT_MODEL || 'vultr/mimo-v2.6-flash', // Inspire me
-    image: process.env.STORY_IMAGE_MODEL || 'vultr/z-image-turbo',
-    speech: process.env.STORY_SPEECH_MODEL || 'vultr/auk',
-    speechOther: process.env.STORY_SPEECH_MODEL_OTHER || 'vultr/chatterbox', // languages auk doesn't speak
-    align: process.env.STORY_ALIGN_MODEL || 'vultr/aligner-1',
-    music: process.env.STORY_MUSIC_MODEL || 'vultr/ace-step-1.5',
-  },
-  voice: {
-    voice: 'default',
-    instructions: '',
-    clip: '',
-    seed: null,
-    speed: null,
-    sample: 'In the summer of 1859, the sky over the Rockies turned red and green at midnight. Miners woke, ' +
-      'thinking it was dawn, and began to make their breakfast. It was not dawn. It was the sun, reaching out across ' +
-      'ninety-three million miles, and touching the edge of the world.',
-  },
-  prompts: {
-    write: `You write bedtime stories for adults: calm, unhurried narration to fall asleep to,
-read aloud in about {minutes}: {minWords} to {maxWords} words.
-Each story picks one topic and goes deep: the universe, consciousness and the mind, the history of an idea, an event,
-a place or a person, how something in nature works. Choose a narrow, specific angle within the request rather than a
-survey, and carry the listener through it with concrete detail: names, places, dates, numbers, how things felt and
-looked. Stay accurate: tell only what is known, and say so where something is uncertain or disputed; never invent
-facts, quotes or sources. The tone is warm, curious and quiet, never dramatic or sensational; long, flowing sentences
-are welcome, and the pace slows toward the end, closing on a gentle, spacious thought.
-If the request is "{anyTopic}", choose a topic yourself, something with depth that a curious adult may not know well.
-Write the story in the language the request is written in, unless the request asks for another language; "language"
-is that language's ISO 639-1 code ("en", "es", "ja"). "topic" is the story's subject in a short phrase. Give the story
-one sentence per item of "sentences", in order: each item is a single sentence of at most about 30 words, shown as a
-caption while it's read, never a paragraph. "look" describes, for an illustrator, what recurs through the story's
-pictures (a place, a person with their dress and era, an object), so every picture can show it the same way.`,
-    place: `You illustrate a story that has been read aloud. You get its transcript, one
-sentence per line, each with the second it starts. Choose exactly {n} pictures, spread through the story: for each, the
-line where it should appear (the first picture at line 0, then in order, each where the story moves somewhere new or
-something new happens) and a prompt for an illustrator describing what the picture shows. Describe anything that recurs
-(a place, a person, an object) the same way in every prompt. No text, letters or diagrams in pictures.
-"style" is one line describing the look shared by every picture (for example: muted oil painting, soft
-light, deep blues and ambers), suited to the topic and calm. "music" is a prompt for quiet instrumental ambient music
-that suits the story: instruments, mood and tempo, no drums.`,
-    inspire: `You suggest topics for bedtime stories for adults: one topic told slowly and in depth, such as the
-universe, consciousness and the mind, a moment or person in history, or how something in nature works. You get the
-stories already told. Suggest one new topic in the same spirit that none of them covers, as a short, specific phrase
-of a few words to a sentence ("The night the 1859 solar storm lit up the sky"). If none are listed, suggest a topic a
-curious grown-up would enjoy falling asleep to.`,
-  },
-  picture: 'No text.',
-  music: { suffix: 'Soft ambient, instrumental, slow, spacious, no drums, no vocals.', seconds: 90 },
-  budget: Number(process.env.STORY_DAILY_BUDGET || 1),
+/** The shipped defaults: an export file (settings, and recordings an Import would add). */
+const SHIPPED = require('./defaults.json')
+
+/** The defaults: defaults.json's settings, with the models and budget a deploy may set in its environment. */
+export const DEFAULT_TUNING: Tuning = (() => {
+  const t = JSON.parse(JSON.stringify(SHIPPED.settings))
+  const env = process.env
+  t.models.text = env.STORY_TEXT_MODEL || t.models.text
+  t.models.idea = env.STORY_IDEA_MODEL || env.STORY_TEXT_MODEL || t.models.idea
+  t.models.image = env.STORY_IMAGE_MODEL || t.models.image
+  t.models.speech = env.STORY_SPEECH_MODEL || t.models.speech
+  t.models.speechOther = env.STORY_SPEECH_MODEL_OTHER || t.models.speechOther
+  t.models.align = env.STORY_ALIGN_MODEL || t.models.align
+  t.models.music = env.STORY_MUSIC_MODEL || t.models.music
+  if (env.STORY_DAILY_BUDGET) t.budget = Number(env.STORY_DAILY_BUDGET)
+  return t
+})()
+
+/** The minutes a story may run (whole minutes, minMinutes to maxMinutes) and the pictures that many minutes get. */
+export function storyLength(t: Tuning, minutes?: any): { minutes: number; pictures: number } {
+  const L = t.length
+  const m = Math.max(L.minMinutes, Math.min(L.maxMinutes, Math.round(Number(minutes) || L.defaultMinutes)))
+  return { minutes: m, pictures: Math.max(1, Math.min(L.maxPictures, Math.round(m * L.picturesPerMinute))) }
 }
 
-const SETTINGS_KEY = 'tuning'
 
 const isObject = (v: any) => v && typeof v === 'object' && !Array.isArray(v)
 
@@ -131,42 +104,63 @@ function merge(base: any, over: any): any {
   if (base === DEFAULT_TUNING) {
     out.budget = Number.isFinite(out.budget) && out.budget >= 0 ? out.budget : DEFAULT_TUNING.budget
     out.music.seconds = Math.max(10, Math.min(240, Number(out.music.seconds) || DEFAULT_TUNING.music.seconds))
+    // lengths: whole minutes from 1 to 30, min at most max, the default between them; pictures from 1 to 20
+    const L = out.length, D = DEFAULT_TUNING.length
+    const whole = (v: any, def: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(Number.isFinite(Number(v)) && v !== null ? Number(v) : def)))
+    L.minMinutes = whole(L.minMinutes, D.minMinutes, 1, 30)
+    L.maxMinutes = whole(L.maxMinutes, D.maxMinutes, L.minMinutes, 30)
+    L.defaultMinutes = whole(L.defaultMinutes, D.defaultMinutes, L.minMinutes, L.maxMinutes)
+    L.maxPictures = whole(L.maxPictures, D.maxPictures, 1, 20)
+    L.picturesPerMinute = Math.max(0.1, Math.min(10, Number(L.picturesPerMinute) || D.picturesPerMinute))
   }
   return out
 }
 
-/** The app's tuning: the defaults with what a superuser saved on top. With extra, those (unsaved) values on top again. */
-export function tuning(app: any, extra?: any): Tuning {
-  let saved: any = null
+// The saved settings are one JSON blob under one name. PocketOne's key-value store ($kv, kv/v1) keeps it with no
+// collection or migration; until every PocketOne this app runs on has $kv, the `settings` collection stands in.
+const SAVED_NAME = 'storytime'
+
+function loadSaved(app: any): any {
+  if (typeof $kv !== 'undefined') return $kv.get(SAVED_NAME)
   try {
-    const r = app.findFirstRecordByData('settings', 'key', SETTINGS_KEY)
-    saved = JSON.parse(r.getString('value') || 'null')
+    return JSON.parse(app.findFirstRecordByData('settings', 'key', 'tuning').getString('value') || 'null')
   } catch (_) {
-    // nothing saved yet
+    return null // nothing saved yet
   }
-  const t = merge(DEFAULT_TUNING, saved)
-  return extra ? merge(t, extra) : t
 }
 
-/** Saves the tuning (only the known keys, merged onto the defaults); null puts the defaults back. */
-export function saveTuning(app: any, values: any): Tuning {
-  const col = app.findCollectionByNameOrId('settings')
+function storeSaved(app: any, value: any) {
+  if (typeof $kv !== 'undefined') return value === null ? $kv.delete(SAVED_NAME) : $kv.set(SAVED_NAME, value)
   let r: any
   try {
-    r = app.findFirstRecordByData('settings', 'key', SETTINGS_KEY)
+    r = app.findFirstRecordByData('settings', 'key', 'tuning')
   } catch (_) {
-    r = new Record(col)
-    r.set('key', SETTINGS_KEY)
+    r = new Record(app.findCollectionByNameOrId('settings'))
+    r.set('key', 'tuning')
   }
-  if (values === null) {
+  if (value === null) {
     if (r.id) app.delete(r)
-    healthCache = null
+    return
+  }
+  r.set('value', value)
+  app.save(r)
+}
+
+/** The app's settings: the defaults with what a superuser saved on top. With extra, those (unsaved) values on top again. */
+export function tuning(app: any, extra?: any): Tuning {
+  const t = merge(DEFAULT_TUNING, loadSaved(app))
+  return extra ? merge(DEFAULT_TUNING, merge(t, extra)) : t
+}
+
+/** Saves the settings (only the known keys, merged onto the defaults); null puts the defaults back. */
+export function saveTuning(app: any, values: any): Tuning {
+  healthCache = null
+  if (values === null) {
+    storeSaved(app, null)
     return DEFAULT_TUNING
   }
   const t = merge(DEFAULT_TUNING, values)
-  r.set('value', t)
-  app.save(r)
-  healthCache = null
+  storeSaved(app, t)
   return t
 }
 
@@ -212,12 +206,12 @@ const PLACE_SCHEMA = {
 
 /** A recording the narrator imitates: the voices record, as a speech call's reference (the clip and what it says). */
 export function cloneReference(app: any, clip: string): { reference: any; name: string } {
-  if (!clip) throw new Error('the clone voice needs a recording: record one on Settings → Bedtime Story → Narrator')
+  if (!clip) throw new Error('the clone voice needs a recording: record one on Settings → Story Time → Narrator')
   let r: any
   try {
     r = app.findRecordById('voices', clip)
   } catch (_) {
-    throw new Error('the narrator\'s recording is gone: pick or record another on Settings → Bedtime Story → Narrator')
+    throw new Error('the narrator\'s recording is gone: pick or record another on Settings → Story Time → Narrator')
   }
   return { reference: { audio: $llm.fromRecord(r, 'audio'), text: r.getString('passage') }, name: r.getString('name') }
 }
@@ -294,7 +288,7 @@ export function record(app: any, kind: string, result: any, story = ''): number 
     r.set('story', story)
     app.save(r)
   } catch (err: any) {
-    console.log(`bedtime: couldn't record a cost: ${err && err.message ? err.message : err}`)
+    console.log(`storytime: couldn't record a cost: ${err && err.message ? err.message : err}`)
   }
   return m / 1e6
 }
@@ -338,7 +332,7 @@ export async function health(app: any): Promise<string | null> {
     }
   }
   healthCache = { at: Date.now(), models: key, problem }
-  if (problem) console.log(`bedtime: not healthy: ${problem}`)
+  if (problem) console.log(`storytime: not healthy: ${problem}`)
   return problem
 }
 
@@ -381,7 +375,7 @@ export async function write(t: Tuning, prompt: string, minutes: number): Promise
   const result = await ask(t.models.text, { system: writePrompt(t, minutes), prompt: `Tonight's story: ${prompt}`, schema: WRITE_SCHEMA, temperature: 0.9 })
   const written = result.data || {}
   const story: Story = {
-    title: String(written.title || 'A bedtime story'),
+    title: String(written.title || 'A story'),
     language: String(written.language || 'en').toLowerCase().slice(0, 2),
     topic: String(written.topic || ''),
     look: String(written.look || ''),
@@ -420,8 +414,9 @@ export async function make(app: any, id: string): Promise<void> {
   try {
     const rec = app.findRecordById('stories', id)
     const prompt = rec.getString('prompt')
-    const minutes = rec.getInt('minutes') || DEFAULTS.minutes
-    const wanted = rec.getInt('picture_count') || DEFAULTS.pictures
+    const fallback = storyLength(t)
+    const minutes = rec.getInt('minutes') || fallback.minutes
+    const wanted = rec.getInt('picture_count') || fallback.pictures
 
     // 1. write
     save({ status: 'writing', progress: 'Writing the story' })
@@ -520,7 +515,7 @@ export async function make(app: any, id: string): Promise<void> {
     save({ story, status: 'done', progress: '', cost: spent })
   } catch (err: any) {
     const message = String(err && err.message ? err.message : err)
-    console.log(`bedtime: story ${id} failed: ${message}`)
+    console.log(`storytime: story ${id} failed: ${message}`)
     try {
       save({ status: 'failed', error: message, cost: spent })
     } catch (_) {
