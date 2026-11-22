@@ -8,7 +8,7 @@ tags: examples, AI, Pages, llm
 
 I've really come to enjoy those sleepy-time YouTube videos, especially the ones that imitate a certain popular British physicist. I was curious how they're made, and I realized the Vultr inference cloud had all the primitives for it: a writer, a narrator, pictures, music. So I thought it would be fun to make my own bedtime story app, just to see how close I could get. That's [sleep.pocketone.dev](https://sleep.pocketone.dev).
 
-Vultr even has voice cloning, where you give it a sample of a real voice, but I didn't take it that far. I used one of the simulated voices. Directionally, it would probably be better (and funnier) if the creator of PocketOne was telling you a bedtime story. Maybe next time.
+Vultr even has voice cloning, where you give it a short recording of a real voice and it reads in that voice. I started with one of the simulated voices, but then I thought it would be funny if the creator of PocketOne was the one telling you a bedtime story. So now it's me. I recorded about twenty seconds of myself reading slowly, and every story is narrated in my voice.
 
 Give it a topic, or leave it empty and let it pick one: the universe, the mind, a moment in history. A minute later it plays the story. One narrator reading, pictures that slowly pan and zoom, the words lighting up as they're said, quiet music underneath. Every story is saved, so you can replay it and share the link.
 
@@ -59,7 +59,7 @@ All of it lives in `_private/story.ts`.
 
 **1. Write.** `$llm.text.completeAsync` with a JSON schema returns the title, the topic, a description of what recurs in the pictures, and the story one sentence per item. It writes in whatever language you asked in.
 
-**2. Read it aloud.** `$llm.speech.speakAsync` records one voiceover of the whole story, so the narrator sounds the same from start to finish. If the main voice model doesn't speak your language, a second one reads it.
+**2. Read it aloud.** `$llm.speech.speakAsync` records one voiceover of the whole story, so the narrator sounds the same from start to finish. That call carries my recording as a `reference`, which is how it ends up in my voice (more on that below). If the main voice model doesn't speak your language, a second one reads it, and it clones too, so it's still me, just in another language.
 
 **3. Align.** This is the step that makes the player work. `$llm.align.alignAsync` takes the voiceover and the sentences and returns when each sentence and each word is said:
 
@@ -148,6 +148,27 @@ When I first wrote that hook, it didn't work. In QuickJS, `$os.dirFS` turned int
 Saved tuning goes in a `settings` record that only superusers can read. It's merged over the defaults in `_private/story.ts` each time a story starts. Samples merge the unsaved values on top of that, so trying something never changes what listeners get. Each story also remembers how it was made: the time it took, the cost, and the models and voice. The story's splash shows them.
 
 ![A story's splash: the title over its first picture, Play the story, then "Made Nov 22, 2026 in 18 s for $0.057" and the model behind each step](/blog/img/bedtime-splash.jpg)
+
+### Reading in my voice
+
+Cloning turned out to be one more field on the speech call. You give it the clip and, optionally, the words in the clip, and the model reads your text in that voice:
+
+```ts
+const clip = app.findRecordById('voices', t.voice.clip)
+const voice = await $llm.speech.speakAsync({
+  model: 'vultr/auk',
+  text: story.sentences.join(' '),
+  reference: { audio: $llm.fromRecord(clip, 'audio'), text: clip.getString('passage') },
+})
+```
+
+The recording lives in a `voices` collection that only superusers can see. The stories are public anyway, but I didn't want the raw clip sitting out there for anyone to download. `$llm.fromRecord` reads the stored file with its bytes, so it works the same whether files are on disk or in S3.
+
+Recording happens right in the dashboard. On the Narrator screen there's a short passage to read, a Record button, and a way to listen back before you save it. I read it the way I want the stories told, slow and quiet, because the delivery comes from the recording. There's no "sound sleepy" instruction for a cloned voice. Vultr doesn't keep the voice either, so the clip goes along with every story, which is one more reason to keep it short.
+
+I made this general while I was in there. `llm.speech/v1` has the `reference` field for every provider, and each voice says whether it's built in, designed or a clone, so an app can tell which models clone. Vultr and OpenRouter do it. Cloudflare and other OpenAI-compatible APIs say so plainly with a `not_supported` error instead of quietly reading in some other voice.
+
+Before I recorded myself, I checked it was really cloning and not just ignoring the clip. I fed it a clip of one of Vultr's male voices and measured the pitch: the clone came out at the same 125 Hz as the clip, and the default narrator, a woman's voice, sits around 186 Hz. Good enough to prove the point. One rule I'd keep, though: clone your own voice, or one you have permission to use.
 
 ### Run it yourself
 
