@@ -100,6 +100,49 @@
             data.saving = false;
         }
 
+        // Export: the saved tuning and every recording, as one JSON file to import on another copy of the app (dev to
+        // prod). Import: that file; recordings already here are kept, and the tuning is saved.
+        async function exportJSON() {
+            data.message = null;
+            try {
+                const out = await send("/admin/export");
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: "application/json" }));
+                a.download = `bedtime-${out.exported.slice(0, 10)}.json`;
+                a.click();
+                setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+                data.message = { kind: "success", text: `Exported the saved tuning and ${out.voices.length} recording${out.voices.length === 1 ? "" : "s"}. Unsaved changes on this page aren't in it.` };
+            } catch (err) {
+                data.message = { kind: "danger", text: errText(err) };
+            }
+        }
+
+        function importJSON() {
+            const input = document.createElement("input");
+            input.type = "file";
+            input.accept = "application/json,.json";
+            input.onchange = async () => {
+                const file = input.files && input.files[0];
+                if (!file) return;
+                if (!confirm(`Import ${file.name}? It replaces the tuning on this page (saved) and adds its recordings.`)) return;
+                data.saving = true;
+                data.message = null;
+                try {
+                    const out = await send("/admin/import", JSON.parse(await file.text()));
+                    v = out.values;
+                    await refreshClips();
+                    data.clipChoice = "";
+                    data.voiceChoice = "";
+                    data.version++;
+                    data.message = { kind: "success", text: `Imported and saved. Recordings: ${out.voices.added} added, ${out.voices.kept} already here.` };
+                } catch (err) {
+                    data.message = { kind: "danger", text: err instanceof SyntaxError ? "That file isn't JSON." : errText(err) };
+                }
+                data.saving = false;
+            };
+            input.click();
+        }
+
         // sample tries one piece with the values as they are on the page, saved or not
         async function sample(what, prompt) {
             data.samples = { ...data.samples, [what]: { busy: true } };
@@ -344,6 +387,10 @@
                             type: "button", className: "btn transparent secondary", disabled: () => data.saving,
                             onclick: () => confirm("Put back the default tuning for everything on this page?") && save(true),
                         }, t.span({ className: "txt" }, "Put back the defaults")),
+                        t.button({ type: "button", className: "btn transparent secondary", disabled: () => data.saving, onclick: exportJSON },
+                            t.i({ className: "ri-download-2-line", ariaHidden: true }), t.span({ className: "txt" }, "Export")),
+                        t.button({ type: "button", className: "btn transparent secondary", disabled: () => data.saving, onclick: importJSON },
+                            t.i({ className: "ri-upload-2-line", ariaHidden: true }), t.span({ className: "txt" }, "Import")),
                         t.div({ className: "m-r-auto" }),
                         t.button({
                             type: "button", className: () => `btn expanded-lg ${data.saving ? "loading" : ""}`, disabled: () => data.saving,
