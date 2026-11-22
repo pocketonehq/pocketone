@@ -46,6 +46,7 @@ pb_pages/
   admin/sample.ts      POST /admin/sample: tries a voice, music, a picture, a story's text or an idea with unsaved tuning
   admin/export.ts      GET /admin/export: the saved tuning and every recording as one JSON file (superusers only)
   admin/import.ts      POST /admin/import: loads that file, keeping recordings already here (superusers only)
+  admin/check.ts       POST /admin/check {clip}: transcribes a recording and compares it with its passage (superusers only)
   view.ts              POST /view {id}: counts a listen (the player sends it after 10 seconds heard)
   story.ts             POST /story {prompt?, minutes?, pictures?}: saves the record, starts making it (no prompt: it picks the topic)
   story/[id].ets       progress while it's made, then the player (scrubber, space to pause, arrows to skip 10 s)

@@ -48,6 +48,7 @@
             clips: [], // recordings a clone can imitate: { id, name, passage, created, file }
             clipChoice: "", // the recording picked on the page
             fileToken: "", // lets the superuser's browser play a recording (superusers only)
+            check: null, // the last check of a recording: { id, busy } or { id, heard, match, missing, cutOff, model } or { id, error }
             rec: { state: "idle" }, // the recorder: idle, recording, saving, saved (seconds, name); error
             spent: 0,
             version: 0, // bumped when the values are replaced, so the form redraws with them
@@ -266,9 +267,35 @@
                 await refreshClips();
                 pickClip(saved.id);
                 data.rec = { state: "saved", seconds, name: saved.name };
+                checkClip(saved.id);
             } catch (err) {
                 data.rec = { state: "idle", error: "The take wasn't saved: " + errText(err) };
             }
+        }
+
+        // check: transcribe a recording and compare it with its passage (a stumble, a skipped line, a cut-off ending)
+        async function checkClip(id) {
+            data.check = { id, busy: true };
+            try {
+                const out = await send("/admin/check", { clip: id });
+                data.check = { id, ...out };
+            } catch (err) {
+                data.check = { id, error: errText(err) };
+            }
+        }
+
+        function checkView(id) {
+            const c = data.check;
+            if (!c || c.id !== id) return null;
+            if (c.busy) return t.p({ className: "txt-hint m-t-sm m-b-0" }, "Checking the recording against the passage…");
+            if (c.error) return t.div({ className: "alert danger m-t-sm m-b-0" }, t.div({ className: "content" }, c.error));
+            const pct = Math.round(c.match * 100);
+            const kind = pct >= 90 && !c.cutOff ? "success" : pct >= 70 ? "warning" : "danger";
+            const missing = c.missing.length ? ` Missing or misheard: ${c.missing.slice(0, 12).join(", ")}${c.missing.length > 12 ? "…" : ""}.` : "";
+            return t.div({ className: `alert ${kind} m-t-sm m-b-0` }, t.div({ className: "content" },
+                t.p({ className: "m-b-xs" }, t.strong(null, `${pct}% of the passage heard.`), c.cutOff ? " It ends before the passage does." : "", missing,
+                    t.span({ className: "txt-hint" }, ` (${c.model}, ${c.seconds} s)`)),
+                t.p({ className: "m-b-0 txt-hint" }, "Heard: ", c.heard)));
         }
 
         async function deleteClip(id) {
@@ -292,16 +319,22 @@
                     t.div({ className: "col-md-6" }, clip
                         ? t.div({ className: "flex", style: "margin-top: 26px;" },
                             t.audio({ controls: true, src: clipURL(clip), style: "flex: 1;" }),
+                            t.button({ type: "button", className: () => `btn sm transparent secondary ${data.check?.busy ? "loading" : ""}`,
+                                disabled: () => !!data.check?.busy, onclick: () => checkClip(clip.id) },
+                                t.span({ className: "txt" }, "Check")),
                             t.button({ type: "button", className: "btn sm transparent danger", onclick: () => deleteClip(clip.id) },
                                 t.span({ className: "txt" }, "Delete")))
                         : null),
+                    clip ? t.div({ className: "col-lg-12" }, () => checkView(clip.id)) : null,
                     t.div({ className: "col-lg-12" },
                         t.p({ className: "m-b-xs" }, t.strong(null, "Record a new one. "),
                             "Read this slowly and quietly, the way you want the stories told. A quiet room and a steady distance from the microphone help more than a good microphone."),
                         t.blockquote({ className: "m-t-0", style: "font-size: 1.1em; line-height: 1.6;" }, PASSAGE),
                         t.div({ className: "flex" },
-                            t.input({ type: "text", placeholder: "Name it (My voice)", value: takeName, style: "max-width: 220px;",
-                                disabled: r.state === "recording" || r.state === "saving", oninput: (e) => { takeName = e.target.value } }),
+                            t.div({ className: "field", style: "max-width: 240px; margin: 0;" },
+                                t.label({}, "Name"),
+                                t.input({ type: "text", placeholder: "My voice", value: takeName,
+                                    disabled: r.state === "recording" || r.state === "saving", oninput: (e) => { takeName = e.target.value } })),
                             r.state === "recording"
                                 ? t.button({ type: "button", className: "btn sm danger", onclick: () => recorder && recorder.stop() },
                                     t.i({ className: "ri-stop-circle-line", ariaHidden: true }), t.span({ className: "txt" }, "Stop and save"))
@@ -336,8 +369,10 @@
                         () => (cloneOn() ? clonePanel() : null),
                         t.div({ className: "col-md-4" }, field("Seed", num("voice.seed"), "Empty: a little different each time.")),
                         t.div({ className: "col-md-4" }, field("Speed", num("voice.speed", { step: "0.05", min: "0.5", max: "2" }), "Empty: normal (1).")),
-                        t.div({ className: "col-lg-12" }, field("Instructions", area("voice.instructions", 3),
-                            "How to read, or with design, the voice itself: \"A deep, calm older man's voice, slow and soft.\"")),
+                        t.div({ className: "col-lg-12" }, () => cloneOn()
+                            ? field("Instructions", t.textarea({ rows: 3, disabled: true, value: "" }), "Not used by a cloned voice: its delivery comes from the recording.")
+                            : field("Instructions", area("voice.instructions", 3),
+                                "How to read, or with design, the voice itself: \"A deep, calm older man's voice, slow and soft.\"")),
                         t.div({ className: "col-lg-12" }, field("Sample text", area("voice.sample", 3))),
                         sampleRow("voice", "Sample the voice"),
                     ),
