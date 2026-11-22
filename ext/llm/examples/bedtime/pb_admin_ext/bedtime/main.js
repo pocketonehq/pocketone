@@ -48,7 +48,7 @@
             clips: [], // recordings a clone can imitate: { id, name, passage, created, file }
             clipChoice: "", // the recording picked on the page
             fileToken: "", // lets the superuser's browser play a recording (superusers only)
-            rec: { state: "idle" }, // the recorder: idle, recording, recorded (url, blob, seconds), saving; error
+            rec: { state: "idle" }, // the recorder: idle, recording, saving, saved (seconds, name); error
             spent: 0,
             version: 0, // bumped when the values are replaced, so the form redraws with them
             samples: {}, // what -> { busy, meta, error, audio, image, idea, story }
@@ -190,6 +190,9 @@
             data.clipChoice = id;
         }
 
+        // A take is saved as soon as it stops and played back from the server: the dashboard's Content-Security-Policy
+        // blocks playing blob: and data: audio, so an unsaved take can't be heard here. Delete a take that isn't right.
+        let takeName = "My voice";
         async function startRecording() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true } });
@@ -199,8 +202,7 @@
                 recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
                 recorder.onstop = () => {
                     stream.getTracks().forEach((x) => x.stop());
-                    const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
-                    data.rec = { state: "recorded", blob, url: URL.createObjectURL(blob), seconds: Math.round((Date.now() - started) / 1000) };
+                    saveTake(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }), Math.round((Date.now() - started) / 1000));
                 };
                 recorder.start();
                 data.rec = { state: "recording" };
@@ -209,21 +211,20 @@
             }
         }
 
-        async function saveRecording(name) {
-            const r = data.rec;
-            data.rec = { ...r, state: "saving" };
+        async function saveTake(blob, seconds) {
+            data.rec = { state: "saving", seconds };
             try {
-                const ext = r.blob.type.includes("mp4") ? "m4a" : r.blob.type.includes("ogg") ? "ogg" : r.blob.type.includes("wav") ? "wav" : "webm";
+                const ext = blob.type.includes("mp4") ? "m4a" : blob.type.includes("ogg") ? "ogg" : blob.type.includes("wav") ? "wav" : "webm";
                 const form = new FormData();
-                form.append("name", name || "My voice");
+                form.append("name", takeName.trim() || "My voice");
                 form.append("passage", PASSAGE);
-                form.append("audio", new File([r.blob], `voice.${ext}`, { type: r.blob.type }));
+                form.append("audio", new File([blob], `voice.${ext}`, { type: blob.type.split(";")[0] }));
                 const saved = await app.pb.collection("voices").create(form, { requestKey: null });
                 await refreshClips();
                 pickClip(saved.id);
-                data.rec = { state: "idle" };
+                data.rec = { state: "saved", seconds, name: saved.name };
             } catch (err) {
-                data.rec = { ...r, state: "recorded", error: errText(err) };
+                data.rec = { state: "idle", error: "The take wasn't saved: " + errText(err) };
             }
         }
 
@@ -256,20 +257,21 @@
                             "Read this slowly and quietly, the way you want the stories told. A quiet room and a steady distance from the microphone help more than a good microphone."),
                         t.blockquote({ className: "m-t-0", style: "font-size: 1.1em; line-height: 1.6;" }, PASSAGE),
                         t.div({ className: "flex" },
+                            t.input({ type: "text", placeholder: "Name it (My voice)", value: takeName, style: "max-width: 220px;",
+                                disabled: r.state === "recording" || r.state === "saving", oninput: (e) => { takeName = e.target.value } }),
                             r.state === "recording"
                                 ? t.button({ type: "button", className: "btn sm danger", onclick: () => recorder && recorder.stop() },
-                                    t.i({ className: "ri-stop-circle-line", ariaHidden: true }), t.span({ className: "txt" }, "Stop"))
-                                : t.button({ type: "button", className: "btn sm secondary", disabled: r.state === "saving", onclick: startRecording },
-                                    t.i({ className: "ri-mic-line", ariaHidden: true }), t.span({ className: "txt" }, r.state === "recorded" ? "Record again" : "Record")),
-                            r.state === "recording" ? t.span({ className: "txt-hint" }, "Recording… read the passage, then Stop.") : null,
-                            r.state === "recorded" || r.state === "saving" ? t.span({ className: "txt-hint" }, `${r.seconds} s`) : null),
-                        r.state === "recorded" || r.state === "saving"
-                            ? t.div({ className: "flex m-t-sm" },
-                                t.audio({ controls: true, src: r.url, style: "flex: 1;" }),
-                                t.input({ type: "text", placeholder: "Name it (My voice)", id: "bedtime-clip-name", style: "max-width: 220px;" }),
-                                t.button({ type: "button", className: () => `btn sm ${data.rec.state === "saving" ? "loading" : ""}`, disabled: r.state === "saving",
-                                    onclick: () => saveRecording(document.getElementById("bedtime-clip-name")?.value.trim()) },
-                                    t.span({ className: "txt" }, "Save recording")))
+                                    t.i({ className: "ri-stop-circle-line", ariaHidden: true }), t.span({ className: "txt" }, "Stop and save"))
+                                : t.button({ type: "button", className: () => `btn sm secondary ${data.rec.state === "saving" ? "loading" : ""}`,
+                                    disabled: r.state === "saving", onclick: startRecording },
+                                    t.i({ className: "ri-mic-line", ariaHidden: true }), t.span({ className: "txt" }, r.state === "saved" ? "Record another" : "Record")),
+                            r.state === "recording" ? t.span({ className: "txt-hint" }, "Recording… read the passage, then Stop and save.") : null,
+                            r.state === "saving" ? t.span({ className: "txt-hint" }, `Saving ${r.seconds} s…`) : null),
+                        r.state === "saved"
+                            ? t.div({ className: `alert ${r.seconds < 8 ? "warning" : "success"} m-t-sm m-b-0` }, t.div({ className: "content" },
+                                `Saved "${r.name}" (${r.seconds} s) and picked it above: play it there. `,
+                                r.seconds < 8 ? "That's short for a clone; 15 to 30 seconds matches the voice better. " : "",
+                                "If it isn't right, Delete it and record another. Save changes to make it the narrator."))
                             : null,
                         r.error ? t.div({ className: "alert danger m-t-sm m-b-0" }, t.div({ className: "content" }, r.error)) : null,
                     ),

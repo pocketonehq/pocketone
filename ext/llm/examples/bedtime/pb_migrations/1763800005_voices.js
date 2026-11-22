@@ -16,7 +16,7 @@ migrate((app) => {
       { name: 'name', type: 'text', required: true, max: 80 },
       // up to 15 MB: what Vultr takes for a clip
       { name: 'audio', type: 'file', required: true, maxSelect: 1, maxSize: 15728640,
-        mimeTypes: ['audio/webm', 'audio/ogg', 'audio/wav', 'audio/x-wav', 'audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/flac'] },
+        mimeTypes: ['audio/webm', 'video/webm', 'audio/ogg', 'audio/wav', 'audio/x-wav', 'audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/flac'] },
       { name: 'passage', type: 'text', max: 10000 },
       { name: 'created', type: 'autodate', onCreate: true },
     ],
