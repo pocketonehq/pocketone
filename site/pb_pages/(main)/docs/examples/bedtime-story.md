@@ -14,7 +14,7 @@ and quiet music underneath. You choose the length and how many pictures. Each st
 shared.
 
 ```
-pb_migrations/         stories, their listens, each call's cost, the saved tuning, audio samples
+pb_migrations/         stories, their listens, each call's cost, the saved tuning, audio samples, recorded voices
 pb_hooks/
   admin_plugins.pb.js  registers the tuning screen with the dashboard
 pb_admin_ext/
@@ -27,6 +27,7 @@ pb_pages/
   story/[id].ets       progress while it's made, then the player
   admin/tuning.ts      GET/POST /admin/tuning: the tuning (superusers only)
   admin/sample.ts      POST /admin/sample: tries a piece with unsaved tuning (superusers only)
+  admin/export.ts      GET /admin/export, POST /admin/import: the tuning and recordings as JSON (superusers only)
   _private/story.ts    the default tuning, the limits and the six steps
 ```
 
@@ -73,7 +74,7 @@ before any listener does.
 
 | Part | What you set | Sample |
 |---|---|---|
-| **Narrator** | **Voice:** `default`, a calm middle-aged woman with a low, clear voice, generated afresh each call; or `design`, a new voice made from the description in Instructions. **Instructions:** how `default` reads, or the voice itself for `design` ("A deep, calm older man's voice, slow and soft"). **Seed:** the same seed gives the same voice every time; empty lets it vary a little. **Speed:** 1 is normal. **Sample text:** what Sample reads. | Reads the sample text in that voice. `design` with no description is refused. |
+| **Narrator** | **Voice:** `default`, a calm middle-aged woman with a low, clear voice, generated afresh each call; `design`, a new voice made from the description in Instructions; or a clone, the voice of a recording you make on the screen (record, listen back, keep or delete; recordings are superuser-only and sent with every story as speech's `reference`). **Instructions:** how `default` reads, or the voice itself for `design` ("A deep, calm older man's voice, slow and soft"). **Seed:** the same seed gives the same voice every time; empty lets it vary a little. **Speed:** 1 is normal. **Sample text:** what Sample reads. | Reads the sample text in that voice. `design` with no description is refused. |
 | **Writing the story** | The writer's instructions. Placeholders: `{minutes}`, `{minWords}`, `{maxWords}`, `{anyTopic}`. Keep the field names it mentions (title, language, topic, look, sentences): the shape of the answer is fixed. | Writes a 1-minute story on the topic you give (or one it picks) and shows its sentences. |
 | **Choosing the pictures** | The instructions that turn the timed transcript into pictures, their style and the music prompt (placeholder `{n}`), and the words added after every picture's prompt. | Paints one picture in the style you give. |
 | **Music** | The words added after every story's music prompt, and how many seconds of music to make (it loops). | Plays 20 seconds for the music prompt you give. |
@@ -82,7 +83,10 @@ before any listener does.
 
 **Sample** uses what's on the screen, saved or not, and shows which model answered, how long it took and what it cost.
 Samples are recorded with every other model call, but the daily budget never stops them. **Save changes** stores the
-tuning; every story started after that uses it. **Put back the defaults** forgets it.
+tuning; every story started after that uses it. **Put back the defaults** forgets it. **Export** downloads the saved
+tuning and every recording (audio included) as one JSON file, and **Import** loads one, so tuning and a recorded voice
+move between copies of the app (local to PocketHost and back). Import keeps recordings it already has and points the
+narrator at its copy.
 
 **What stories remember.** Since the tuning can change, each story keeps how it was made: the seconds it took and the
 models and voice that made it. The story's splash shows them with its date and cost, for example "Made Nov 22, 2026 in

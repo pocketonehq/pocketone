@@ -36,6 +36,7 @@ pb_migrations/1763800001_stories_views.js   views: listens of 10 seconds or more
 pb_migrations/1763800002_costs.js       costs: each model call's cost, for the daily budget
 pb_migrations/1763800003_settings.js    settings: the saved tuning
 pb_migrations/1763800004_samples.js     samples: audio samples the dashboard plays
+pb_migrations/1763800005_voices.js      voices: recordings a cloned narrator imitates (superusers only)
 pb_hooks/admin_plugins.pb.js            registers the dashboard screen (a superuser UI extension)
 pb_admin_ext/bedtime/main.js            Settings → Bedtime Story in the dashboard: tuning, with Sample buttons
 pb_pages/
@@ -43,6 +44,8 @@ pb_pages/
   inspire.ts           POST /inspire {avoid?}: a topic no story has covered yet (the model sees every title)
   admin/tuning.ts      GET/POST /admin/tuning: the tuning, for the dashboard screen (superusers only)
   admin/sample.ts      POST /admin/sample: tries a voice, music, a picture, a story's text or an idea with unsaved tuning
+  admin/export.ts      GET /admin/export: the saved tuning and every recording as one JSON file (superusers only)
+  admin/import.ts      POST /admin/import: loads that file, keeping recordings already here (superusers only)
   view.ts              POST /view {id}: counts a listen (the player sends it after 10 seconds heard)
   story.ts             POST /story {prompt?, minutes?, pictures?}: saves the record, starts making it (no prompt: it picks the topic)
   story/[id].ets       progress while it's made, then the player (scrubber, space to pause, arrows to skip 10 s)
@@ -74,7 +77,10 @@ instructions, seed, speed), the writing, picture-choosing and Inspire me prompts
 prompt, the models and the daily budget. Each part has a **Sample** button that tries it with what's on the screen,
 saved or not: the voice reads a paragraph, the music plays 20 seconds, a picture is painted, a 1-minute story is
 written, or an idea suggested. **Save changes** stores it in the `settings` collection; new stories use it, on top of
-the defaults in `_private/story.ts`. A seed makes `auk`'s generated voice the same from story to story.
+the defaults in `_private/story.ts`. A seed makes `auk`'s generated voice the same from story to story. The narrator
+can also be a clone: record a passage on the screen, and every story is read in that voice (`reference` on the speech
+call, from the `voices` collection). **Export** and **Import** move the saved tuning and the recordings between copies
+of the app as one JSON file.
 
 The screen is a superuser UI extension registered from `pb_hooks`, the way
 [PocketHost's guide](https://pockethost.io/docs/admin-extensions) shows: `$app.onServe()` pushes
