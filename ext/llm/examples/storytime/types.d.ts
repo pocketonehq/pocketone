@@ -26363,130 +26363,6 @@ declare function onSettingsSave(handler: (e: contracts.CallEvent<contracts.setti
  */
 declare function onSettingsTest(handler: (e: contracts.CallEvent<contracts.settings.v1.Change>) => void): void;
 
-// ---- ext/api-tokens: $apiTokens ----
-
-declare namespace tokens {
-  /** A scope API tokens and OAuth clients can be granted. */
-  interface ScopeDef {
-    /** e.g. "notes:read". */
-    name: string;
-    description?: string;
-    /** Path prefixes the scope covers. */
-    paths?: string[];
-    /** HTTP methods it covers (all when empty). */
-    methods?: string[];
-    /** Collections whose record APIs it covers. */
-    collections?: string[];
-    /**
-     * Lets a token hold the scope for some values only, written "name=value" (e.g. "notes=abc123"); the bare name
-     * still means every value. Routes check the value with hasScope(e, name, value).
-     */
-    values?: { description: string };
-  }
-  interface Scope extends ScopeDef {
-    /** The request header a token's scope shows up in. */
-    header: string;
-    /** The field to use in collection rules, e.g. "@request.headers.x_token_scope_notes_read". */
-    ruleField: string;
-  }
-}
-
-/**
- * API token scopes.
- *
- * ```js
- * $apiTokens.registerScope({ name: "notes:write", description: "Change notes", paths: ["/api/collections/notes/records"] })
- * routerAdd("POST", "/api/notes/archive", (e) => { ... }, $apis.requireAuth(), $apiTokens.requireScope("notes:write"))
- * ```
- *
- * @group PocketOne
- */
-declare var $apiTokens: {
-  /** Registers a scope (top level of a pb_hooks file); the same name again merges. */
-  registerScope(def: tokens.ScopeDef): void;
-  /** Route middleware: a token, if the request uses one, must hold the scope. */
-  requireScope(name: string): any;
-  /**
-   * Whether the request may use the scope (always true without a token). With a value: whether it may use the scope
-   * on that value (it holds the bare scope, or "name=value").
-   */
-  hasScope(e: core.RequestEvent, name: string, value?: string): boolean;
-  /** The values the request holds the scope for: all is true for every value. */
-  scopeValues(e: core.RequestEvent, name: string): { all: boolean; values: string[] };
-  /** The collection-rule field for the scope. */
-  ruleField(name: string): string;
-  /** Every registered scope. */
-  scopes(): tokens.Scope[];
-};
-
-// ---- ext/mcp: $mcp ----
-
-declare namespace mcp {
-  /** The REST request a tool makes; a request transform may change it. */
-  interface ToolRequest {
-    method: string;
-    path: string;
-    query?: { [key: string]: string };
-    body?: any;
-    headers?: { [key: string]: string };
-  }
-  /** One MCP tool, mapped to one REST endpoint. */
-  interface Endpoint {
-    /** Tool name, e.g. "blog_publish_post". */
-    name: string;
-    title?: string;
-    description: string;
-    /** HTTP method of the endpoint. */
-    method: string;
-    /** Endpoint path; {name} parts come from the tool's arguments, the rest go to the JSON body. */
-    path: string;
-    /** JSON Schema of the tool's arguments. */
-    inputSchema?: { [key: string]: any };
-    /** JSON Schema of the tool's result. */
-    outputSchema?: { [key: string]: any };
-    annotations?: {
-      title?: string;
-      readOnlyHint?: boolean;
-      destructiveHint?: boolean;
-      idempotentHint?: boolean;
-      openWorldHint?: boolean;
-    };
-    /** Shapes the request (it can't change who the call runs as). Return nothing to keep the default. */
-    request?: (c: { args: { [key: string]: any }; auth: core.Record | null; request: ToolRequest }) => ToolRequest | void;
-    /** Shapes the result the model sees; throw for an error the model can read. */
-    response?: (r: {
-      args: { [key: string]: any };
-      auth: core.Record | null;
-      status: number;
-      headers: { [key: string]: string };
-      body: string;
-      json: any;
-      truncated: boolean;
-    }) => any;
-  }
-}
-
-/**
- * The app's MCP server (`/mcp`): tools map to the app's own REST endpoints.
- *
- * ```js
- * $mcp.addEndpoint({ name: "blog_publish_post", description: "Publish a draft post.", method: "POST",
- *   path: "/api/blog/posts/{id}/publish", inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" } } } })
- * ```
- *
- * @group PocketOne
- */
-declare var $mcp: {
-  /** Declares a tool, at the top level of a pb_hooks file. Adding the same name again replaces it. */
-  addEndpoint(def: mcp.Endpoint): void;
-  /** Escapes a value for one {name} part of a tool's path. */
-  pathValue(value: string): string;
-  /** Adds text to the server's instructions for the model. */
-  instructions(text: string): void;
-  /** The names of every tool. */
-  tools(): string[];
-};
-
 // ---- ext/pages: Pages (pb_pages) ----
 //
 // Types for page code: middleware, +page/+api handlers, +config, JS plugins and JSX/TSX components. Nothing here is a
@@ -26792,6 +26668,150 @@ declare namespace JSX {
   }
 }
 
+/** One value in the app's key-value store. created and updated are ISO 8601 times. */
+type KvEntry = { name: string; value: any; created: string; updated: string }
+
+/**
+ * The app's key-value store (ext/kv, the kv/v1 contract): named JSON values kept without a collection or a migration,
+ * in PocketBase's _params, so they ride along in backups. Names are 1 to 128 characters: letters, digits and
+ * _ - . : / , starting with a letter or digit; start yours with a prefix of your own ("myapp/settings"). Values are any
+ * JSON up to 1 MiB. Every call is local and sync.
+ */
+declare var $kv: {
+  /** The value stored under name, parsed, or null when there is none. */
+  get(name: string): any
+  /** Stores value (as JSON.stringify) under name, replacing any value it had. */
+  set(name: string, value: any): void
+  /** Removes name's value; no error when there was none. */
+  delete(name: string): void
+  /** The values whose names start with prefix (all of them when it's omitted), sorted by name. */
+  list(prefix?: string): KvEntry[]
+}
+
+// ---- ext/api-tokens: $apiTokens ----
+
+declare namespace tokens {
+  /** A scope API tokens and OAuth clients can be granted. */
+  interface ScopeDef {
+    /** e.g. "notes:read". */
+    name: string;
+    description?: string;
+    /** Path prefixes the scope covers. */
+    paths?: string[];
+    /** HTTP methods it covers (all when empty). */
+    methods?: string[];
+    /** Collections whose record APIs it covers. */
+    collections?: string[];
+    /**
+     * Lets a token hold the scope for some values only, written "name=value" (e.g. "notes=abc123"); the bare name
+     * still means every value. Routes check the value with hasScope(e, name, value).
+     */
+    values?: { description: string };
+  }
+  interface Scope extends ScopeDef {
+    /** The request header a token's scope shows up in. */
+    header: string;
+    /** The field to use in collection rules, e.g. "@request.headers.x_token_scope_notes_read". */
+    ruleField: string;
+  }
+}
+
+/**
+ * API token scopes.
+ *
+ * ```js
+ * $apiTokens.registerScope({ name: "notes:write", description: "Change notes", paths: ["/api/collections/notes/records"] })
+ * routerAdd("POST", "/api/notes/archive", (e) => { ... }, $apis.requireAuth(), $apiTokens.requireScope("notes:write"))
+ * ```
+ *
+ * @group PocketOne
+ */
+declare var $apiTokens: {
+  /** Registers a scope (top level of a pb_hooks file); the same name again merges. */
+  registerScope(def: tokens.ScopeDef): void;
+  /** Route middleware: a token, if the request uses one, must hold the scope. */
+  requireScope(name: string): any;
+  /**
+   * Whether the request may use the scope (always true without a token). With a value: whether it may use the scope
+   * on that value (it holds the bare scope, or "name=value").
+   */
+  hasScope(e: core.RequestEvent, name: string, value?: string): boolean;
+  /** The values the request holds the scope for: all is true for every value. */
+  scopeValues(e: core.RequestEvent, name: string): { all: boolean; values: string[] };
+  /** The collection-rule field for the scope. */
+  ruleField(name: string): string;
+  /** Every registered scope. */
+  scopes(): tokens.Scope[];
+};
+
+// ---- ext/mcp: $mcp ----
+
+declare namespace mcp {
+  /** The REST request a tool makes; a request transform may change it. */
+  interface ToolRequest {
+    method: string;
+    path: string;
+    query?: { [key: string]: string };
+    body?: any;
+    headers?: { [key: string]: string };
+  }
+  /** One MCP tool, mapped to one REST endpoint. */
+  interface Endpoint {
+    /** Tool name, e.g. "blog_publish_post". */
+    name: string;
+    title?: string;
+    description: string;
+    /** HTTP method of the endpoint. */
+    method: string;
+    /** Endpoint path; {name} parts come from the tool's arguments, the rest go to the JSON body. */
+    path: string;
+    /** JSON Schema of the tool's arguments. */
+    inputSchema?: { [key: string]: any };
+    /** JSON Schema of the tool's result. */
+    outputSchema?: { [key: string]: any };
+    annotations?: {
+      title?: string;
+      readOnlyHint?: boolean;
+      destructiveHint?: boolean;
+      idempotentHint?: boolean;
+      openWorldHint?: boolean;
+    };
+    /** Shapes the request (it can't change who the call runs as). Return nothing to keep the default. */
+    request?: (c: { args: { [key: string]: any }; auth: core.Record | null; request: ToolRequest }) => ToolRequest | void;
+    /** Shapes the result the model sees; throw for an error the model can read. */
+    response?: (r: {
+      args: { [key: string]: any };
+      auth: core.Record | null;
+      status: number;
+      headers: { [key: string]: string };
+      body: string;
+      json: any;
+      truncated: boolean;
+    }) => any;
+  }
+}
+
+/**
+ * The app's MCP server (`/mcp`): tools map to the app's own REST endpoints.
+ *
+ * ```js
+ * $mcp.addEndpoint({ name: "blog_publish_post", description: "Publish a draft post.", method: "POST",
+ *   path: "/api/blog/posts/{id}/publish", inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" } } } })
+ * ```
+ *
+ * @group PocketOne
+ */
+declare var $mcp: {
+  /** Declares a tool, at the top level of a pb_hooks file. Adding the same name again replaces it. */
+  addEndpoint(def: mcp.Endpoint): void;
+  /** Escapes a value for one {name} part of a tool's path. */
+  pathValue(value: string): string;
+  /** Adds text to the server's instructions for the model. */
+  instructions(text: string): void;
+  /** The names of every tool. */
+  tools(): string[];
+};
+
 // ---- ext/bulkmail: $bulkmail ----
 
 declare namespace bulkmail {
@@ -27012,7 +27032,7 @@ type LlmModelsOpts = { provider?: string }
  * Every call that reaches a provider is async (its name ends in Async) and runs off the app's VM, so other requests keep
  * being served while a model works: await it in an async handler.
  */
-declare var $llm: {
+type LlmAPI = {
   text: {
     completeAsync(opts: LlmTextInput): Promise<LlmTextAnswer>
     /** Like completeAsync, calling onText with each piece of the answer as it's written (false stops it). */
@@ -27083,6 +27103,15 @@ declare var $llm: {
     /** Deletes every chat whose meta matches; returns how many. */
     forget(opts: { meta: Record<string, any> }): number
   }
+}
+
+/**
+ * Cloud models, as $llm. $llm.for(e) is the same API with every call counted for whom the request is for (its user,
+ * else its guest), so the limits in Settings → LLM can cap each user and each guest: pass a route's e or a page's ctx.
+ * A call a limit refuses throws with code "limit" (429), naming the limit and when it resets.
+ */
+declare var $llm: LlmAPI & {
+  for(e: core.RequestEvent | { event: core.RequestEvent }): LlmAPI
 }
 
 type LlmChatOptions = {
