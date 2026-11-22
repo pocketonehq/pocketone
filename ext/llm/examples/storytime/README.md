@@ -36,7 +36,6 @@ heard 10 seconds (time playing, not where the scrubber is), the player posts `/v
 pb_migrations/1763800000_stories.js   the stories collection: prompt, length, status, progress, the story with its timings, files
 pb_migrations/1763800001_stories_views.js   views: listens of 10 seconds or more
 pb_migrations/1763800002_costs.js       costs: each model call's cost, for the daily budget
-pb_migrations/1763800003_settings.js    settings: where saved settings go on a PocketOne without $kv
 pb_migrations/1763800004_samples.js     samples: audio samples the dashboard plays
 pb_migrations/1763800005_voices.js      voices: recordings a cloned narrator imitates (superusers only)
 pb_hooks/admin_plugins.pb.js            registers the dashboard screen (a superuser UI extension)

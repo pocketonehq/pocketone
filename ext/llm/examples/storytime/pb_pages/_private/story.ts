@@ -9,8 +9,8 @@
 //   5. paint the pictures (all at once), and 6. compose the song, at the same time
 //
 // The title and caption, the story lengths, the models, the narrator's voice, the prompts and the budget are the app's
-// settings: _private/defaults.json (the same format as Export), with whatever a superuser saved on top (one JSON blob,
-// see loadSaved). Every $llm call is awaited, so the work runs
+// settings: _private/defaults.json (the same format as Export), with whatever a superuser saved on top (one JSON blob
+// in $kv, see loadSaved). Every $llm call is awaited, so the work runs
 // off the app's JS VM: the app keeps serving pages (and this story's own progress polls) while the models work. The
 // request that starts a story doesn't wait for it; see story.ts.
 
@@ -116,39 +116,14 @@ export function merge(base: any, over: any): any {
   return out
 }
 
-// The saved settings are one JSON blob under one name. PocketOne's key-value store ($kv, kv/v1) keeps it with no
-// collection or migration; until every PocketOne this app runs on has $kv, the `settings` collection stands in.
-const SAVED_NAME = 'storytime'
-
-function loadSaved(app: any): any {
-  if (typeof $kv !== 'undefined') return $kv.get(SAVED_NAME)
-  try {
-    return JSON.parse(app.findFirstRecordByData('settings', 'key', 'tuning').getString('value') || 'null')
-  } catch (_) {
-    return null // nothing saved yet
-  }
-}
-
-function storeSaved(app: any, value: any) {
-  if (typeof $kv !== 'undefined') return value === null ? $kv.delete(SAVED_NAME) : $kv.set(SAVED_NAME, value)
-  let r: any
-  try {
-    r = app.findFirstRecordByData('settings', 'key', 'tuning')
-  } catch (_) {
-    r = new Record(app.findCollectionByNameOrId('settings'))
-    r.set('key', 'tuning')
-  }
-  if (value === null) {
-    if (r.id) app.delete(r)
-    return
-  }
-  r.set('value', value)
-  app.save(r)
-}
+// The saved settings are one JSON blob in the app's key-value store ($kv, kv/v1): no collection, no migration.
+const SAVED_NAME = 'storytime/settings'
+const loadSaved = (): any => $kv.get(SAVED_NAME)
+const storeSaved = (value: any) => (value === null ? $kv.delete(SAVED_NAME) : $kv.set(SAVED_NAME, value))
 
 /** The app's settings: the defaults with what a superuser saved on top. With extra, those (unsaved) values on top again. */
 export function tuning(app: any, extra?: any): Tuning {
-  const t = merge(DEFAULT_TUNING, loadSaved(app))
+  const t = merge(DEFAULT_TUNING, loadSaved())
   return extra ? merge(DEFAULT_TUNING, merge(t, extra)) : t
 }
 
@@ -156,11 +131,11 @@ export function tuning(app: any, extra?: any): Tuning {
 export function saveTuning(app: any, values: any): Tuning {
   healthCache = null
   if (values === null) {
-    storeSaved(app, null)
+    storeSaved(null)
     return DEFAULT_TUNING
   }
   const t = merge(DEFAULT_TUNING, values)
-  storeSaved(app, t)
+  storeSaved(t)
   return t
 }
 

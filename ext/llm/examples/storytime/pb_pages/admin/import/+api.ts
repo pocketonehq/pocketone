@@ -36,7 +36,14 @@ export function post(ctx: any) {
   }
 
   const t = body.settings && typeof body.settings === 'object' ? JSON.parse(JSON.stringify(body.settings)) : {}
-  if (t.voice && t.voice.clip) t.voice.clip = ids[t.voice.clip] || ''
+  if (t.voice && t.voice.clip) {
+    // a recording in the file maps to its copy here; one that isn't in the file is kept if it's already here
+    let here = ''
+    try {
+      here = ctx.app.findRecordById('voices', t.voice.clip).id
+    } catch (_) {}
+    t.voice.clip = ids[t.voice.clip] || here
+  }
   const values = story.saveTuning(ctx.app, story.merge(story.tuning(ctx.app), t))
   return ctx.res.json(200, { values, voices: { added, kept } })
 }
