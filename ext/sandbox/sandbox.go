@@ -351,9 +351,14 @@ func (s *Sandbox) OnInit(rt js.Runtime) {
 				return err
 			}
 			return fs.WalkDir(s.root.FS(), r, func(p string, d fs.DirEntry, err error) error {
+				// like filepath.Walk: a file that can't be stat'ed (gone mid-walk) reaches fn with its error, never a nil
+				// info and a nil error
 				var info fs.FileInfo
 				if d != nil {
-					info, _ = d.Info()
+					var ierr error
+					if info, ierr = d.Info(); err == nil {
+						err = ierr
+					}
 				}
 				return fn(s.abs(p), info, err)
 			})
