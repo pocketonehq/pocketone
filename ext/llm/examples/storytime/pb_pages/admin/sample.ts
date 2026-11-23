@@ -51,8 +51,8 @@ export async function post(ctx: any) {
       return done(w.result, { story: { title: w.story.title, topic: w.story.topic, look: w.story.look, sentences: w.story.sentences } })
     }
     if (what === 'idea') {
-      const idea = await story.inspire(ctx.app, [], t)
-      return ctx.res.json(200, { idea, seconds: Math.round((Date.now() - started) / 100) / 10 })
+      const ins = await story.inspiration(ctx.app, [], t)
+      return ctx.res.json(200, { idea: ins.topic, inspiration: ins, seconds: Math.round((Date.now() - started) / 100) / 10 })
     }
     throw ctx.httpError(400, 'what is voice, music, picture, story or idea')
   } catch (err: any) {

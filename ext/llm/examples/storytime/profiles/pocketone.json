@@ -20,6 +20,11 @@
     },
     "voice": {
       "sample": "When I started PocketOne, I just wanted one binary that did everything PocketHost needed. That turned out to be a lot of things. So I split them into extensions, and I made each one talk to the others through contracts, which sounds fancy, but it really just means they agree on what they'll ask for."
+    },
+    "knowledge": {
+      "buckets": [
+        "pocketone"
+      ]
     }
   },
   "voices": []

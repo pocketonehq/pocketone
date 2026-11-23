@@ -34,6 +34,8 @@ pb_pages/
   admin/sample.ts      POST /admin/sample: tries a piece with unsaved settings (superusers only)
   admin/export.ts      GET /admin/export, POST /admin/import: the settings and recordings as JSON (superusers only)
   admin/check.ts       POST /admin/check: transcribes a recording and compares it with its passage (superusers only)
+  admin/stories.ts      POST /admin/stories: adds told stories missing from the stories bucket (superusers only)
+pb_hooks/stories.pb.js  a deleted story leaves the stories bucket
   _private/defaults.json the defaults, in the export format
   _private/story.ts    the settings, the limits and the six steps
 ```
@@ -83,6 +85,7 @@ before any listener does.
 | Part | What you set | Sample |
 |---|---|---|
 | **Front page** | The title (its last word is highlighted), the caption under it, the prompt's placeholder and the note beside the buttons. | |
+| **Knowledge** | The [LLM Search](/docs/extensions/llm-search) buckets the stories know (a Git repository, docs, files). The writer gets the best passages for each story's topic, and Inspire me draws topics from them. The told stories are a bucket of their own (`storytime-stories`), kept by the app, so Inspire me can tell what's been told. | **Inspire me** shows the candidates it drew, the told stories closest to each, and why it picked one. |
 | **Mix** | How every story sounds when it plays: the voice's level (dBFS) and how far the music sits under it. The player measures each story's voice and music once and sets them to these, so quiet cloned voices, hot generated ones and loud songs all play balanced. | |
 | **Story length** | The slider's ends (shortest and longest, in whole minutes) and where it starts, pictures per minute, and the most pictures a story gets. Shortest equal to longest hides the slider. | |
 | **Narrator** | **Voice:** `default`, a calm middle-aged woman with a low, clear voice, generated afresh each call; `design`, a new voice made from the description in Instructions; or a clone, the voice of a recording you make on the screen (record, listen back, keep or delete; each take is compressed (3:1) and levelled before it's saved, and **Compress and level** does the same to an older one; **Check** transcribes a recording and shows how much of the passage it heard; recordings are superuser-only and sent with every story as speech's `reference`). **Instructions:** how `default` reads, or the voice itself for `design` ("A deep, calm older man's voice, slow and soft"). **Seed:** the same seed gives the same voice every time; empty lets it vary a little. **Speed:** 1 is normal. **Sample text:** what Sample reads. | Reads the sample text in that voice. `design` with no description is refused. |

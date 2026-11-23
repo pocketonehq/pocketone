@@ -39,6 +39,9 @@ export type Tuning = {
   /** the player's final mix: the narration's loudness (dBFS, measured over its sounding parts) and how many dB the
    * music sits under it; every story's files are levelled to these when it plays */
   mix: { voiceDb: number; musicUnderDb: number }
+  /** what the stories know: LLM Search buckets ($llm.search) the writer is grounded in and Inspire me draws from; none
+   * means the models' own knowledge */
+  knowledge: { buckets: string[] }
   /** each as provider/model: a provider added in Settings → LLM, then its model */
   models: { text: string; idea: string; image: string; speech: string; speechOther: string; align: string; music: string }
   /** the narrator, for the speech model (not speechOther, which reads other languages with its own voice) */
@@ -115,6 +118,8 @@ export function merge(base: any, over: any): any {
     L.defaultMinutes = whole(L.defaultMinutes, D.defaultMinutes, L.minMinutes, L.maxMinutes)
     L.maxPictures = whole(L.maxPictures, D.maxPictures, 1, 20)
     L.picturesPerMinute = Math.max(0.1, Math.min(10, Number(L.picturesPerMinute) || D.picturesPerMinute))
+    out.knowledge.buckets = (Array.isArray(out.knowledge.buckets) ? out.knowledge.buckets : [])
+      .filter((b: any) => typeof b === 'string' && b.trim()).map((b: string) => b.trim()).slice(0, 10)
     const M = out.mix, DM = DEFAULT_TUNING.mix
     M.voiceDb = Math.max(-40, Math.min(-6, Number.isFinite(Number(M.voiceDb)) && M.voiceDb !== null ? Number(M.voiceDb) : DM.voiceDb))
     M.musicUnderDb = Math.max(0, Math.min(40, Number.isFinite(Number(M.musicUnderDb)) && M.musicUnderDb !== null ? Number(M.musicUnderDb) : DM.musicUnderDb))
@@ -353,7 +358,10 @@ async function ask(model: string, opts: any): Promise<any> {
 
 /** Step 1: the story's text for prompt, as long as minutes. Returns the story and the call (for its cost). */
 export async function write(t: Tuning, prompt: string, minutes: number): Promise<{ story: Story; result: any }> {
-  const result = await ask(t.models.text, { system: writePrompt(t, minutes), prompt: `Tonight's story: ${prompt}`, schema: WRITE_SCHEMA, temperature: 0.9 })
+  // grounded in the knowledge buckets: their best passages for the topic go into the prompt after the request
+  const enrich = t.knowledge.buckets.length ? { enrich: { buckets: t.knowledge.buckets, query: prompt, limit: 8 } } : {}
+  const result = await ask(t.models.text, { system: writePrompt(t, minutes), prompt: `Tonight's story: ${prompt}`, schema: WRITE_SCHEMA,
+    temperature: 0.9, ...enrich })
   const written = result.data || {}
   const story: Story = {
     title: String(written.title || 'A story'),
@@ -399,9 +407,14 @@ export async function make(app: any, id: string): Promise<void> {
     const minutes = rec.getInt('minutes') || fallback.minutes
     const wanted = rec.getInt('picture_count') || fallback.pictures
 
-    // 1. write
+    // 1. write. "Your pick" with knowledge buckets: Inspire me picks a topic from them first, one not told yet
+    let topic = prompt
+    if (prompt === ANY_TOPIC && t.knowledge.buckets.length) {
+      save({ status: 'writing', progress: 'Choosing a topic' })
+      topic = (await inspire(app, [], t)) || prompt
+    }
     save({ status: 'writing', progress: 'Writing the story' })
-    const w = await write(t, prompt, minutes)
+    const w = await write(t, topic, minutes)
     spent += record(app, 'write', w.result, id)
     const story = w.story
     save({ status: 'making', title: story.title, story, progress: 'Reading it aloud', cost: spent })
@@ -494,6 +507,7 @@ export async function make(app: any, id: string): Promise<void> {
       voice: voiceName,
     }
     save({ story, status: 'done', progress: '', cost: spent })
+    rememberStory(id, story)
   } catch (err: any) {
     const message = String(err && err.message ? err.message : err)
     console.log(`storytime: story ${id} failed: ${message}`)
@@ -506,24 +520,123 @@ export async function make(app: any, id: string): Promise<void> {
 }
 
 /** A topic for a new story, unlike the ones already told and the suggestions in avoid. */
+// ---- the stories told, as a bucket: each finished story is a document (named by its id), so Inspire me can ask
+// "has anything like this been told?" by meaning, not just by title
+export const STORIES_BUCKET = 'storytime-stories'
+
+export function storiesBucket() {
+  return $llm.search.ensure({ name: STORIES_BUCKET, title: 'Story Time: stories told',
+    description: 'Every story Story Time has told (title, topic, transcript), so Inspire me can find topics not told yet. Kept by Story Time.' })
+}
+
+/** Adds (or replaces) a finished story in the stories bucket. Never throws: the story is told either way. */
+export function rememberStory(id: string, story: Story) {
+  try {
+    storiesBucket()
+    $llm.search.add({ bucket: STORIES_BUCKET, name: id, kind: 'text',
+      text: `${story.title}\nTopic: ${story.topic}\n\n${story.sentences.join(' ')}` })
+  } catch (err: any) {
+    console.log(`storytime: couldn't add story ${id} to ${STORIES_BUCKET}: ${err && err.message ? err.message : err}`)
+  }
+}
+
+export function forgetStory(id: string) {
+  try {
+    $llm.search.remove(STORIES_BUCKET, id)
+  } catch (_) {}
+}
+
+/** Adds every finished story the bucket doesn't have yet (stories told before it existed); returns how many. */
+export function rememberAll(app: any): number {
+  storiesBucket()
+  const have = new Set(($llm.search.documents(STORIES_BUCKET) || []).map((d: any) => d.name))
+  let added = 0
+  for (const r of app.findRecordsByFilter('stories', "status = 'done'", 'created', 0, 0)) {
+    if (have.has(r.id)) continue
+    const story = JSON.parse(r.getString('story') || 'null')
+    if (story && story.sentences) {
+      rememberStory(r.id, story)
+      added++
+    }
+  }
+  return added
+}
+
+const CANDIDATES_SCHEMA = { type: 'object', properties: { candidates: { type: 'array', items: { type: 'string' }, minItems: 3, maxItems: 6 } }, required: ['candidates'] }
+const PICK_SCHEMA = { type: 'object', properties: { topic: { type: 'string' }, why: { type: 'string' } }, required: ['topic', 'why'] }
+
+export type Inspiration = {
+  topic: string
+  why?: string
+  /** what it drew from: the knowledge passages, and each candidate with the told stories nearest it */
+  material?: string[]
+  candidates?: { topic: string; nearest: string[] }[]
+}
+
+/**
+ * A topic no story has told. With knowledge buckets: draw random passages from them, have the model propose candidate
+ * topics grounded in those passages, look up the told stories nearest each candidate, and have the model pick the
+ * candidate the told stories cover least. Without: the model sees the told stories' titles and suggests something else.
+ */
+export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tuning(app)): Promise<Inspiration> {
+  const avoiding = avoid.length ? `\n\nAlready suggested, so suggest something different:\n${avoid.map((a) => `- ${a}`).join('\n')}` : ''
+  if (!t.knowledge.buckets.length) {
+    const told = app.findRecordsByFilter('stories', "status = 'done'", '-views,-created', 200, 0)
+    const list = told.map((r: any) => {
+      const topic = (JSON.parse(r.getString('story') || '{}') || {}).topic
+      return `- ${r.getString('title')}${topic ? ` (${topic})` : ''}`
+    }).join('\n')
+    const r = await $llm.text.completeAsync({ model: t.models.idea, system: t.prompts.inspire,
+      prompt: (list ? `Stories already told:\n${list}` : 'No stories have been told yet.') + avoiding,
+      schema: { type: 'object', properties: { topic: { type: 'string' } }, required: ['topic'] }, reasoning: 'off', maxTokens: 4000, temperature: 1 })
+    record(app, 'inspire', r)
+    return { topic: String((r.data && r.data.topic) || '').trim() }
+  }
+
+  // 1. raw material: passages picked at random from what the stories know
+  const passages = $llm.search.sample({ buckets: t.knowledge.buckets, count: 8 })
+  if (!passages.length) throw new Error(`the knowledge buckets (${t.knowledge.buckets.join(', ')}) are empty: fill them on the dashboard's Search screen`)
+  const material = passages.map((p: any, i: number) => `[${i + 1}] ${p.document}${p.heading ? ` › ${p.heading}` : ''}\n${String(p.text).slice(0, 1200)}`)
+
+  // 2. candidates grounded in it
+  const c = await $llm.text.completeAsync({ model: t.models.idea, system: t.prompts.inspire, reasoning: 'off', maxTokens: 2000, temperature: 1,
+    prompt: `Material to draw from (random passages):\n\n${material.join('\n\n')}\n\nPropose 5 different story topics, each grounded in this material, as short specific phrases.` + avoiding,
+    schema: CANDIDATES_SCHEMA })
+  record(app, 'inspire', c)
+  const candidates: string[] = ((c.data && c.data.candidates) || []).map((x: any) => String(x).trim()).filter(Boolean)
+  if (!candidates.length) throw new Error('no candidate topics came back')
+
+  // 3. the told stories nearest each candidate, by meaning
+  storiesBucket()
+  const titleOf = (id: string) => {
+    try {
+      return app.findRecordById('stories', id).getString('title')
+    } catch (_) {
+      return ''
+    }
+  }
+  const near: { topic: string; nearest: string[] }[] = []
+  for (const topic of candidates) {
+    const found = await $llm.search.searchAsync({ bucket: STORIES_BUCKET, query: topic, limit: 3 })
+    const titles = [...new Set((found.results || []).map((r: any) => titleOf(r.document)).filter(Boolean))] as string[]
+    near.push({ topic, nearest: titles })
+  }
+
+  // 4. the candidate the told stories cover least
+  const pick = await $llm.text.completeAsync({ model: t.models.idea, reasoning: 'off', maxTokens: 1000, temperature: 0.3,
+    system: 'You choose the next story topic. You get candidate topics, each with the stories already told that are closest to it. ' +
+      'Pick the candidate those stories cover least, so the next story is about something new. Keep its wording. ' +
+      '"why" says in one short sentence what makes it new.',
+    prompt: near.map((n, i) => `${i + 1}. ${n.topic}\n   closest told: ${n.nearest.length ? n.nearest.join('; ') : 'none'}`).join('\n'),
+    schema: PICK_SCHEMA })
+  record(app, 'inspire', pick)
+  const topic = String((pick.data && pick.data.topic) || candidates[0]).trim()
+  return { topic, why: String((pick.data && pick.data.why) || '').trim(), material: passages.map((p: any) => p.document), candidates: near }
+}
+
+/** Just the topic (Inspire me's button). */
 export async function inspire(app: any, avoid: string[] = [], t: Tuning = tuning(app)): Promise<string> {
-  const told = app.findRecordsByFilter('stories', "status = 'done'", '-views,-created', 200, 0)
-  const list = told.map((r: any) => {
-    const topic = (JSON.parse(r.getString('story') || '{}') || {}).topic
-    return `- ${r.getString('title')}${topic ? ` (${topic})` : ''}`
-  }).join('\n')
-  const r = await $llm.text.completeAsync({
-    model: t.models.idea,
-    system: t.prompts.inspire,
-    prompt: (list ? `Stories already told:\n${list}` : 'No stories have been told yet.') +
-      (avoid.length ? `\n\nAlready suggested, so suggest something different:\n${avoid.map((a) => `- ${a}`).join('\n')}` : ''),
-    schema: { type: 'object', properties: { topic: { type: 'string' } }, required: ['topic'] },
-    reasoning: 'off',
-    maxTokens: 4000,
-    temperature: 1,
-  })
-  record(app, 'inspire', r)
-  return String((r.data && r.data.topic) || '').trim()
+  return (await inspiration(app, avoid, t)).topic
 }
 
 /** A story in the making whose record hasn't moved for this long was cut off (the app restarted). */

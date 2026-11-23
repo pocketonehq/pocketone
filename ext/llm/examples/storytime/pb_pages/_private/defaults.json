@@ -46,6 +46,9 @@
     "mix": {
       "voiceDb": -24,
       "musicUnderDb": 18
+    },
+    "knowledge": {
+      "buckets": []
     }
   },
   "voices": []

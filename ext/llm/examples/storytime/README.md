@@ -84,6 +84,12 @@ can also be a clone: record a passage on the screen, and every story is read in 
 call, from the `voices` collection). A cloned voice is as loud as its recording, so each take is compressed and levelled in the browser before it's saved (**Compress and level** fixes an older one), and the player does the final mix: it measures each story's voice and music and levels them to the **Mix** settings. **Export** and **Import** move the saved settings and the recordings between copies
 of the app as one JSON file.
 
+**Knowledge:** tick LLM Search buckets on the settings screen and the stories know them. The writer's call carries
+`enrich` (the best passages for the topic), and Inspire me draws a topic in four steps: random passages from the buckets
+(`$llm.search.sample`), five candidate topics grounded in them, the told stories nearest each candidate (each finished
+story goes into the `storytime-stories` bucket; `pb_hooks/stories.pb.js` takes a deleted one out), and the candidate
+those stories cover least. A story asked for with no topic gets one from Inspire me first.
+
 `profiles/` holds settings files to Import: `pocketone.json` turns the app into PocketOne Stories, stories about
 PocketOne told by its creator (the front page, the prompts, the sample text). Import lays a file over the current
 settings, so a profile changes only what it has: the voice, models, budget and lengths stay.

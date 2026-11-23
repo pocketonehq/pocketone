@@ -46,9 +46,13 @@
             voices: [],
             voiceChoice: "", // the voice picked on the page, for its help text
             clips: [], // recordings a clone can imitate: { id, name, passage, created, file }
+            buckets: [], // LLM Search's buckets, for Knowledge: { name, title, documents, chunks }
+            stories: null, // the stories bucket: { name, documents }
+            remembering: null, // Add told stories: { busy } or { text } or { error }
             clipChoice: "", // the recording picked on the page
             fileToken: "", // lets the superuser's browser play a recording (superusers only)
             levelling: null, // Compress and level on a recording: { id, busy } or { id, text } or { id, error }
+            knowledge: [], // the buckets ticked on the page
             check: null, // the last check of a recording: { id, busy } or { id, heard, match, missing, cutOff, model } or { id, error }
             rec: { state: "idle" }, // the recorder: idle, recording, saving, saved (seconds, name); error
             spent: 0,
@@ -86,6 +90,9 @@
                 v = out.values;
                 data.voices = out.voices || [];
                 data.clips = out.clips || [];
+                data.buckets = out.buckets || [];
+                data.stories = out.stories || null;
+                data.knowledge = [...((out.values.knowledge && out.values.knowledge.buckets) || [])];
                 data.spent = out.spentToday || 0;
                 data.version++;
             } catch (err) {
@@ -183,7 +190,14 @@
                     if (s.error) return t.div({ className: "alert danger m-t-sm m-b-0" }, t.div({ className: "content" }, s.error));
                     if (s.audio) return t.audio({ controls: true, autoplay: true, src: s.audio, style: "width: 100%; margin-top: 10px;" });
                     if (s.image) return t.img({ src: s.image, style: "width: 100%; margin-top: 10px; border-radius: var(--baseRadius, 6px);" });
-                    if (s.idea) return t.p({ className: "m-b-0" }, s.idea);
+                    if (s.idea) {
+                        const ins = s.inspiration || {};
+                        return t.div({ className: "m-t-sm" },
+                            t.p({ className: "m-b-xs" }, t.strong(null, s.idea), ins.why ? t.span({ className: "txt-hint" }, ` · ${ins.why}`) : ""),
+                            ...(ins.candidates || []).map((c) => t.p({ className: "m-b-xs txt-hint" },
+                                `${c.topic === s.idea ? "✓" : "·"} ${c.topic}: closest told ${c.nearest.length ? c.nearest.join("; ") : "none"}`)),
+                            ins.material ? t.p({ className: "txt-hint m-b-0" }, "Drawn from: ", [...new Set(ins.material)].join(", ")) : null);
+                    }
                     if (s.story) {
                         return t.div({ className: "m-t-sm" },
                             t.p({ className: "m-b-xs" }, t.strong(null, s.story.title), " · ", s.story.topic),
@@ -392,6 +406,53 @@
             }
         }
 
+        // Knowledge: which buckets the stories know (tick boxes), and the stories bucket kept in step with what's told
+        function toggleBucket(name, on) {
+            const list = (data.knowledge || []).filter((n) => n !== name);
+            if (on) list.push(name);
+            data.knowledge = list;
+            put("knowledge.buckets", list);
+        }
+
+        async function rememberAll() {
+            data.remembering = { busy: true };
+            try {
+                const out = await send("/admin/stories", {});
+                const t2 = await send("/admin/tuning");
+                data.stories = t2.stories;
+                data.remembering = { text: out.added ? `Added ${out.added} told ${out.added === 1 ? "story" : "stories"}.` : "Every told story is already in it." };
+            } catch (err) {
+                data.remembering = { error: errText(err) };
+            }
+        }
+
+        function knowledgeBlock() {
+            return block("Knowledge", "What the stories know. Tick the LLM Search buckets they draw on: the writer is given the best passages for each story's topic, and Inspire me picks topics from them that haven't been told yet. None ticked: the models' own knowledge.",
+                t.div({ className: "col-lg-12" }, () => {
+                    if (!data.buckets.length) {
+                        return t.p({ className: "txt-hint m-0" }, "No buckets yet. ", t.a({ href: "#/search" }, "Make one on the Search screen"),
+                            " (a Git repository, docs, files), then come back and tick it.");
+                    }
+                    return t.div(null, ...data.buckets.map((b) => t.div({ className: "field form-field-toggle", style: "margin: 4px 0;" },
+                        t.input({ type: "checkbox", id: `kb-${b.name}`, checked: (data.knowledge || []).includes(b.name),
+                            onchange: (e) => toggleBucket(b.name, e.target.checked) }),
+                        t.label({ htmlFor: `kb-${b.name}` }, `${b.title || b.name} `, t.span({ className: "txt-hint" }, `(${b.name}: ${b.documents} documents)`)))),
+                        t.p({ className: "txt-hint m-t-sm m-b-0" }, t.a({ href: "#/search" }, "Manage buckets on the Search screen"), "."));
+                }),
+                t.div({ className: "col-lg-12" }, () => t.div({ className: "flex", style: "align-items: center; gap: 12px;" },
+                    t.span({ className: "txt-hint" }, `Stories told, as a bucket (${data.stories ? data.stories.name : "storytime-stories"}): `,
+                        data.stories ? `${data.stories.documents} stories` : "not made yet",
+                        ". Each finished story goes in by itself; Inspire me checks candidates against it."),
+                    t.button({ type: "button", className: () => `btn sm transparent secondary ${data.remembering?.busy ? "loading" : ""}`,
+                        disabled: () => !!data.remembering?.busy, onclick: rememberAll }, t.span({ className: "txt" }, "Add told stories")))),
+                t.div({ className: "col-lg-12" }, () => {
+                    const r = data.remembering;
+                    if (!r || r.busy) return null;
+                    return t.div({ className: `alert ${r.error ? "danger" : "success"} m-t-sm m-b-0` }, t.div({ className: "content" }, r.error || r.text));
+                }),
+            );
+        }
+
         async function deleteClip(id) {
             if (!confirm("Delete this recording? Stories already made keep their narration.")) return;
             await app.pb.collection("voices").delete(id, { requestKey: null });
@@ -468,6 +529,7 @@
                         t.div({ className: "col-lg-12" }, field("Caption", area("site.caption", 3), "Under the title: what the app tells and how to ask.")),
                         t.div({ className: "col-lg-12" }, field("Note", text("site.note"), "Beside the buttons, until a story starts.")),
                     ),
+                    knowledgeBlock(),
                     block("Story length", "Listeners pick a length on a slider from Short to Long. Pictures follow from the length.",
                         t.div({ className: "col-md-4" }, field("Shortest, minutes", num("length.minMinutes", { min: "1", max: "30", step: "1" }), "The slider's Short end.")),
                         t.div({ className: "col-md-4" }, field("Longest, minutes", num("length.maxMinutes", { min: "1", max: "30", step: "1" }), "The slider's Long end. The same as Shortest hides the slider.")),
