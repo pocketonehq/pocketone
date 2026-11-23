@@ -249,3 +249,35 @@ func TestSend(t *testing.T) {
 		}
 	}
 }
+
+// Discard ends sends blocked on a client nobody reads, without racing them on the channel (go test -race).
+func TestDiscardWhileSending(t *testing.T) {
+	c := subscriptions.NewDefaultClient()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c.Send(subscriptions.Message{Name: "m"}) // blocks: nobody reads
+		}()
+	}
+	time.Sleep(20 * time.Millisecond)
+
+	c.Discard()
+
+	sent := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(sent)
+	}()
+	select {
+	case <-sent:
+	case <-time.After(3 * time.Second):
+		t.Fatal("blocked sends should return once the client is discarded")
+	}
+
+	if _, ok := <-c.Channel(); ok {
+		t.Fatal("a discarded client's channel should be closed")
+	}
+}
