@@ -655,7 +655,7 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
     schema: CANDIDATES_SCHEMA })
   record(app, 'inspire', c)
   // the model may number what it lists ("3. Why..."): a topic never starts with its place in a list
-  const unnumbered = (x: any) => speakable(String(x).replace(/^\s*(?:\d+[.):]|[a-z]\))\s+/i, ''))
+  const unnumbered = (x: any) => speakable(String(x).replace(/^\s*(?:\d{1,2}[.)]|[a-z]\))\s+/i, ''))
   const candidates: string[] = ((c.data && c.data.candidates) || []).map(unnumbered).filter(Boolean)
   if (!candidates.length) throw new Error('no candidate topics came back')
 
