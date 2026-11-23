@@ -600,7 +600,9 @@ type manifestDoc struct {
 // recordManifest keeps a copy of every deployed file in the blob store and records the manifest.
 func (s *Store) recordManifest(deployID string, m Manifest) error {
 	for rel, hash := range m {
-		_ = s.ingestFile(hash, filepath.Join(s.instanceDir, filepath.FromSlash(rel)))
+		if err := s.ingestFile(hash, filepath.Join(s.instanceDir, filepath.FromSlash(rel))); err != nil {
+			return err
+		}
 	}
 	if err := os.MkdirAll(s.manifestsDir(), 0o755); err != nil {
 		return err
