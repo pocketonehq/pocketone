@@ -27,7 +27,7 @@ folder must not exist yet.
 | [htmx](https://pocketone.dev/docs/starters/htmx) | A realtime demo with [htmx](https://htmx.org/) and the built-in `realtime` plugin. |
 | [minimal](https://pocketone.dev/docs/starters/minimal) | A single `index.ets` page: a Tailwind (CDN) splash screen with no layout, no config and no build step. |
 | [mvp](https://pocketone.dev/docs/starters/mvp) | One page styled with [MVP.css](https://andybrewer.github.io/mvp/): classless CSS that makes plain semantic HTML look good, for a minimal, responsive, mobile-friendly site with no build step. |
-| [tsx](https://pocketone.dev/docs/starters/tsx) | Server-rendered components: a `+layout.tsx`, an `index.tsx` page built from a `_private/Feature.tsx` component, and a `+page.ts` that loads the page's data. |
+| [tsx](https://pocketone.dev/docs/starters/tsx) | Server-rendered components: a `+layout.tsx`, an `index.tsx` page built from a `_private/Feature.tsx` component, and `index.ts` beside it, which loads the page's data. |
 
 <!-- starters:end -->
 

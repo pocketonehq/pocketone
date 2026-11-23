@@ -40,7 +40,7 @@ run on the app's JS VM between pieces; the waiting for each piece doesn't, so ot
 A Pages API route forwards the pieces to the browser as server-sent events:
 
 ```ts
-// pb_pages/ask/+api.ts
+// pb_pages/ask.ts
 module.exports = {
   async post(ctx) {
     const { question } = ctx.req.body()

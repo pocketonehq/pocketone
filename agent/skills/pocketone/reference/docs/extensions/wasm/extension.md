@@ -22,7 +22,7 @@ module runs off the JS engine, so the app keeps serving other requests while it 
 In an API route, the input comes from the request and the output goes into the record it saves:
 
 ```ts
-// pb_pages/posts/+api.ts
+// pb_pages/posts.ts
 export async function post(ctx: any) {
   const { title, body } = ctx.req.body()
   const out = await $wasm.run.async<{ text: string }>("summary", { title, body })
@@ -93,7 +93,7 @@ A module is one file in `pb_hooks/`, `pb_hooks/<name>.pb.wasm`, called as `<name
 
 ```
 pb_hooks/summary.pb.wasm
-pb_pages/posts/+api.ts
+pb_pages/posts.ts
 ```
 
 It ships with the rest of your code: git, `pocketone deploy`, or SFTP. Like `node script.js`, every call reads the

@@ -41,10 +41,10 @@ func TestCoreFixtureTable(t *testing.T) {
 		"/pricing":        {kind: KindPage, pattern: "/pricing", file: "(marketing)/pricing.ejs", middlewares: 1, layouts: []string{"+layout.ejs"}},
 		"/docs":           {kind: KindPage, pattern: "/docs", file: "docs/index.md", middlewares: 1, layouts: []string{"docs/+layout.ejs", "+layout.ejs"}},
 		"/products/new":   {kind: KindPage, pattern: "/products/new", file: "products/new/index.ejs", middlewares: 1, layouts: []string{"+layout.ejs"}},
-		"/products/42":    {kind: KindPage, pattern: "/products/[id]", file: "products/[id]/index.ejs", handler: "products/[id]/+page.js", middlewares: 1, layouts: []string{"+layout.ejs"}, params: map[string]string{"id": "42"}},
+		"/products/42":    {kind: KindPage, pattern: "/products/[id]", file: "products/[id]/index.ejs", handler: "products/[id]/index.ts", middlewares: 1, layouts: []string{"+layout.ejs"}, params: map[string]string{"id": "42"}},
 		"/repos/acme/web": {kind: KindPage, pattern: "/repos/[org]/[repo]", file: "repos/[org]/[repo]/index.ejs", middlewares: 1, layouts: []string{"+layout.ejs"}, params: map[string]string{"org": "acme", "repo": "web"}},
 		"/admin":          {kind: KindPage, pattern: "/admin", file: "admin/index.ejs", middlewares: 2, layouts: []string{"+layout.ejs"}},
-		"/feeds/latest":   {kind: KindAPI, pattern: "/feeds/latest", file: "feeds/latest/+api.js", handler: "feeds/latest/+api.js", middlewares: 1},
+		"/feeds/latest":   {kind: KindEndpoint, pattern: "/feeds/latest", file: "feeds/latest.ts", handler: "feeds/latest.ts", middlewares: 1},
 		"/assets/app.css": {kind: KindStatic, pattern: "/assets/app.css", file: "assets/app.css"},
 		"/assets":         {kind: KindPage, pattern: "/assets", file: "assets.ejs", middlewares: 1, layouts: []string{"+layout.ejs"}},
 	}
@@ -85,14 +85,17 @@ func TestCoreFixtureTable(t *testing.T) {
 
 func TestBuildErrors(t *testing.T) {
 	cases := map[string]map[string]string{
-		"api folder":        {"api/x.ejs": ""},
-		"partial param":     {"post-[id].ejs": ""},
-		"duplicate url":     {"about.ejs": "", "about/index.ejs": ""},
-		"same params":       {"p/[id].ejs": "", "p/[slug].ejs": ""},
-		"api and index":     {"f/+api.js": "", "f/index.ejs": ""},
-		"unknown plus file": {"+foo.js": ""},
-		"root-only file":    {"sub/+config.js": ""},
-		"static vs page":    {"x.ejs": "", "x": "static"},
+		"api folder":         {"api/x.ejs": ""},
+		"partial param":      {"post-[id].ejs": ""},
+		"duplicate url":      {"about.ejs": "", "about/index.ejs": ""},
+		"same params":        {"p/[id].ejs": "", "p/[slug].ejs": ""},
+		"endpoint and index": {"f.ts": "", "f/index.ejs": ""},
+		"endpoint vs static": {"f.ts": "", "f": "static"},
+		"old +page":          {"+page.ts": "", "index.ejs": ""},
+		"old +api":           {"f/+api.ts": ""},
+		"unknown plus file":  {"+foo.js": ""},
+		"root-only file":     {"sub/+config.js": ""},
+		"static vs page":     {"x.ejs": "", "x": "static"},
 	}
 	for name, files := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -101,6 +104,54 @@ func TestBuildErrors(t *testing.T) {
 				t.Fatal("expected an error")
 			}
 		})
+	}
+}
+
+// A .ts beside a template of the same name is its code; any other .ts is an endpoint; .js and .d.ts are not code.
+func TestRouteCode(t *testing.T) {
+	table, errs := Build(writeTree(t, map[string]string{
+		"about.ets":       "",
+		"about.ts":        "",
+		"shop/[id].ets":   "",
+		"shop/[id].ts":    "",
+		"shop/index.ets":  "",
+		"feed.ts":         "",
+		"feed/latest.ets": "",
+		"api2/index.ts":   "",
+		"app.js":          "",
+		"types.d.ts":      "",
+		"admin/sample.ts": "",
+	}))
+	if len(errs) > 0 {
+		t.Fatal(errs)
+	}
+	want := map[string]struct {
+		kind          Kind
+		file, handler string
+	}{
+		"/about":        {KindPage, "about.ets", "about.ts"},
+		"/shop/1":       {KindPage, "shop/[id].ets", "shop/[id].ts"},
+		"/shop":         {KindPage, "shop/index.ets", ""},
+		"/feed":         {KindEndpoint, "feed.ts", "feed.ts"},
+		"/feed/latest":  {KindPage, "feed/latest.ets", ""},
+		"/api2":         {KindEndpoint, "api2/index.ts", "api2/index.ts"},
+		"/admin/sample": {KindEndpoint, "admin/sample.ts", "admin/sample.ts"},
+		"/app.js":       {KindStatic, "app.js", ""},
+	}
+	for url, w := range want {
+		r, _, _ := table.Match(url, nil)
+		if r == nil {
+			t.Errorf("%s: no match", url)
+			continue
+		}
+		if r.Kind != w.kind || r.File != w.file || r.Handler != w.handler {
+			t.Errorf("%s: got %s %s handler=%q", url, r.Kind, r.File, r.Handler)
+		}
+	}
+	for _, url := range []string{"/about.ts", "/types.d.ts", "/types.d", "/types"} {
+		if r, _, _ := table.Match(url, nil); r != nil {
+			t.Errorf("%s should not match, got %s", url, r.File)
+		}
 	}
 }
 

@@ -109,12 +109,12 @@ pb_pages/
   index.ets          /
   about.md           /about
   blog/[slug].ets    /blog/anything
-  feeds/rss/+api.ts  /feeds/rss, a route without a template
+  feeds/rss.ts       /feeds/rss, an endpoint (code, no template)
   _private/          partials, never served
   assets/app.css     a static file
 ```
 
-The full contract is in [SPEC.md](/docs/extensions/pages/spec): routes and precedence, middleware, `+page.ts` and `+api.ts`, ETS,
+The full contract is in [SPEC.md](/docs/extensions/pages/spec): routes and precedence, middleware, page code and endpoints (`.ts`), ETS,
 partials, slots and layouts, Markdown, JSX and TSX, the `ctx` object, errors, the built-in `auth` and `realtime`
 plugins, custom plugins, add-ons and the changes from 0.x.
 

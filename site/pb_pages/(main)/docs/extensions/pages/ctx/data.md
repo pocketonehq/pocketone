@@ -20,7 +20,7 @@ module.exports = (ctx, next) => {
 ```
 
 ```ts
-// +page.ts
+// products.ts, beside products.ets
 module.exports = {
   load(ctx) {
     return { products: ctx.app.findAllRecords('products') }  // Object.assign'd into ctx.data
@@ -54,4 +54,4 @@ Route parameters from `[name]` segments, as strings. Never includes query parame
 | `products/[id].ets` | `/products/[id]` | `[id]` |
 | `docs/index.md` | `/docs` | `index` |
 
-A `+page.ts` applies to every page in its folder; use `ctx.route.name` to tell them apart.
+Each page has its own `.ts`; code several pages share goes in a `_private/` module or `+middleware.ts`.

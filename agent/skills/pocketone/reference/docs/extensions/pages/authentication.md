@@ -40,7 +40,7 @@ module.exports = (ctx, next) => {
 ## Passwords
 
 ```ts
-// pb_pages/login/+page.ts
+// pb_pages/login/index.ts
 module.exports = {
   post(ctx) {
     const { email, password } = ctx.req.body()
@@ -69,7 +69,7 @@ module.exports = {
 ### Registration
 
 ```ts
-// pb_pages/register/+page.ts
+// pb_pages/register.ts
 module.exports = {
   post(ctx) {
     const { email, password, name } = ctx.req.body()
@@ -88,7 +88,7 @@ module.exports = {
 A two-step form: request a code, then sign in with it. Turn on OTP for the collection in the dashboard and set up mail (Settings > Mail settings).
 
 ```ts
-// pb_pages/login/otp/+page.ts
+// pb_pages/login/otp/index.ts
 module.exports = {
   post(ctx) {
     const { step, email, otpId, code } = ctx.req.body()
@@ -138,7 +138,7 @@ Configure the provider in the dashboard (Collections > users > Options > OAuth2)
 ```
 
 ```ts
-// pb_pages/auth/oauth/+page.ts
+// pb_pages/auth/oauth.ts
 module.exports = {
   post(ctx) {
     ctx.session.requestOAuth2(ctx.req.body().provider)
@@ -149,7 +149,7 @@ module.exports = {
 `requestOAuth2` stores its state in a cookie and redirects to the provider. The provider sends the user back to `/auth/oauth/confirm` (change it with `{ redirectPath }`):
 
 ```ts
-// pb_pages/auth/oauth/confirm/+page.ts
+// pb_pages/auth/oauth/confirm/index.ts
 module.exports = {
   load(ctx) {
     try {
@@ -172,7 +172,7 @@ See the [Google OAuth2 speedrun](https://pocketone.dev/docs/extensions/pages/spe
 ## Anonymous sign-in
 
 ```ts
-// pb_pages/try/+page.ts
+// pb_pages/try.ts
 module.exports = {
   post(ctx) {
     ctx.session.signInAnonymously()
@@ -188,7 +188,7 @@ If you authenticate a record yourself, set the session cookie with `ctx.session.
 ## Signing out
 
 ```ts
-// pb_pages/logout/+page.ts
+// pb_pages/logout.ts
 module.exports = {
   post(ctx) {
     ctx.session.signOut()

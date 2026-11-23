@@ -64,7 +64,7 @@ return ctx.res.file('downloads/manual.pdf')
 `sse()` starts a `text/event-stream` response and returns `{ send(event, data, { id, retry }?), comment(text), close() }`:
 
 ```ts
-// pb_pages/clock/+api.ts
+// pb_pages/clock.ts
 module.exports = {
   get(ctx) {
     const stream = ctx.res.sse()

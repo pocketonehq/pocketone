@@ -28,7 +28,7 @@ func TestJSXPages(t *testing.T) {
 					<img src={asset('logo.png')} alt="" />
 				</main>
 			}`,
-		"+page.ts":  `export function get(ctx: any) { ctx.data.items = [{ name: 'a<' }, { name: 'b' }] }`,
+		"index.ts":  `export function get(ctx: any) { ctx.data.items = [{ name: 'a<' }, { name: 'b' }] }`,
 		"logo.png":  "png",
 		"mixed.ejs": `<%- include('Card', { title: 'from ejs' }) %>`,
 	})

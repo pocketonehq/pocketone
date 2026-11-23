@@ -12,7 +12,7 @@ import (
 // every request with a body, which threw in QuickJS until Go constructors got a real prototype.
 func TestJSSDKWrites(t *testing.T) {
 	dir := writeTree(t, map[string]string{
-		"check/+api.ts": `export function get(ctx: any) {
+		"check.ts": `export function get(ctx: any) {
 			const c = ctx.pb().collection('items')
 			const created = c.create({ title: 'first' })
 			const updated = c.update(created.id, { title: 'second' })
@@ -43,7 +43,7 @@ func TestJSSDKWrites(t *testing.T) {
 // API rules still decide: a create the rule refuses fails as it would from a browser.
 func TestJSSDKWriteRuleRefused(t *testing.T) {
 	dir := writeTree(t, map[string]string{
-		"check/+api.ts": `export function get(ctx: any) {
+		"check.ts": `export function get(ctx: any) {
 			try { ctx.pb().collection('locked').create({ title: 'x' }); return ctx.res.json({ ok: true }) }
 			catch (e: any) { return ctx.res.json({ status: e.status }) }
 		}`,

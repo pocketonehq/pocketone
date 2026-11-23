@@ -8,7 +8,7 @@ import (
 
 func TestCookieExpires(t *testing.T) {
 	dir := writeTree(t, map[string]string{
-		"c/+api.js": `module.exports = { get(ctx) {
+		"c.ts": `module.exports = { get(ctx) {
 			ctx.res.cookie('date', 'a', { expires: new Date(Date.UTC(2030, 0, 2, 3, 4, 5)) })
 			ctx.res.cookie('ms', 'b', { expires: Date.UTC(2030, 0, 2, 3, 4, 5) })
 			ctx.res.cookie('str', 'c', { expires: '2030-01-02T03:04:05Z' })

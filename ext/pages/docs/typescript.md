@@ -20,7 +20,7 @@ If you keep your own `tsconfig.json`, include `types.d.ts` and `pb_pages/**/*`, 
 | Type | For |
 |---|---|
 | `pages.Context` | `ctx`: `req`, `res`, `data`, `params`, `route`, `auth`, `app` and the helpers |
-| `pages.Handlers` | A `+page.ts` or `+api.ts`: `load`, `get`, `post`, `put`, `patch`, `delete` |
+| `pages.Handlers` | A page's `.ts` or an endpoint: `load`, `get`, `post`, `put`, `patch`, `delete` |
 | `pages.Middleware` | A `+middleware.ts`: `(ctx, next) => ...` |
 | `pages.Config` | `+config.ts` |
 | `pages.PluginFactory`, `pages.Plugin` | A custom plugin |
@@ -29,7 +29,7 @@ If you keep your own `tsconfig.json`, include `types.d.ts` and `pb_pages/**/*`, 
 `satisfies` keeps your own return types and checks the shape:
 
 ```ts
-// pb_pages/products/[id]/+page.ts
+// pb_pages/products/[id].ts
 export default {
   async load(ctx) {
     ctx.data.product = await ctx.app.findRecordById.async('products', ctx.params.id)

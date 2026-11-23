@@ -7,7 +7,7 @@ Its files are in [`ext/pages/starters/daisyui`](https://github.com/pocketonehq/p
 
 A layout with a responsive navbar and drawer, built with [Tailwind CSS](https://tailwindcss.com/) and [DaisyUI](https://daisyui.com/) (cupcake theme). The compiled `pb_pages/app.css` is included and linked through `asset()`, so the app runs as-is; npm is only for rebuilding the CSS.
 
-Templates are `.ets` (EJS whose tags hold TypeScript) and code files (`+config`, `+page`, `+api`, `+middleware`) are `.ts`; Pages strips the types when it loads them, so there is still no build step.
+Templates are `.ets` (EJS whose tags hold TypeScript) and code files (`+config`, `+middleware`, and the `.ts` beside a page or serving an endpoint) are `.ts`; Pages strips the types when it loads them, so there is still no build step.
 
 ```bash
 pocketone pages create myapp --starter daisyui

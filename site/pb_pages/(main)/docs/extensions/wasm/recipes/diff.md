@@ -22,7 +22,7 @@ A `pages` collection with a `body` text field, and a `revisions` collection with
 An API route saves an edit of a page's body (`PUT` with `{"body": "..."}`) and keeps it as a diff:
 
 ```ts
-// pb_pages/wiki/[id]/+api.ts: every edit of a page's body is kept as a diff in revisions
+// pb_pages/wiki/[id].ts: every edit of a page's body is kept as a diff in revisions
 interface Diff {
   changed: boolean
   unified: string

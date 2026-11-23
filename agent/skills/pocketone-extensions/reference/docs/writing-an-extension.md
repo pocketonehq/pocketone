@@ -510,13 +510,13 @@ ext/<name>/
   - `blog/*.md` files are posts on the pocketone.dev blog at `/blog/<file name>`, with the same front matter as the
     blog's own (title, description, date, author, tags) and links relative to the file.
 - **Examples are TypeScript page code and Go.** Show server code as [Pages](https://pocketone.dev/docs/extensions/pages) page code in
-  TypeScript (`+api.ts`, `+page.ts`, modules in `_private/`, and an `.ets` template when the example needs a page), and the
+  TypeScript (endpoints and page code in `.ts` files, modules in `_private/`, and an `.ets` template when the example needs a page), and the
   same thing in Go when an app's Go code can do it. Not `pb_hooks`, and not JavaScript: pages give routes a file
   structure people can read, and TypeScript carries the types.
   - **In `docs/`**, put the versions of one example in consecutive fenced blocks (```` ```ts ````, ```` ```go ````, and
     ```` ```ets ```` when it needs a template), nothing between. pocketone.dev shows them as tabs (TS | Go | ETS), one at
     a time. TS and ETS are the same choice, TypeScript, against Go: a group has one or the other, never both (a
-    `+page.ts` next to the `.ets` template it feeds shows both blocks), and picking any tab switches every group on every
+    page's `.ts` next to the `.ets` template it feeds shows both blocks), and picking any tab switches every group on every
     page to that side and remembers it. On GitHub they're just consecutive blocks.
   - **In the README**, keep samples inline: when you show the Go version too, put a line of text before it ("In Go:")
     so the two don't become tabs and the README reads as plain Markdown.

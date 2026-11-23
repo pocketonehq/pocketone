@@ -105,7 +105,7 @@ export default function Layout({ children, slot }: pages.Props) {
 
 ## One style per app
 
-Use TSX for every template in an app: pages, layouts, partials and error pages. Code files (`+page.ts`, `+api.ts`,
+Use TSX for every template in an app: pages, layouts, partials and error pages. Code files (a page's `.ts`, endpoints,
 `+middleware.ts`, `+config.ts`) are the same in both styles.
 
 The two styles can include each other, so you can move an app from one to the other a folder at a time: an ETS page

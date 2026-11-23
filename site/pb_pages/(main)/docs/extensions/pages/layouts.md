@@ -70,14 +70,14 @@ A page (or an inner layout) defines a named slot with `slot(name, fn)`. `fn`'s o
 
 ## Data in layouts
 
-Layouts render after the page, with the same `ctx`. Everything middleware, `+page.ts` and the page put on `ctx.data` or `ctx.meta` is there.
+Layouts render after the page, with the same `ctx`. Everything middleware, the page's code and the page put on `ctx.data` or `ctx.meta` is there.
 
 ## When layouts are skipped
 
 - When the response isn't HTML (a handler set another `Content-Type`).
 - When a handler or middleware sent the response itself (`ctx.res.json`, `ctx.res.html`, `ctx.res.redirect`, ...).
-- For `+api.ts` routes, which have no template.
-- After `ctx.res.layout(false)`, called from middleware, `+page.ts` or the page itself.
+- For [endpoints](/docs/extensions/pages/api-routes), which have no template.
+- After `ctx.res.layout(false)`, called from middleware, the page's code or the page itself.
 - With the [Datastar add-on](/docs/extensions/pages/plugins/datastar), for requests that carry `Datastar-Request: true`.
 
 To serve HTML fragments without the site layout, call `ctx.res.layout(false)`, put the layout in a group (`(site)/+layout.ets`) and the fragments outside it, or send them with `ctx.res.html()`.

@@ -11,7 +11,7 @@ source: "ext/pages/docs/ctx/pb.md"
 browser:
 
 ```ts
-// pb_pages/posts/+page.ts
+// pb_pages/posts.ts
 module.exports = {
   load(ctx) {
     const page = ctx.pb().collection('posts').getList(1, 20, {

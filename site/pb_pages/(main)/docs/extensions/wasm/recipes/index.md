@@ -36,7 +36,7 @@ These came with the extension, to answer real questions. Each is kept built besi
 [`edifact-orders-rust`](https://github.com/pocketonehq/pocketone/blob/main/ext/wasm/example/edifact-orders-rust/src/main.rs) reads an EDIFACT ORDERS message (raw text, as trading partners send it) into an order: parties, lines, prices and allowances, with the message's own counts checked. [`order-xml`](https://github.com/pocketonehq/pocketone/blob/main/ext/wasm/example/order-xml/src/main.rs) reads the same order from XML into the same JSON. So one route takes either format and stores one shape:
 
 ```ts
-// pb_pages/orders/+api.ts: the raw message is the request body, as text: a string goes in as it is
+// pb_pages/orders.ts: the raw message is the request body, as text: a string goes in as it is
 export async function post(ctx: any) {
   const raw = toString(ctx.req.event.request.body)
   const module = raw.trimStart().startsWith("<") ? "order-xml" : "edifact-orders-rust"
@@ -54,7 +54,7 @@ export async function post(ctx: any) {
 
 ```ts
 type Data = { data: string } // what each waflows function gives: bytes as base64
-const body = ctx.req.body() // in the endpoint's +api.ts post handler
+const body = ctx.req.body() // in the endpoint's post handler
 const { data: key } = await $wasm.call.async<Data>("waflows", "rsa-decrypt", { privateKey, data: body.encrypted_aes_key })
 const { data: request } = await $wasm.call.async<Data>("waflows", "gcm-open", { key, iv: body.initial_vector, data: body.encrypted_flow_data })
 // ... answer the request, then seal the answer with the flipped IV

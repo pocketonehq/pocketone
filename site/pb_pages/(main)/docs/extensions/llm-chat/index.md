@@ -83,7 +83,7 @@ The chats are in `_llm_chat_chats` and `_llm_chat_messages`, superuser-only: you
 typical route checks that the chat's `meta.user` is the caller before sending:
 
 ```ts
-// pb_pages/ask/[chat]/+api.ts: POST /ask/<chat id> {"question": "..."}
+// pb_pages/ask/[chat].ts: POST /ask/<chat id> {"question": "..."}
 export async function post(ctx: any) {
   const chat = $llm.chat.open(ctx.params.chat, { model: "vultr/glm-5.2", system: preamble(ctx) })
   if (!ctx.auth || chat.meta().user !== ctx.auth.id) throw ctx.httpError(404, "no such chat")

@@ -717,7 +717,7 @@ func (r *request) sendError(status int, message string, cause error) {
 	h := r.e.Response.Header()
 	h.Del("Content-Type")
 
-	if r.route.Kind == KindAPI {
+	if r.jsonErrors() {
 		if message == "" {
 			message = http.StatusText(status)
 			if cause != nil && r.dev {
@@ -755,6 +755,21 @@ func (r *request) sendError(status int, message string, cause error) {
 	}
 	page := fmt.Sprintf("<!doctype html><html><head><title>%d</title></head><body><p>%s</p></body></html>", status, html.EscapeString(message))
 	r.write(status, "text/html; charset=utf-8", []byte(page))
+}
+
+// jsonErrors reports whether errors go out as JSON ({status, message}) rather than a page: for an endpoint, unless the
+// request's Accept puts HTML first (a browser navigating to it). A page's errors are always pages.
+func (r *request) jsonErrors() bool {
+	if r.route.Kind != KindEndpoint {
+		return false
+	}
+	first, _, _ := strings.Cut(r.e.Request.Header.Get("Accept"), ",")
+	first, _, _ = strings.Cut(first, ";")
+	switch strings.ToLower(strings.TrimSpace(first)) {
+	case "text/html", "application/xhtml+xml":
+		return false
+	}
+	return true
 }
 
 // renderErrorPage renders +error.ejs inside the root layout (the driver's rt.renderError). It returns false if that

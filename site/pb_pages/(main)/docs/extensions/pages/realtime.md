@@ -19,7 +19,7 @@ module.exports = { plugins: ['realtime'] }
 ```
 
 ```ts
-// pb_pages/rooms/[id]/+api.ts
+// pb_pages/rooms/[id].ts
 module.exports = {
   post(ctx) {
     ctx.realtime.send(`rooms/${ctx.params.id}/delta`, ctx.req.body())

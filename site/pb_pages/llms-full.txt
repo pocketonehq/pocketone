@@ -2593,7 +2593,7 @@ curl -L -o pb_hooks/markdown.pb.wasm \
 Add an API route that saves a note with its Markdown rendered to HTML:
 
 ```ts
-// pb_pages/notes/+api.ts
+// pb_pages/notes.ts
 export async function post(ctx: any) {
   const { body } = ctx.req.body()
   const note = new Record(ctx.app.findCollectionByNameOrId("notes"))
@@ -2650,7 +2650,7 @@ tinygo build -target=wasip1 -opt=z -no-debug -scheduler=none -o pb_hooks/hello.p
 Call it from an API route:
 
 ```ts
-// pb_pages/hello/[name]/+api.ts
+// pb_pages/hello/[name].ts
 export async function get(ctx: any) {
   const out = await $wasm.run.async<{ greeting: string }>("hello", { name: ctx.params.name })
   return ctx.res.json(out)
@@ -2983,8 +2983,8 @@ r, err := textv1.Contract.Must(app).Complete(ctx, extkit.Internal, textv1.Comple
 // r.Text is the summary
 ```
 
-The examples show each thing in TypeScript, as [Pages](https://pocketone.dev/docs/extensions/pages/overview) page code (`+api.ts`,
-`+page.ts`), and in Go. The Go examples call the contract packages (`textv1` is
+The examples show each thing in TypeScript, as [Pages](https://pocketone.dev/docs/extensions/pages/overview) page code (endpoints
+and a page's `.ts`), and in Go. The Go examples call the contract packages (`textv1` is
 `pocketone.dev/ext/contracts/llm/text/v1`) with a `context.Context` named `ctx`.
 
 ## Add a provider
@@ -4042,7 +4042,7 @@ folder must not exist yet.
 | [htmx](https://pocketone.dev/docs/starters/htmx) | A realtime demo with [htmx](https://htmx.org/) and the built-in `realtime` plugin. |
 | [minimal](https://pocketone.dev/docs/starters/minimal) | A single `index.ets` page: a Tailwind (CDN) splash screen with no layout, no config and no build step. |
 | [mvp](https://pocketone.dev/docs/starters/mvp) | One page styled with [MVP.css](https://andybrewer.github.io/mvp/): classless CSS that makes plain semantic HTML look good, for a minimal, responsive, mobile-friendly site with no build step. |
-| [tsx](https://pocketone.dev/docs/starters/tsx) | Server-rendered components: a `+layout.tsx`, an `index.tsx` page built from a `_private/Feature.tsx` component, and a `+page.ts` that loads the page's data. |
+| [tsx](https://pocketone.dev/docs/starters/tsx) | Server-rendered components: a `+layout.tsx`, an `index.tsx` page built from a `_private/Feature.tsx` component, and `index.ts` beside it, which loads the page's data. |
 
 <!-- starters:end -->
 
@@ -4122,8 +4122,8 @@ pb_pages/
     products/
       search.ets      # /xapi/products/search
       create/
-        +page.ts
         index.ets     # /xapi/products/create
+        index.ts      # its code
 ```
 
 1. `(site)` holds full pages. Its `+layout.ets` wraps them, and the group adds nothing to the URL.
@@ -4221,7 +4221,7 @@ pb_pages/
 ```
 
 ```ts
-// pb_pages/xapi/products/create/+page.ts
+// pb_pages/xapi/products/create/index.ts
 module.exports = {
   post(ctx) {
     const { name, description } = ctx.req.body()
@@ -4267,7 +4267,7 @@ module.exports = { plugins: ['realtime'] }
 ```
 
 ```ts
-// pb_pages/xapi/chat/+page.ts
+// pb_pages/xapi/chat/index.ts
 module.exports = {
   post() {}, // accept POST; the page below does the work
 }
@@ -4467,7 +4467,7 @@ module.exports = {
 ### 3. Start the flow
 
 ```ts
-// pb_pages/auth/oauth/+page.ts
+// pb_pages/auth/oauth.ts
 module.exports = {
   post(ctx) {
     ctx.session.requestOAuth2(ctx.req.body().provider)
@@ -4480,7 +4480,7 @@ module.exports = {
 ### 4. Callback
 
 ```ts
-// pb_pages/auth/oauth/confirm/+page.ts
+// pb_pages/auth/oauth/confirm/index.ts
 module.exports = {
   load(ctx) {
     try {
@@ -4549,7 +4549,7 @@ module.exports = (ctx, next) => {
 ### 8. Logout
 
 ```ts
-// pb_pages/logout/+page.ts
+// pb_pages/logout.ts
 module.exports = {
   post(ctx) {
     ctx.session.signOut()
@@ -9315,13 +9315,13 @@ ext/<name>/
   - `blog/*.md` files are posts on the pocketone.dev blog at `/blog/<file name>`, with the same front matter as the
     blog's own (title, description, date, author, tags) and links relative to the file.
 - **Examples are TypeScript page code and Go.** Show server code as [Pages](https://pocketone.dev/docs/extensions/pages) page code in
-  TypeScript (`+api.ts`, `+page.ts`, modules in `_private/`, and an `.ets` template when the example needs a page), and the
+  TypeScript (endpoints and page code in `.ts` files, modules in `_private/`, and an `.ets` template when the example needs a page), and the
   same thing in Go when an app's Go code can do it. Not `pb_hooks`, and not JavaScript: pages give routes a file
   structure people can read, and TypeScript carries the types.
   - **In `docs/`**, put the versions of one example in consecutive fenced blocks (```` ```ts ````, ```` ```go ````, and
     ```` ```ets ```` when it needs a template), nothing between. pocketone.dev shows them as tabs (TS | Go | ETS), one at
     a time. TS and ETS are the same choice, TypeScript, against Go: a group has one or the other, never both (a
-    `+page.ts` next to the `.ets` template it feeds shows both blocks), and picking any tab switches every group on every
+    page's `.ts` next to the `.ets` template it feeds shows both blocks), and picking any tab switches every group on every
     page to that side and remembers it. On GitHub they're just consecutive blocks.
   - **In the README**, keep samples inline: when you show the Go version too, put a line of text before it ("In Go:")
     so the two don't become tabs and the README reads as plain Markdown.
@@ -17192,7 +17192,7 @@ The chats are in `_llm_chat_chats` and `_llm_chat_messages`, superuser-only: you
 typical route checks that the chat's `meta.user` is the caller before sending:
 
 ```ts
-// pb_pages/ask/[chat]/+api.ts: POST /ask/<chat id> {"question": "..."}
+// pb_pages/ask/[chat].ts: POST /ask/<chat id> {"question": "..."}
 export async function post(ctx: any) {
   const chat = $llm.chat.open(ctx.params.chat, { model: "vultr/glm-5.2", system: preamble(ctx) })
   if (!ctx.auth || chat.meta().user !== ctx.auth.id) throw ctx.httpError(404, "no such chat")
@@ -17710,7 +17710,7 @@ What it adds to `pb_hooks` and page code: [MCP JavaScript API](https://pocketone
 | [OAuth](https://pocketone.dev/docs/extensions/api-tokens/oauth) (in Tokens) | Signs MCP clients in. MCP points clients at it from the protected resource metadata, turns on its client self-registration, and makes tokens bound to `/mcp` never expire. Who may sign in comes from its `Collections` (default: superusers and every auth collection). |
 | [Tokens](https://pocketone.dev/docs/extensions/api-tokens) | The access tokens are API tokens bound to `https://<host>/mcp` (RFC 8707): they work nowhere else, and are listed and revoked under Settings → API tokens. |
 | Your token scopes | On a full-access connection a tool call holds every scope you registered (except ones its collection can't hold): `$apiTokens.requireScope` guards pass, and `@request.headers.x_token_scope_<name>` is `"1"` in collection rules. On a connection limited to scopes it holds only those, and requests they don't cover are refused (see [Scopes](#scopes)). |
-| [Pages](https://pocketone.dev/docs/extensions/pages/extension) | A `pb_pages` `+api.js` route is a REST endpoint like any other; declare its tool with `$mcp.addEndpoint`. |
+| [Pages](https://pocketone.dev/docs/extensions/pages/extension) | A `pb_pages` endpoint (a `.ts` file with no template) is a REST endpoint like any other; declare its tool with `$mcp.addEndpoint`. |
 | [S3 Redirect](https://pocketone.dev/docs/extensions/s3redirect) | `pb_download_file` follows its one redirect to storage. |
 | JS hooks | `$mcp` in `pb_hooks` (above). |
 
@@ -18021,12 +18021,12 @@ pb_pages/
   index.ets          /
   about.md           /about
   blog/[slug].ets    /blog/anything
-  feeds/rss/+api.ts  /feeds/rss, a route without a template
+  feeds/rss.ts       /feeds/rss, an endpoint (code, no template)
   _private/          partials, never served
   assets/app.css     a static file
 ```
 
-The full contract is in [SPEC.md](https://pocketone.dev/docs/extensions/pages/spec): routes and precedence, middleware, `+page.ts` and `+api.ts`, ETS,
+The full contract is in [SPEC.md](https://pocketone.dev/docs/extensions/pages/spec): routes and precedence, middleware, page code and endpoints (`.ts`), ETS,
 partials, slots and layouts, Markdown, JSX and TSX, the `ctx` object, errors, the built-in `auth` and `realtime`
 plugins, custom plugins, add-ons and the changes from 0.x.
 
@@ -18248,7 +18248,7 @@ A path segment (file or folder name) starting with one of these characters is ne
 
 | Prefix | Meaning |
 |---|---|
-| `+` | Framework file: `+config`, `+middleware`, `+page`, `+api` (`.js` or `.ts`); `+layout`, `+error`, `+404` (`.ets`, `.ejs`, `.jsx` or `.tsx`). `+middleware`, `+page`, `+api` and `+layout`: one of each per folder. `+config`, `+error` and `+404`: only at the top of `pb_pages` (in a subfolder they're an error at startup). Any other `+` name is an error at startup. |
+| `+` | Framework file: `+config`, `+middleware` (`.js` or `.ts`); `+layout`, `+error`, `+404` (`.ets`, `.ejs`, `.jsx` or `.tsx`). `+middleware` and `+layout`: one of each per folder. `+config`, `+error` and `+404`: only at the top of `pb_pages` (in a subfolder they're an error at startup). Any other `+` name is an error at startup. |
 | `_` | Private. `_private/` folders hold partials and modules for `include()` and `ctx.resolve()`. Other `_` names are ignored. |
 | `-` | Ignored (drafts, notes). |
 | `.` | Ignored (dotfiles), except a top-level `.well-known/`, which is served as static files (ACME challenges, `security.txt`, app links). |
@@ -18282,13 +18282,20 @@ A **page** is a template file: `.ets`, `.ejs`, `.md`, `.jsx` or `.tsx` (4.1, 4.5
 - A URL with a trailing slash matches the same route as without it. Pages never redirect to add or remove one.
 - Matching is case-sensitive.
 
-### 2.2 API routes
+### 2.2 Route code: `.ts` files
 
-A `+api.js` file serves its folder's URL without a template: `feeds/rss/+api.js` serves `/feeds/rss`.
-`[param]` folders work as for pages. If a folder has both `+api.js` and an `index` page, startup fails.
+A `.ts` file on a route path is that route's code; its extension says it runs, as in PHP.
 
-A `+page.js` in a folder with no page (no template file) and no `+api.js` serves the folder's URL the same way, from
-JS: `logout/+page.js` serves `/logout` (3.2).
+| File | What it is |
+|---|---|
+| `about.ts` beside `about.ets` | the page's code (3.2) |
+| `feeds/rss.ts` (no template of that name) | an **endpoint** at `/feeds/rss`: its handlers send the whole response (3.3) |
+| `index.ts`, `[id].ts` | the folder's URL, a `[param]` route, as for pages |
+
+- Only `.ts` runs. `.js` and every other file is static (2.3), so browser scripts sit anywhere in `pb_pages`.
+  `.d.ts` files are neither served nor run.
+- An endpoint and a page or static file claiming the same URL is a startup error (`feed.ts` and `feed/index.ets`).
+  A `.ts` beside a template of the same name is a pair, not a conflict.
 
 ### 2.3 Static files
 
@@ -18317,12 +18324,12 @@ previous table keeps serving if there was one.
 
 ## 3. Request flow
 
-For a URL that matches a page or API route, one JS call does all of this, in order:
+For a URL that matches a page or an endpoint, one JS call does all of this, in order:
 
 1. **Plugins:** every plugin's `extendContext`, then every plugin's `onRequest` (built-in and custom plugins, in config
    order), so an `onRequest` can use what any plugin added to `ctx`.
 2. **Middleware**, root first: every `+middleware.js` from `pb_pages/` down to the route's folder (groups included).
-3. **Handlers**: the folder's `+page.js` (or `+api.js`): `load`, then the handler for the request method.
+3. **Handlers**: the route's `.ts` (the page's code, or the endpoint): `load`, then the handler for the request method.
 4. **Template** (pages only), then **layouts**, innermost first.
 5. **Response.**
 
@@ -18353,10 +18360,10 @@ module.exports = (ctx, next) => {
   middleware that calls `next()` without returning it still has the rest of the request awaited after it.
 - Share data through `ctx.data`.
 
-### 3.2 Handlers: `+page.js`
+### 3.2 Page code: `<page>.ts`
 
 ```js
-// pb_pages/products/[id]/+page.js
+// pb_pages/products/[id].ts, beside products/[id].ets
 module.exports = {
   load(ctx) {
     ctx.data.product = ctx.app.findRecordById('products', ctx.params.id)
@@ -18375,24 +18382,21 @@ module.exports = {
 - A handler may set `ctx.data` fields, or return a plain object, which is shallow-assigned into `ctx.data`
   (`Object.assign`). There is no deep merge.
 - Handlers may be async. A returned promise is awaited, and what it settles to is treated as a returned value.
-- A `+page.js` applies to every page in its folder. `ctx.route.name` tells them apart.
+- Each page has its own code file. Code several pages share goes in a `_private/` module or a `+middleware`.
 - A method with no handler still renders the page, for every method (like PHP): a template can handle a form itself
-  by checking `ctx.req.method`, with no `+page.js`.
-- Only routes with nothing to render (`+api.js`, and a `+page.js` without a page) answer `405` for a method with no
-  handler, with an `Allow` header listing the methods that have handlers (`GET, HEAD` when there's a `get`), in the
-  order `GET, HEAD, POST, PUT, PATCH, DELETE`.
-- **Without a page.** A `+page.js` in a folder with no template serves the folder's URL from JS (2.2): there's nothing
-  to render, so a handler must send a response (`ctx.res.html`, `ctx.res.redirect`, `ctx.res.json`, ...), and
-  returning without one is a 500. Methods without a handler answer `405`, `GET` included. Unlike `+api.js`, errors
-  are pages (`+error.ejs` or the HTML error page), not JSON. Folder middleware runs; layouts don't.
+  by checking `ctx.req.method`, with no `.ts`.
 
-### 3.3 API handlers: `+api.js`
+### 3.3 Endpoints: `<name>.ts`
 
-Same exports as `+page.js`. There is no template, so a handler must send a response; returning without one is a
-500.
+Same exports as page code. There is no template, so a handler must send a response (`ctx.res.json`, `html`,
+`redirect`, `sse`, ...); returning without one is a 500. A method with no handler answers `405`, with an `Allow`
+header listing the methods that have handlers (`GET, HEAD` when there's a `get`), in the order
+`GET, HEAD, POST, PUT, PATCH, DELETE`. Folder middleware runs; layouts don't. Errors are JSON
+(`{ "status": 404, "message": "..." }`) unless the request's `Accept` puts `text/html` first (a browser navigating to
+it), when they're pages like any other (`+error.ejs` or the HTML error page).
 
 ```js
-// pb_pages/feeds/latest/+api.js
+// pb_pages/feeds/latest.ts
 module.exports = {
   get(ctx) {
     const posts = ctx.app.findRecordsByFilter('posts', 'published = true', '-created', 20)
@@ -18538,7 +18542,7 @@ export default function Product({ data, slot }: pages.Props) {
   wherever it sits in the tree; sibling async components run concurrently. `include()` of an async partial and
   `slot(name, content)` with async content work the same way, and a layout reads the slot once it has settled.
 
-**TypeScript modules.** `+page.ts`, `+api.ts`, `+middleware.ts`, `+config.ts` and any `.ts` file reached by
+**TypeScript modules.** Route code (`.ts`), `+middleware.ts`, `+config.ts` and any `.ts` file reached by
 `require`/`import` work like their `.js` versions. A module whose only export is `export default` behaves like
 `module.exports = ...`.
 
@@ -18553,10 +18557,10 @@ namespace. They add no globals. `pages.Data` and `pages.Context` are interfaces 
 | A handler or middleware sent one | That one |
 | Page rendered | `200 text/html; charset=utf-8` (or the status set with `ctx.res.status`) |
 | `HEAD` | As `GET`, without a body |
-| No handler for the method | Page: rendered as usual. `+api.js` or a `+page.js` without a page: `405` + `Allow` |
+| No handler for the method | Page: rendered as usual. Endpoint: `405` + `Allow` |
 | Error thrown | `500` (see 8) |
 
-JSON is only sent through `ctx.res.json` (or `+api.js`). Template output is never parsed as JSON.
+JSON is only sent through `ctx.res.json` (and an endpoint's errors). Template output is never parsed as JSON.
 
 ## 6. The `ctx` object
 
@@ -18605,7 +18609,7 @@ Query values and cookies are strings unless you ask for JSON. Nothing is parsed 
 |---|---|
 | `ctx.data` | Plain object shared by middleware, handlers and templates. Starts as `{}`. |
 | `ctx.params` | Route parameters, strings. Never includes query parameters. |
-| `ctx.route` | `{ path, name, file }`: the URL pattern without groups (`/products/[id]`, `/docs` for `docs/index.md`), the file name without extension (`[id]`, `index`; `+api` for API routes) and the file relative to `pb_pages`, groups included. |
+| `ctx.route` | `{ path, name, file }`: the URL pattern without groups (`/products/[id]`, `/docs` for `docs/index.md`), the file name without extension (`[id]`, `index`) and the file relative to `pb_pages`, groups included. |
 
 ### 6.4 Flash messages
 
@@ -18667,7 +18671,7 @@ reason on the page), and the reason goes to the log.
   `.ets`/`.ejs`/`.md` source), and the stack trimmed to `pb_pages`-relative paths.
 - **Otherwise:** a plain "Something went wrong" page. The full error always goes to the app's log.
 - `throw ctx.httpError(status, message)` sends that status (e.g. `404`, `403`) with a plain page showing `message`.
-  In a `+api.js` it's JSON: `{ "status": 404, "message": "..." }`.
+  From an endpoint it's JSON, unless the request asks for HTML first: `{ "status": 404, "message": "..." }`.
 - A custom error page: `pb_pages/+error.ejs` renders for every `ctx.httpError` and every 500 outside dev mode, with
   `ctx.error = { status, message }`, inside the root layout.
 
@@ -18801,9 +18805,9 @@ inside `ext/pages` (`starters/`).
 | Query parameters mixed into `params`, JSON-parsed | `ctx.params` is route parameters only; `ctx.req.query()` returns strings |
 | Cookies JSON-parsed on read | Strings; `{ json: true }` to parse |
 | Middleware: return a value, or call `next(extra)`, chosen by arity | `(ctx, next)`, data on `ctx.data` |
-| `+load.js`, `+get.js`, `+post.js`, ... per folder, results deep-merged | One `+page.js` exporting `load`, `get`, `post`, ...; returned objects shallow-assigned |
+| `+load.js`, `+get.js`, `+post.js`, ... per folder, results deep-merged | One `.ts` per page exporting `load`, `get`, `post`, ...; returned objects shallow-assigned |
 | `+config.js` may export `(api) => ({...})` | It must export an object; a function is an error |
-| Template output that parses as JSON is sent as JSON | Only `ctx.res.json` or `+api.js` |
+| Template output that parses as JSON is sent as JSON | Only `ctx.res.json` or an endpoint's errors |
 | `<!-- slot:name -->` comments; layouts read `slot` / `slots` | `slot(name, fn)` to define, `slot(name)` / `slot()` to read |
 | `echo()` writes during render | Templates return text; streaming only through `ctx.res.sse()` |
 | `redirect(path, { message })` puts the flash in `?__flash=` | `ctx.res.redirect(path, { flash })`, one-time cookie, `ctx.flash()` |
@@ -20283,7 +20287,7 @@ module runs off the JS engine, so the app keeps serving other requests while it 
 In an API route, the input comes from the request and the output goes into the record it saves:
 
 ```ts
-// pb_pages/posts/+api.ts
+// pb_pages/posts.ts
 export async function post(ctx: any) {
   const { title, body } = ctx.req.body()
   const out = await $wasm.run.async<{ text: string }>("summary", { title, body })
@@ -20354,7 +20358,7 @@ A module is one file in `pb_hooks/`, `pb_hooks/<name>.pb.wasm`, called as `<name
 
 ```
 pb_hooks/summary.pb.wasm
-pb_pages/posts/+api.ts
+pb_pages/posts.ts
 ```
 
 It ships with the rest of your code: git, `pocketone deploy`, or SFTP. Like `node script.js`, every call reads the
@@ -35562,7 +35566,7 @@ What `ctx.res.sse()` returns.
 | Member | Type | |
 |---|---|---|
 | `path` | `string` | The URL pattern without groups: `/products/[id]`. |
-| `name` | `string` | The file name without its extension: `[id]`, `index`, `+api`. |
+| `name` | `string` | The file name without its extension: `[id]`, `index`. |
 | `file` | `string` | The file relative to pb_pages, groups included. |
 
 ### pages.Log
@@ -35650,7 +35654,7 @@ The request context, passed to middleware, handlers, templates, components and p
 | `store()` | `(name: string, value: T): T` | Sets a value in the app's in-memory store; returns it. |
 | `flash()` | `(): T \| undefined` | The one-time message set by `ctx.res.redirect(..., { flash })`, or `undefined`. |
 | `pb()` | `(): any` | A PocketBase JS SDK client acting as the signed-in user (or a guest), in-process. |
-| `httpError()` | `(status: number, message?: string): Error` | An error to throw: sends `status` with `message` (JSON in a +api route). |
+| `httpError()` | `(status: number, message?: string): Error` | An error to throw: sends `status` with `message` (JSON from an endpoint, unless the request asks for HTML). |
 | `error?` | `{ status: number; message: string }` | Set while `+error` renders. |
 | `session` | `Session` | Needs the `auth` plugin in +config. |
 | `realtime` | `Realtime` | Needs the `realtime` plugin in +config. |
@@ -35671,7 +35675,7 @@ type pages.Handler = (ctx: Context) => HandlerResult | Promise<HandlerResult>;
 
 ### pages.Handlers
 
-The exports of a `+page.js` or `+api.js` (all optional).
+The exports of a route's `.ts` file: a page's code, or an endpoint (all optional).
 
 | Member | Type | |
 |---|---|---|
@@ -38312,7 +38316,7 @@ Page code says so with one change: call the model through `$llm.for(ctx)` instea
 the call's context, carrying the subject `llm.SubjectOf(app, e)` works out from the request.
 
 ```ts
-// pb_pages/ask/+api.ts
+// pb_pages/ask.ts
 export async function post(ctx: pages.Context) {
   const { question } = ctx.req.body()
   const r: LlmTextAnswer = await $llm.for(ctx).text.completeAsync({ model: "vultr/glm-5.3", prompt: question })
@@ -38418,7 +38422,7 @@ code is `limit` and its message is written for the person who made the request (
 (used $0.10); it resets at 00:00 UTC", or your handler's own words), so the simplest handling is to show it:
 
 ```ts
-// pb_pages/ask/+api.ts
+// pb_pages/ask.ts
 export async function post(ctx: pages.Context) {
   const { question } = ctx.req.body()
   try {
@@ -38447,7 +38451,7 @@ A streamed answer fails the same way, before any text arrives. With server-sent 
 the page shows in place of the answer, as pocketone.dev's ask box does:
 
 ```ts
-// pb_pages/chat/+api.ts
+// pb_pages/chat.ts
 export async function post(ctx: pages.Context) {
   const { question } = ctx.req.body()
   const stream = ctx.res.sse()
@@ -38554,7 +38558,7 @@ each returns its result and an error.
 its current window, the tightest first:
 
 ```ts
-// pb_pages/ask/+page.ts: "4 questions left today"
+// pb_pages/ask/index.ts, beside ask/index.ets: "4 questions left today"
 export function load(ctx: pages.Context) {
   const tightest = $llm.for(ctx).ledger.remaining()[0]
   return { left: tightest }
@@ -38816,7 +38820,7 @@ run on the app's JS VM between pieces; the waiting for each piece doesn't, so ot
 A Pages API route forwards the pieces to the browser as server-sent events:
 
 ```ts
-// pb_pages/ask/+api.ts
+// pb_pages/ask.ts
 module.exports = {
   async post(ctx) {
     const { question } = ctx.req.body()
@@ -39350,10 +39354,12 @@ Delete the `.pb.js` boot file and the `pocketpages` dependencies, and move the c
 
 ## JavaScript or TypeScript
 
-Your `.js` and `.ejs` files stay as they are. v1 also runs TypeScript (`.ts` code and `.ets` templates, types
-stripped, never checked), and the rest of these docs use it. Renaming a file from `.js` to `.ts` or `.ejs` to `.ets`
-changes nothing else, so you can switch a file at a time or not at all. This guide shows v1 code as `.js` to match
-yours. See [File types](https://pocketone.dev/docs/extensions/pages/file-types).
+Your `.ejs` templates, `+middleware.js`, `+config.js` and `_private/` modules stay as they are. v1 also runs
+TypeScript (`.ts` code and `.ets` templates, types stripped, never checked), and the rest of these docs use it.
+Renaming a file from `.js` to `.ts` or `.ejs` to `.ets` changes nothing else, so you can switch a file at a time or not
+at all. A route's own code (a page's loaders and handlers, an endpoint) is always `.ts`, since a `.js` file on a route
+path is served to the browser as-is; plain JavaScript is valid there. This guide shows the rest of v1's code as `.js`
+to match yours. See [File types](https://pocketone.dev/docs/extensions/pages/file-types).
 
 ## The context object
 
@@ -39393,13 +39399,13 @@ Put shared data on `ctx.data`. See [Middleware](https://pocketone.dev/docs/exten
 
 ## Loaders
 
-`+load.js`, `+get.js`, `+post.js` and friends are replaced by one `+page.js` per folder that exports `load`, `get`, `post`, `put`, `patch` and `delete`. Returned objects are shallow-assigned into `ctx.data` (no deep merge). As in 0.x, every handler is optional and a page renders for any method, so templates that check the request method keep working (`request.method` becomes `ctx.req.method`).
+`+load.js`, `+get.js`, `+post.js` and friends are replaced by one `.ts` file beside each page (`products.ts` beside `products.ejs`) that exports `load`, `get`, `post`, `put`, `patch` and `delete`. Returned objects are shallow-assigned into `ctx.data` (no deep merge). As in 0.x, every handler is optional and a page renders for any method, so templates that check the request method keep working (`request.method` becomes `ctx.req.method`).
 
 ```js
 // 0.x: +load.js
 module.exports = (api) => ({ products: $app.findAllRecords('products') })
 
-// v1: +page.js
+// v1: products.ts, beside products.ejs
 module.exports = {
   load(ctx) {
     return { products: ctx.app.findAllRecords('products') }
@@ -39411,7 +39417,7 @@ See [Loading Data](https://pocketone.dev/docs/extensions/pages/loading-data).
 
 ## JSON
 
-0.x sent template output as JSON if it parsed as JSON. v1 never does. Send JSON with `ctx.res.json()`, usually from a `+api.js` file. See [API Routes and JSON](https://pocketone.dev/docs/extensions/pages/api-routes).
+0.x sent template output as JSON if it parsed as JSON. v1 never does. Send JSON with `ctx.res.json()`, usually from an endpoint: a `.ts` file with no template, such as `feeds/latest.ts`. See [Endpoints and JSON](https://pocketone.dev/docs/extensions/pages/api-routes).
 
 ## Layouts and slots
 
@@ -39631,7 +39637,7 @@ pb_pages/
 pb_pages/docs/routing.md  -> "/docs/routing"
 ```
 
-The extension is always dropped from the URL. To add data or handle forms, put a `+page.ts` next to the page; see [Loading Data](https://pocketone.dev/docs/extensions/pages/loading-data).
+The extension is always dropped from the URL. To add data or handle forms, put a `.ts` file with the same name next to the page (`about.ts` beside `about.ets`); see [Loading Data](https://pocketone.dev/docs/extensions/pages/loading-data).
 
 
 ---
@@ -39658,9 +39664,10 @@ myapp/
     assets/
       app.css
     products/
-      [id]/
-        +page.ts
-        index.ets
+      [id].ets
+      [id].ts
+    feeds/
+      latest.ts
 ```
 
 ## Special names
@@ -39669,7 +39676,7 @@ A file or folder name starting with one of these characters is never a URL:
 
 | Prefix | Meaning |
 |---|---|
-| `+` | Framework file: `+layout.ets` (or `+layout.tsx`), `+middleware.ts`, `+page.ts`, `+api.ts`, one of each per folder. `+config.ts`, `+error.ets` and `+404.ets` are allowed only at the top of `pb_pages`. Any other `+` name, any other extension (such as `+layout.md`), and a top-only file in a subfolder are errors at startup. |
+| `+` | Framework file: `+layout.ets` (or `+layout.tsx`) and `+middleware.ts`, one of each per folder. `+config.ts`, `+error.ets` and `+404.ets` are allowed only at the top of `pb_pages`. Any other `+` name, any other extension (such as `+layout.md`), and a top-only file in a subfolder are errors at startup. |
 | `_` | Private. `_private/` folders hold partials and modules for `include()` and `ctx.resolve()`. Other `_` names are ignored. |
 | `-` | Ignored (drafts, notes). |
 | `.` | Ignored (dotfiles), except a top-level `.well-known/`, which is served as static files (ACME challenges, `security.txt`, app links). |
@@ -39682,7 +39689,9 @@ A folder named `(name)` groups files without adding a URL segment: `(marketing)/
 
 ## What else
 
-- Every other file is a [static file](https://pocketone.dev/docs/extensions/pages/static-content), served as-is.
+- A `.ts` file beside a template of the same name is that page's code (`products/[id].ts`); any other `.ts` is an
+  [endpoint](https://pocketone.dev/docs/extensions/pages/api-routes) at its own URL (`feeds/latest.ts` serves `/feeds/latest`).
+- Every other file, `.js` included, is a [static file](https://pocketone.dev/docs/extensions/pages/static-content), served as-is.
 - Page code can `require()` modules by name from `_private/` folders (nearest first), then `pb_pages/node_modules`, then
   `pb_hooks/node_modules` and the app folder's `node_modules`, then the app's usual module paths.
 - Pages' own file access (routes, static files, includes, assets) never leaves `pb_pages`.
@@ -39701,8 +39710,8 @@ with esbuild built into the binary; it never checks them.
 
 ## Code
 
-`+page.ts`, `+api.ts`, `+middleware.ts`, `+config.ts` and the modules in `_private/` are TypeScript files. They export
-functions and objects, and never produce HTML themselves. To check their types with your editor or `tsc`, see
+A route's `.ts` (a page's code, or an endpoint), `+middleware.ts`, `+config.ts` and the modules in `_private/` are
+TypeScript files. They export functions and objects, and never produce HTML themselves. To check their types with your editor or `tsc`, see
 [TypeScript](https://pocketone.dev/docs/extensions/pages/typescript).
 
 ## Templates: pick one style
@@ -39729,8 +39738,8 @@ plain JavaScript inside, as a small escape hatch in content.
 
 ## JavaScript works too
 
-Every TypeScript file type has a JavaScript twin that behaves the same, without types. Rename a file and nothing else
-changes:
+Templates, `+middleware`, `+config` and `_private/` modules have JavaScript twins that behave the same, without
+types. Rename a file and nothing else changes:
 
 | TypeScript | JavaScript |
 |---|---|
@@ -39738,16 +39747,19 @@ changes:
 | `.ets` | `.ejs` |
 | `.tsx` | `.jsx` |
 
-Apps written for [PocketPages 0.x](https://pocketone.dev/docs/extensions/pages/moving-from-0x) use `.js` and `.ejs`, and keep doing so. A folder can't have two
+A route's code is the one exception: it is always `.ts`, because a `.js` file on a route path is a browser script,
+served as-is. Apps written for [PocketPages 0.x](https://pocketone.dev/docs/extensions/pages/moving-from-0x) use `.js` and `.ejs`. A folder can't have two
 framework files with the same name, such as `+layout.ets` beside `+layout.ejs`.
 
 ## Everything else
 
 | File | What it is |
 |---|---|
+| `.ts` on a route path | A page's [code](https://pocketone.dev/docs/extensions/pages/loading-data#page-code), or an [endpoint](https://pocketone.dev/docs/extensions/pages/api-routes) |
+| `.d.ts` | Type declarations: neither served nor run |
 | `.md` | A [Markdown](https://pocketone.dev/docs/extensions/pages/markdown) page or partial |
 | `.json` | Data you can `require` |
-| any other file | A [static file](https://pocketone.dev/docs/extensions/pages/static-content), served as-is |
+| `.js` and any other file | A [static file](https://pocketone.dev/docs/extensions/pages/static-content), served as-is |
 
 
 ---
@@ -39791,11 +39803,17 @@ pb_pages/
     count.ets       # /xapi/count, outside the (site) layout
 ```
 
-## API routes
+## Code: `.ts` files
 
-A `+api.ts` file serves its folder's URL without a template: `feeds/rss/+api.ts` serves `/feeds/rss`. `[param]` folders work as for pages. A folder can't have both a `+api.ts` and an `index` page. See [API Routes and JSON](https://pocketone.dev/docs/extensions/pages/api-routes).
+A `.ts` file runs, the way a `.php` file does. Its path is its URL, as for a page:
 
-A `+page.ts` in a folder with no page serves the folder's URL from JS too: `logout/+page.ts` serves `/logout`. See [Pages without a template](https://pocketone.dev/docs/extensions/pages/loading-data#pages-without-a-template).
+| File | What it is |
+|---|---|
+| `about.ts` beside `about.ets` | that page's code: `load` feeds the template, a `post` handles its form. See [Loading data](https://pocketone.dev/docs/extensions/pages/loading-data#page-code). |
+| `feeds/rss.ts` | an endpoint at `/feeds/rss`, with no template: its handlers send the whole response (JSON, a feed, a redirect). See [Endpoints and JSON](https://pocketone.dev/docs/extensions/pages/api-routes). |
+| `feeds/index.ts`, `products/[id].ts` | the folder's URL, a `[param]` route, as for pages |
+
+Only `.ts` runs. A `.js` file is a [static file](#static-files) like any other, so browser scripts can sit anywhere in `pb_pages`. `.d.ts` files are neither served nor run.
 
 ## Static files
 
@@ -39805,7 +39823,7 @@ Every other file is served as-is at its path, with groups removed: `assets/app.c
 
 1. `/api/...` and `/_/...` belong to PocketBase. Pages never see them.
 2. Among matching routes the most specific wins: segments are compared from the left, and a literal segment beats a `[param]`. So `products/new.ets` beats `products/[id].ets` for `/products/new`.
-3. A static file and a page can't claim the same URL (startup error).
+3. Two files can't claim the same URL: a page and a static file, or an endpoint and a page (`feed.ts` and `feed/index.ets`). A `.ts` beside a template of the same name is that page's code, not a second claim. These are startup errors.
 4. A URL nothing in `pb_pages` matches goes on to `pb_public`, then to PocketBase.
 
 ## When routes change
@@ -39882,7 +39900,7 @@ Source: https://pocketone.dev/docs/extensions/pages/loading-data
 
 # Loading Data in Pages
 
-You can load data right in a template, or in a `+page.ts` file next to it.
+You can load data right in a template, or in a `.ts` file of the same name next to it.
 
 ## Inline data loading
 
@@ -39917,12 +39935,12 @@ For better formatting support in editors, you can write `<script server<%- '>' %
 <% } %>
 ```
 
-## Structured loading with `+page.ts`
+## Page code
 
-A `+page.ts` file keeps data loading and form handling out of the template:
+A `.ts` file beside a template, with the same name, is that page's code. It keeps data loading and form handling out of the template: `about.ts` goes with `about.ets`, `index.ts` with `index.ets`, `[id].ts` with `[id].ets`.
 
 ```ts
-// pb_pages/products/[id]/+page.ts
+// pb_pages/products/[id].ts
 module.exports = {
   load(ctx) {
     ctx.data.product = ctx.app.findRecordById('products', ctx.params.id)
@@ -39936,7 +39954,7 @@ module.exports = {
 ```
 
 ```ets
-<!-- pb_pages/products/[id]/index.ets -->
+<!-- pb_pages/products/[id].ets -->
 <h1><%= data.product.getString('name') %></h1>
 <% const flash = ctx.flash() %>
 <% if (flash) { %><p><%= flash %></p><% } %>
@@ -39944,7 +39962,7 @@ module.exports = {
 
 ### Exports
 
-`+page.ts` exports any of `load`, `get`, `post`, `put`, `patch` and `delete`.
+Page code exports any of `load`, `get`, `post`, `put`, `patch` and `delete`.
 
 1. `load` runs first, for every method.
 2. Then the handler for the request method runs, if there is one.
@@ -39971,7 +39989,7 @@ If a handler sends a response (`ctx.res.redirect`, `json`, `html`, `text`, `file
 `.async` twin that does its work outside the JS VM, so other requests keep running while it waits:
 
 ```ts
-// pb_pages/dashboard/+page.ts
+// pb_pages/dashboard.ts, beside dashboard.ets
 module.exports = {
   async load(ctx) {
     const [orders, users] = await Promise.all([
@@ -39987,16 +40005,17 @@ What an async handler returns is used just like a returned object, and an error 
 fails the request like any other error. You can also `await` right in a template: see [ETS](https://pocketone.dev/docs/extensions/pages/ets#await) and
 [JSX](https://pocketone.dev/docs/extensions/pages/jsx#async-components).
 
-### One `+page.ts` per folder
+### Code several pages share
 
-A `+page.ts` applies to every page in its folder. Use `ctx.route.name` to tell them apart:
+Each page has its own code file. Put code that several pages share in a `_private/` module and `require` it, or in a [`+middleware.ts`](https://pocketone.dev/docs/extensions/pages/middleware) when a whole section needs it:
 
 ```ts
+// pb_pages/products/[id].ts
+const { reviewsFor } = require('./_private/reviews')
+
 module.exports = {
   load(ctx) {
-    if (ctx.route.name === 'details') {
-      ctx.data.reviews = ctx.app.findRecordsByFilter('reviews', 'product = {:id}', '-created', 20, 0, { id: ctx.params.id })
-    }
+    return { reviews: reviewsFor(ctx.app, ctx.params.id) }
   },
 }
 ```
@@ -40006,7 +40025,7 @@ module.exports = {
 Every handler is optional. A page renders for any method, like PHP, so a template can handle a form on its own:
 
 ```ets
-<!-- pb_pages/contact.ets, no +page.ts -->
+<!-- pb_pages/contact.ets, no contact.ts -->
 <% if (ctx.req.method === 'POST') { %>
   <p>Thanks, <%= ctx.req.body().name %>!</p>
 <% } else { %>
@@ -40014,14 +40033,14 @@ Every handler is optional. A page renders for any method, like PHP, so a templat
 <% } %>
 ```
 
-A `post` (or `put`, ...) handler in `+page.ts` is the tidier place for form logic as a page grows, but you don't need
-one. Only routes with nothing to render, [`+api.ts`](https://pocketone.dev/docs/extensions/pages/api-routes) and a `+page.ts` without a page, answer `405`
-for a method they have no handler for.
+A `post` (or `put`, ...) handler in the page's code is the tidier place for form logic as a page grows, but you don't
+need one. Only [endpoints](https://pocketone.dev/docs/extensions/pages/api-routes), which have nothing to render, answer `405` for a method they have no
+handler for.
 
 ## Example: a contact form
 
 ```ts
-// pb_pages/contact/+page.ts
+// pb_pages/contact.ts
 module.exports = {
   load(ctx) {
     return { departments: ctx.app.findAllRecords('departments') }
@@ -40043,7 +40062,7 @@ module.exports = {
 ```
 
 ```ets
-<!-- pb_pages/contact/index.ets -->
+<!-- pb_pages/contact.ets -->
 <% const flash = ctx.flash() %>
 <% if (flash) { %><p><%= flash %></p><% } %>
 <% if (data.error) { %><mark><%= data.error %></mark><% } %>
@@ -40062,11 +40081,11 @@ module.exports = {
 
 ## Pages without a template
 
-A `+page.ts` in a folder with no page file serves the folder's URL from code. Use it for a page you'd rather build in
-code, or for a URL that only acts and redirects:
+A `.ts` file with no template of the same name serves its URL from code: an [endpoint](https://pocketone.dev/docs/extensions/pages/api-routes). Use one for a
+page you'd rather build in code, or for a URL that only acts and redirects:
 
 ```ts
-// pb_pages/logout/+page.ts
+// pb_pages/logout.ts
 module.exports = {
   post(ctx) {
     ctx.session.signOut()
@@ -40076,7 +40095,7 @@ module.exports = {
 ```
 
 ```ts
-// pb_pages/hello/+page.ts
+// pb_pages/hello.ts
 module.exports = {
   get(ctx) {
     return ctx.res.html(`<h1>Hello ${ctx.auth ? ctx.auth.getString('name') : 'there'}</h1>`)
@@ -40087,11 +40106,11 @@ module.exports = {
 - With no template to render, each handler must send a response; returning without one is a 500.
 - Methods without a handler answer `405`, `GET` included: `/logout` above only takes `POST`.
 - Folder middleware runs; layouts don't, so wrap HTML yourself (or render a partial with `ctx.include`).
-- Errors show your `+error.ets` page. For JSON responses and JSON errors, use [`+api.ts`](https://pocketone.dev/docs/extensions/pages/api-routes) instead.
+- Errors are JSON, or your `+error.ets` page when the request asks for HTML first (a browser opening the URL).
 
-## Middleware or `+page.ts`?
+## Middleware or page code?
 
-- Only the route's own folder's `+page.ts` runs.
+- Only the page's own `.ts` runs.
 - Every `+middleware.ts` from `pb_pages/` down to the route's folder runs, root first.
 
 Use [middleware](https://pocketone.dev/docs/extensions/pages/middleware) for data or checks that a whole section of the site shares.
@@ -40101,12 +40120,12 @@ Use [middleware](https://pocketone.dev/docs/extensions/pages/middleware) for dat
 
 Source: https://pocketone.dev/docs/extensions/pages/api-routes
 
-# API Routes and JSON
+# Endpoints and JSON
 
-A `+api.ts` file serves its folder's URL without a template. Use it for JSON, feeds, webhooks and anything else that isn't an HTML page.
+A `.ts` file with no template of the same name is an **endpoint**: it serves its own URL from code. Use one for JSON, feeds, webhooks, event streams and anything else that isn't an HTML page.
 
 ```ts
-// pb_pages/feeds/latest/+api.ts
+// pb_pages/feeds/latest.ts
 module.exports = {
   get(ctx) {
     const posts = ctx.app.findRecordsByFilter('posts', 'published = true', '-created', 20)
@@ -40123,18 +40142,33 @@ A request to `/feeds/latest` returns:
 
 ## How it works
 
-- `+api.ts` has the same exports as `+page.ts`: `load`, `get`, `post`, `put`, `patch`, `delete`.
+- The URL comes from the file's path, as for pages: `feeds/latest.ts` serves `/feeds/latest`, `feeds/index.ts` serves `/feeds`, `products/[id].ts` serves `/products/123`.
+- An endpoint has the same exports as [page code](https://pocketone.dev/docs/extensions/pages/loading-data#page-code): `load`, `get`, `post`, `put`, `patch`, `delete`.
 - There is no template, so a handler must send a response. Returning without one is a `500`.
-- `[param]` folders work as for pages: `products/[id]/+api.ts` serves `/products/123`.
-- A folder can't have both a `+api.ts` and an `index` page.
-- Middleware runs for API routes too.
-- `ctx.httpError()` thrown in a `+api.ts` answers with JSON: `{ "status": 404, "message": "..." }`.
+- A method with no handler answers `405`, `GET` included, with an `Allow` header listing the methods it has.
+- An endpoint and a page can't claim the same URL: `feed.ts` and `feed/index.ets` is an error at startup.
+- Middleware runs for endpoints too; layouts don't.
 - Handlers can be `async`. The response is sent once the handler settles.
+
+## Errors
+
+An error thrown in an endpoint (`ctx.httpError()` or any other) answers with JSON: `{ "status": 404, "message": "..." }`. When the request's `Accept` header puts `text/html` first, as a browser does when someone opens the URL, the error is your `+error.ets` page instead.
+
+```ts
+// pb_pages/products/[id].ts
+module.exports = {
+  get(ctx) {
+    const product = ctx.app.findFirstRecordByFilter('products', 'id = {:id}', { id: ctx.params.id })
+    if (!product) throw ctx.httpError(404, 'No such product')
+    return ctx.res.json({ id: product.id, name: product.getString('name') })
+  },
+}
+```
 
 ## Async handlers
 
 ```ts
-// pb_pages/stats/+api.ts
+// pb_pages/stats.ts
 module.exports = {
   async get(ctx) {
     const orders = await ctx.app.countRecords.async('orders')
@@ -40161,10 +40195,10 @@ See [res](https://pocketone.dev/docs/extensions/pages/ctx/res).
 
 ## JSON from a page
 
-JSON is only sent through `ctx.res.json` (or a `+api.ts`). Template output is never parsed as JSON, even if it looks like JSON. A page's `+page.ts` can still answer with JSON for one method:
+JSON is only sent through `ctx.res.json` (and an endpoint's errors). Template output is never parsed as JSON, even if it looks like JSON. A page's code can still answer with JSON for one method:
 
 ```ts
-// pb_pages/products/[id]/+page.ts
+// pb_pages/products/[id].ts, beside products/[id].ets
 module.exports = {
   post(ctx) {
     const product = ctx.app.findRecordById('products', ctx.params.id)
@@ -40175,7 +40209,7 @@ module.exports = {
 
 ## Keep `/api/` free
 
-`/api/` belongs to PocketBase. Pages never see it, and a `pb_pages/api/` folder is an error at startup. Put your routes somewhere else, such as `feeds/`, `xapi/` or `hooks/`.
+`/api/` belongs to PocketBase. Pages never see it, and a `pb_pages/api/` folder is an error at startup. Put your endpoints somewhere else, such as `feeds/`, `xapi/` or `hooks/`.
 
 
 ---
@@ -40201,7 +40235,7 @@ const products: Product[] = [{ name: 'Widget', cents: 1999 }] %>
 ```
 
 Nothing checks the types inside an `.ets` file, your editor included: editors don't know `.ets` yet, so associate it
-with EJS for highlighting. For checked types, keep logic in a `+page.ts` or a `_private/` module (see
+with EJS for highlighting. For checked types, keep logic in the page's `.ts` or a `_private/` module (see
 [TypeScript](https://pocketone.dev/docs/extensions/pages/typescript)).
 
 What you write is what the browser gets, with the tags filled in. ETS is the template style these docs use
@@ -40505,14 +40539,14 @@ A page (or an inner layout) defines a named slot with `slot(name, fn)`. `fn`'s o
 
 ## Data in layouts
 
-Layouts render after the page, with the same `ctx`. Everything middleware, `+page.ts` and the page put on `ctx.data` or `ctx.meta` is there.
+Layouts render after the page, with the same `ctx`. Everything middleware, the page's code and the page put on `ctx.data` or `ctx.meta` is there.
 
 ## When layouts are skipped
 
 - When the response isn't HTML (a handler set another `Content-Type`).
 - When a handler or middleware sent the response itself (`ctx.res.json`, `ctx.res.html`, `ctx.res.redirect`, ...).
-- For `+api.ts` routes, which have no template.
-- After `ctx.res.layout(false)`, called from middleware, `+page.ts` or the page itself.
+- For [endpoints](https://pocketone.dev/docs/extensions/pages/api-routes), which have no template.
+- After `ctx.res.layout(false)`, called from middleware, the page's code or the page itself.
 - With the [Datastar add-on](https://pocketone.dev/docs/extensions/pages/plugins/datastar), for requests that carry `Datastar-Request: true`.
 
 To serve HTML fragments without the site layout, call `ctx.res.layout(false)`, put the layout in a group (`(site)/+layout.ets`) and the fragments outside it, or send them with `ctx.res.html()`.
@@ -40628,7 +40662,7 @@ export default function Layout({ children, slot }: pages.Props) {
 
 ## One style per app
 
-Use TSX for every template in an app: pages, layouts, partials and error pages. Code files (`+page.ts`, `+api.ts`,
+Use TSX for every template in an app: pages, layouts, partials and error pages. Code files (a page's `.ts`, endpoints,
 `+middleware.ts`, `+config.ts`) are the same in both styles.
 
 The two styles can include each other, so you can move an app from one to the other a folder at a time: an ETS page
@@ -40654,7 +40688,7 @@ Source: https://pocketone.dev/docs/extensions/pages/private-files
 
 | Prefix | Meaning |
 |---|---|
-| `+` | Framework file (`+layout.ets`, `+page.ts`, ...) |
+| `+` | Framework file (`+layout.ets`, `+middleware.ts`, ...) |
 | `_` | Private. `_private/` folders hold partials and modules. Other `_` names are ignored. |
 | `-` | Ignored (drafts, notes) |
 | `.` | Ignored (dotfiles) |
@@ -40664,7 +40698,7 @@ pb_pages/
   _private/        # private (not routable)
   -drafts/         # ignored
   helpers/         # normal folder (routable)
-  +page.ts         # framework file (not routable)
+  +middleware.ts   # framework file (not routable)
   +layout.ets      # framework file (not routable)
   index.ets        # page
 ```
@@ -40776,7 +40810,7 @@ The full order for a request is:
 
 1. Plugins' `onRequest`
 2. Middleware, root first
-3. The folder's `+page.ts` or `+api.ts` (`load`, then the method's handler)
+3. The route's `.ts`, the page's code or the endpoint (`load`, then the method's handler)
 4. The template, then layouts, innermost first
 5. The response
 
@@ -40925,7 +40959,7 @@ Source: https://pocketone.dev/docs/extensions/pages/secrets
 Keep API keys, passwords and other secrets in environment variables, and read them with `ctx.env(name)`. It returns `''` when the variable is unset.
 
 ```ts
-// pb_pages/checkout/+page.ts
+// pb_pages/checkout.ts
 module.exports = {
   post(ctx) {
     const key = ctx.env('STRIPE_SECRET_KEY')
@@ -41088,7 +41122,7 @@ The full error always goes to the app's log.
 Throw `ctx.httpError()` to answer with a specific status:
 
 ```ts
-// pb_pages/products/[id]/+page.ts
+// pb_pages/products/[id].ts
 module.exports = {
   load(ctx) {
     let product
@@ -41103,7 +41137,7 @@ module.exports = {
 ```
 
 - In a page, it sends that status with a plain page showing `message`.
-- In a `+api.ts`, it sends JSON: `{ "status": 404, "message": "No such product" }`.
+- In an [endpoint](https://pocketone.dev/docs/extensions/pages/api-routes), it sends JSON (unless the request's `Accept` puts `text/html` first): `{ "status": 404, "message": "No such product" }`.
 
 ## A custom error page
 
@@ -41335,7 +41369,7 @@ A bad or expired token throws an error.
 ## Example
 
 ```ts
-// pb_pages/login/+page.ts
+// pb_pages/login.ts
 module.exports = {
   post(ctx) {
     const { email, password } = ctx.req.body()
@@ -41350,7 +41384,7 @@ module.exports = {
 ```
 
 ```ts
-// pb_pages/logout/+page.ts
+// pb_pages/logout.ts
 module.exports = {
   post(ctx) {
     ctx.session.signOut()
@@ -41434,7 +41468,7 @@ return you to where you were scrolled.
 ```
 
 ```ts
-// pb_pages/counter/+page.ts
+// pb_pages/counter/index.ts
 module.exports = {
   post(ctx) {
     const count = (ctx.store('count') || 0) + 1
@@ -41493,7 +41527,7 @@ module.exports = {
 Sends `data` to the subscribers of `topic`. `filter(client)` may limit the recipients.
 
 ```ts
-// pb_pages/ping/+api.ts
+// pb_pages/ping.ts
 module.exports = {
   post(ctx) {
     ctx.realtime.send('ping', { at: new Date().toISOString() })
@@ -41525,7 +41559,7 @@ ctx.realtime.send('alerts', 'Maintenance at 10:00', {
 For hypermedia libraries (HTMX, Datastar), send rendered HTML. `include()` is available in templates, so render the partial there:
 
 ```ts
-// pb_pages/xapi/chat/+page.ts
+// pb_pages/xapi/chat/index.ts
 module.exports = {
   post() {}, // accept POST; the page renders and sends
 }
@@ -41628,7 +41662,7 @@ Pages creates one `ctx` object per request and passes it to middleware, handlers
 // +middleware.ts
 module.exports = (ctx, next) => next()
 
-// +page.ts / +api.ts
+// about.ts (beside about.ets), or an endpoint such as feeds/rss.ts
 module.exports = { load(ctx) {} }
 ```
 
@@ -41712,7 +41746,7 @@ Query values and cookies are strings unless you ask for JSON. Nothing is parsed 
 `body()` parses JSON, `application/x-www-form-urlencoded` and `multipart/form-data`:
 
 ```ts
-// pb_pages/contact/+page.ts
+// pb_pages/contact.ts
 module.exports = {
   post(ctx) {
     const { email, message } = ctx.req.body()
@@ -41816,7 +41850,7 @@ return ctx.res.file('downloads/manual.pdf')
 `sse()` starts a `text/event-stream` response and returns `{ send(event, data, { id, retry }?), comment(text), close() }`:
 
 ```ts
-// pb_pages/clock/+api.ts
+// pb_pages/clock.ts
 module.exports = {
   get(ctx) {
     const stream = ctx.res.sse()
@@ -41848,7 +41882,7 @@ module.exports = (ctx, next) => {
 ```
 
 ```ts
-// +page.ts
+// products.ts, beside products.ets
 module.exports = {
   load(ctx) {
     return { products: ctx.app.findAllRecords('products') }  // Object.assign'd into ctx.data
@@ -41882,7 +41916,7 @@ Route parameters from `[name]` segments, as strings. Never includes query parame
 | `products/[id].ets` | `/products/[id]` | `[id]` |
 | `docs/index.md` | `/docs` | `index` |
 
-A `+page.ts` applies to every page in its folder; use `ctx.route.name` to tell them apart.
+Each page has its own `.ts`; code several pages share goes in a `_private/` module or `+middleware.ts`.
 
 
 ---
@@ -41986,7 +42020,7 @@ Source: https://pocketone.dev/docs/extensions/pages/ctx/pb
 browser:
 
 ```ts
-// pb_pages/posts/+page.ts
+// pb_pages/posts.ts
 module.exports = {
   load(ctx) {
     const page = ctx.pb().collection('posts').getList(1, 20, {
@@ -42244,7 +42278,7 @@ If you keep your own `tsconfig.json`, include `types.d.ts` and `pb_pages/**/*`, 
 | Type | For |
 |---|---|
 | `pages.Context` | `ctx`: `req`, `res`, `data`, `params`, `route`, `auth`, `app` and the helpers |
-| `pages.Handlers` | A `+page.ts` or `+api.ts`: `load`, `get`, `post`, `put`, `patch`, `delete` |
+| `pages.Handlers` | A page's `.ts` or an endpoint: `load`, `get`, `post`, `put`, `patch`, `delete` |
 | `pages.Middleware` | A `+middleware.ts`: `(ctx, next) => ...` |
 | `pages.Config` | `+config.ts` |
 | `pages.PluginFactory`, `pages.Plugin` | A custom plugin |
@@ -42253,7 +42287,7 @@ If you keep your own `tsconfig.json`, include `types.d.ts` and `pb_pages/**/*`, 
 `satisfies` keeps your own return types and checks the shape:
 
 ```ts
-// pb_pages/products/[id]/+page.ts
+// pb_pages/products/[id].ts
 export default {
   async load(ctx) {
     ctx.data.product = await ctx.app.findRecordById.async('products', ctx.params.id)
@@ -42347,7 +42381,7 @@ module.exports = (ctx, next) => {
 ## Passwords
 
 ```ts
-// pb_pages/login/+page.ts
+// pb_pages/login/index.ts
 module.exports = {
   post(ctx) {
     const { email, password } = ctx.req.body()
@@ -42376,7 +42410,7 @@ module.exports = {
 ### Registration
 
 ```ts
-// pb_pages/register/+page.ts
+// pb_pages/register.ts
 module.exports = {
   post(ctx) {
     const { email, password, name } = ctx.req.body()
@@ -42395,7 +42429,7 @@ module.exports = {
 A two-step form: request a code, then sign in with it. Turn on OTP for the collection in the dashboard and set up mail (Settings > Mail settings).
 
 ```ts
-// pb_pages/login/otp/+page.ts
+// pb_pages/login/otp/index.ts
 module.exports = {
   post(ctx) {
     const { step, email, otpId, code } = ctx.req.body()
@@ -42445,7 +42479,7 @@ Configure the provider in the dashboard (Collections > users > Options > OAuth2)
 ```
 
 ```ts
-// pb_pages/auth/oauth/+page.ts
+// pb_pages/auth/oauth.ts
 module.exports = {
   post(ctx) {
     ctx.session.requestOAuth2(ctx.req.body().provider)
@@ -42456,7 +42490,7 @@ module.exports = {
 `requestOAuth2` stores its state in a cookie and redirects to the provider. The provider sends the user back to `/auth/oauth/confirm` (change it with `{ redirectPath }`):
 
 ```ts
-// pb_pages/auth/oauth/confirm/+page.ts
+// pb_pages/auth/oauth/confirm/index.ts
 module.exports = {
   load(ctx) {
     try {
@@ -42479,7 +42513,7 @@ See the [Google OAuth2 speedrun](https://pocketone.dev/docs/extensions/pages/spe
 ## Anonymous sign-in
 
 ```ts
-// pb_pages/try/+page.ts
+// pb_pages/try.ts
 module.exports = {
   post(ctx) {
     ctx.session.signInAnonymously()
@@ -42495,7 +42529,7 @@ If you authenticate a record yourself, set the session cookie with `ctx.session.
 ## Signing out
 
 ```ts
-// pb_pages/logout/+page.ts
+// pb_pages/logout.ts
 module.exports = {
   post(ctx) {
     ctx.session.signOut()
@@ -42529,7 +42563,7 @@ module.exports = { plugins: ['realtime'] }
 ```
 
 ```ts
-// pb_pages/rooms/[id]/+api.ts
+// pb_pages/rooms/[id].ts
 module.exports = {
   post(ctx) {
     ctx.realtime.send(`rooms/${ctx.params.id}/delta`, ctx.req.body())
@@ -42731,7 +42765,7 @@ Its files are in [`ext/pages/starters/auth`](https://github.com/pocketonehq/pock
 
 Multi-page app (MPA) auth with the built-in `auth` plugin: register, password, anonymous, OTP and OAuth2 login, logout, email verification (with a resend page), password reset by email, email change with confirmation, and a protected `/account` section (`account/+middleware.ts`). Sessions are a `pb_auth` cookie managed through `ctx.session.*`; the logged-in user is `ctx.auth`. The included migrations point PocketBase's mail at a local maildev and its email templates at this app's `/auth/confirm/{TOKEN}/...` pages.
 
-Templates are `.ets` (EJS whose tags hold TypeScript) and code files (`+config`, `+page`, `+api`, `+middleware`) are `.ts`; Pages strips the types when it loads them, so there is still no build step.
+Templates are `.ets` (EJS whose tags hold TypeScript) and code files (`+config`, `+middleware`, and the `.ts` beside a page or serving an endpoint) are `.ts`; Pages strips the types when it loads them, so there is still no build step.
 
 ```bash
 pocketone pages create myapp --starter auth
@@ -42760,7 +42794,7 @@ pb_migrations/                   the users collection's auth settings and email 
 pb_pages/
   +config.ts                     turns on the auth plugin
   +layout.ets
-  auth/login/                    +page.ts signs in; _private/ holds one form per method (password, otp, oauth2, ...)
+  auth/login/                    index.ts signs in; _private/ holds one form per method (password, otp, oauth2, ...)
   auth/forgot/                   asks for a password reset email
   auth/confirm/[token]/          the pages the emails link to: verification, password reset, email change
   account/+middleware.ts         sends anyone not signed in to the login page
@@ -42782,7 +42816,7 @@ Its files are in [`ext/pages/starters/daisyui`](https://github.com/pocketonehq/p
 
 A layout with a responsive navbar and drawer, built with [Tailwind CSS](https://tailwindcss.com/) and [DaisyUI](https://daisyui.com/) (cupcake theme). The compiled `pb_pages/app.css` is included and linked through `asset()`, so the app runs as-is; npm is only for rebuilding the CSS.
 
-Templates are `.ets` (EJS whose tags hold TypeScript) and code files (`+config`, `+page`, `+api`, `+middleware`) are `.ts`; Pages strips the types when it loads them, so there is still no build step.
+Templates are `.ets` (EJS whose tags hold TypeScript) and code files (`+config`, `+middleware`, and the `.ts` beside a page or serving an endpoint) are `.ts`; Pages strips the types when it loads them, so there is still no build step.
 
 ```bash
 pocketone pages create myapp --starter daisyui
@@ -42826,7 +42860,7 @@ Its files are in [`ext/pages/starters/daisyui-docs`](https://github.com/pocketon
 
 A docs site built from Markdown pages, styled with [Tailwind CSS](https://tailwindcss.com/) and [DaisyUI](https://daisyui.com/). It shows layout groups (`(splash)` for the home page, `(main)` for the docs), nested layouts, and a Markdown partial (`docs/_private/toc.md`) as the table of contents. Add a page by dropping a `.md` file in `pb_pages/(main)/docs/`. The compiled `pb_pages/assets/app.css` is included; npm is only for rebuilding the CSS.
 
-Templates are `.ets` (EJS whose tags hold TypeScript) and code files (`+config`, `+page`, `+api`, `+middleware`) are `.ts`; Pages strips the types when it loads them, so there is still no build step.
+Templates are `.ets` (EJS whose tags hold TypeScript) and code files (`+config`, `+middleware`, and the `.ts` beside a page or serving an endpoint) are `.ts`; Pages strips the types when it loads them, so there is still no build step.
 
 ```bash
 pocketone pages create myapp --starter daisyui-docs
@@ -42869,9 +42903,9 @@ Its files are in [`ext/pages/starters/datastar`](https://github.com/pocketonehq/
 
 ![The Datastar kit: chat rooms with a message sent, and a live counter](https://pocketone.dev/docs/screenshots/starter-datastar.jpg)
 
-A realtime chat with rooms and a live counter, built with [Datastar](https://data-star.dev/) and the Datastar add-on (`_private/datastar.js`, listed as `'datastar'`) and the built-in `realtime` plugin. Datastar's `@post` calls (the button, or Enter in the message box) hit `/fragments/chat` and `/fragments/count`, sending the page's signals as the JSON body that `ctx.datastar.signals()` reads. `/fragments/count` has a template: because the request carries `Datastar-Request: true`, the rendered page comes back as a `patchElements` event. `/fragments/chat` is a `+page.ts` with no template, so its `post()` builds the response itself. A chat message is also broadcast to every tab in the same room with `ctx.datastar.realtime.patchElements`, and `ctx.datastar.patchSignals` clears the input. Open two tabs to watch it update.
+A realtime chat with rooms and a live counter, built with [Datastar](https://data-star.dev/) and the Datastar add-on (`_private/datastar.js`, listed as `'datastar'`) and the built-in `realtime` plugin. Datastar's `@post` calls (the button, or Enter in the message box) hit `/fragments/chat` and `/fragments/count`, sending the page's signals as the JSON body that `ctx.datastar.signals()` reads. `/fragments/count` has a template: because the request carries `Datastar-Request: true`, the rendered page comes back as a `patchElements` event. `/fragments/chat` is an endpoint (`fragments/chat.ts`, no template), so its `post()` builds the response itself. A chat message is also broadcast to every tab in the same room with `ctx.datastar.realtime.patchElements`, and `ctx.datastar.patchSignals` clears the input. Open two tabs to watch it update.
 
-Templates are `.ets` (EJS whose tags hold TypeScript) and code files (`+config`, `+page`, `+api`, `+middleware`) are `.ts`; Pages strips the types when it loads them, so there is still no build step.
+Templates are `.ets` (EJS whose tags hold TypeScript) and code files (`+config`, `+middleware`, and the `.ts` beside a page or serving an endpoint) are `.ts`; Pages strips the types when it loads them, so there is still no build step.
 
 ```bash
 pocketone pages create myapp --starter datastar
@@ -42890,7 +42924,7 @@ pb_pages/
   (site)/index.ets               the lobby
   (site)/[roomName]/index.ets    a chat room
   _private/                      the chat, message and counter partials, and datastar.js
-  fragments/chat/+page.ts        posts a message and patches every tab in the room
+  fragments/chat.ts              posts a message and patches every tab in the room
   fragments/count/               the counter, returned as a patchElements event
 ```
 
@@ -42909,7 +42943,7 @@ Its files are in [`ext/pages/starters/htmx`](https://github.com/pocketonehq/pock
 
 A realtime demo with [htmx](https://htmx.org/) and the built-in `realtime` plugin. The chat form posts to `/fragments/chat`, which renders the message with a private partial and broadcasts it on the `chat` topic; two connections on the page receive it over PocketBase realtime (`pocketbase-htmx-ext-sse`). The counter button swaps in the HTML fragment from `/fragments/count`. Fragment routes live in `pb_pages/fragments/`, outside the `(site)` group, so no layout wraps them (`/api/*` belongs to PocketBase).
 
-Templates are `.ets` (EJS whose tags hold TypeScript) and code files (`+config`, `+page`, `+api`, `+middleware`) are `.ts`; Pages strips the types when it loads them, so there is still no build step.
+Templates are `.ets` (EJS whose tags hold TypeScript) and code files (`+config`, `+middleware`, and the `.ts` beside a page or serving an endpoint) are `.ts`; Pages strips the types when it loads them, so there is still no build step.
 
 ```bash
 pocketone pages create myapp --starter htmx
@@ -42946,7 +42980,7 @@ Its files are in [`ext/pages/starters/minimal`](https://github.com/pocketonehq/p
 
 A single `index.ets` page: a Tailwind (CDN) splash screen with no layout, no config and no build step. The smallest possible PocketOne app.
 
-`.ets` is EJS whose tags hold TypeScript; Pages strips the types when it loads the page. Code files you add (`+page`, `+api`, `+middleware`, `+config`) are `.ts`.
+`.ets` is EJS whose tags hold TypeScript; Pages strips the types when it loads the page. Code files you add (a page's `.ts`, endpoints, `+middleware`, `+config`) are `.ts`.
 
 ```bash
 pocketone pages create myapp --starter minimal
@@ -42979,7 +43013,7 @@ Its files are in [`ext/pages/starters/mvp`](https://github.com/pocketonehq/pocke
 
 One page styled with [MVP.css](https://andybrewer.github.io/mvp/): classless CSS that makes plain semantic HTML look good, for a minimal, responsive, mobile-friendly site with no build step.
 
-`.ets` is EJS whose tags hold TypeScript; Pages strips the types when it loads the page. Code files you add (`+page`, `+api`, `+middleware`, `+config`) are `.ts`.
+`.ets` is EJS whose tags hold TypeScript; Pages strips the types when it loads the page. Code files you add (a page's `.ts`, endpoints, `+middleware`, `+config`) are `.ts`.
 
 ```bash
 pocketone pages create myapp --starter mvp
@@ -43010,7 +43044,7 @@ Its files are in [`ext/pages/starters/tsx`](https://github.com/pocketonehq/pocke
 
 ![The TSX kit: a page built from components](https://pocketone.dev/docs/screenshots/starter-tsx.jpg)
 
-Server-rendered components: a `+layout.tsx`, an `index.tsx` page built from a `_private/Feature.tsx` component, and a `+page.ts` that loads the page's data. TSX renders straight to HTML on the server (no React, no client runtime, no hydration), and Pages strips the types when it loads each file, so there is no build step. Pick one template style per app: TSX here, or `.ets` in the other kits.
+Server-rendered components: a `+layout.tsx`, an `index.tsx` page built from a `_private/Feature.tsx` component, and `index.ts` beside it, which loads the page's data. TSX renders straight to HTML on the server (no React, no client runtime, no hydration), and Pages strips the types when it loads each file, so there is no build step. Pick one template style per app: TSX here, or `.ets` in the other kits.
 
 ```bash
 pocketone pages create myapp --starter tsx
@@ -43026,7 +43060,7 @@ Then open http://127.0.0.1:8090.
 ```
 pb_pages/
   +layout.tsx
-  +page.ts                       loads the page's data
+  index.ts                       loads the page's data
   index.tsx
   _private/Feature.tsx           a component
 ```
@@ -43154,7 +43188,7 @@ zig cc -target wasm32-wasi -std=c23 -Os -s -Wl,-z,stack-size=1048576 \
 An API route that saves a post with its summary and word count:
 
 ```ts
-// pb_pages/posts/+api.ts
+// pb_pages/posts.ts
 export async function post(ctx: any) {
   const { body } = ctx.req.body()
   const out = await $wasm.run.async<{ text: string; words: number }>("summary", String(body ?? "")) // a string goes in as it is
@@ -43238,7 +43272,7 @@ GOOS=wasip1 GOARCH=wasm go build -o pb_hooks/summary.pb.wasm .
 An API route that saves a post with its summary:
 
 ```ts
-// pb_pages/posts/+api.ts
+// pb_pages/posts.ts
 export async function post(ctx: any) {
   const { title, body } = ctx.req.body()
   const out = await $wasm.run.async<{ text: string }>("summary", { title, body })
@@ -43545,7 +43579,7 @@ The manifest says `"language": "AssemblyScript"`, since the module doesn't say i
 An API route that saves a post with its summary and word count:
 
 ```ts
-// pb_pages/posts/+api.ts
+// pb_pages/posts.ts
 export async function post(ctx: any) {
   const { body } = ctx.req.body()
   const out = await $wasm.run.async<{ text: string; words: number }>("summary", String(body ?? "")) // a string goes in as it is
@@ -43798,7 +43832,7 @@ It's 283 KB. Its first call compiles it (about 80 ms); later calls load it from 
 Give the collection a JSON field for the state: here, a `sensors` collection with `name` (text) and `stats` (JSON). An API route takes new readings, runs them through the module with the sensor's state, and saves the new state on the record:
 
 ```ts
-// pb_pages/sensors/[id]/readings/+api.ts
+// pb_pages/sensors/[id]/readings.ts
 // POST /sensors/{id}/readings {"values": [21.5, 22]}: adds readings to the sensor's running statistics
 type Stats = { count: number; mean: number; m2: number; min: number; max: number } // the module's state
 type Report = { count: number; mean: number; stddev: number; min: number; max: number }
@@ -43885,7 +43919,7 @@ These came with the extension, to answer real questions. Each is kept built besi
 [`edifact-orders-rust`](https://github.com/pocketonehq/pocketone/blob/main/ext/wasm/example/edifact-orders-rust/src/main.rs) reads an EDIFACT ORDERS message (raw text, as trading partners send it) into an order: parties, lines, prices and allowances, with the message's own counts checked. [`order-xml`](https://github.com/pocketonehq/pocketone/blob/main/ext/wasm/example/order-xml/src/main.rs) reads the same order from XML into the same JSON. So one route takes either format and stores one shape:
 
 ```ts
-// pb_pages/orders/+api.ts: the raw message is the request body, as text: a string goes in as it is
+// pb_pages/orders.ts: the raw message is the request body, as text: a string goes in as it is
 export async function post(ctx: any) {
   const raw = toString(ctx.req.event.request.body)
   const module = raw.trimStart().startsWith("<") ? "order-xml" : "edifact-orders-rust"
@@ -43903,7 +43937,7 @@ export async function post(ctx: any) {
 
 ```ts
 type Data = { data: string } // what each waflows function gives: bytes as base64
-const body = ctx.req.body() // in the endpoint's +api.ts post handler
+const body = ctx.req.body() // in the endpoint's post handler
 const { data: key } = await $wasm.call.async<Data>("waflows", "rsa-decrypt", { privateKey, data: body.encrypted_aes_key })
 const { data: request } = await $wasm.call.async<Data>("waflows", "gcm-open", { key, iv: body.initial_vector, data: body.encrypted_flow_data })
 // ... answer the request, then seal the answer with the flipped IV
@@ -43936,7 +43970,7 @@ tables, strikethrough and task lists on.
 A `posts` collection with a `body` text field (the Markdown) and an `html` text field:
 
 ```ts
-// pb_pages/posts/+api.ts: posts are written in Markdown; html is what your pages show
+// pb_pages/posts.ts: posts are written in Markdown; html is what your pages show
 async function renderPost(markdown: string): Promise<string> {
   const html = (await $wasm.run.async<string | null>("markdown", markdown || "")) ?? ""
   return (await $wasm.run.async<string | null>("sanitize-html", html)) ?? "" // users wrote it: keep only safe HTML
@@ -44016,7 +44050,7 @@ does (html5ever) and keeps only an allow list of tags and attributes. Links get 
 A `comments` collection with an `html` text field, cleaned before it's saved:
 
 ```ts
-// pb_pages/comments/+api.ts: comments arrive as HTML from a rich text editor
+// pb_pages/comments.ts: comments arrive as HTML from a rich text editor
 export async function post(ctx: any) {
   if (!ctx.auth) throw ctx.httpError(401, "Sign in to comment")
   const { html } = ctx.req.body()
@@ -44096,7 +44130,7 @@ A `pages` collection with a `body` text field, and a `revisions` collection with
 An API route saves an edit of a page's body (`PUT` with `{"body": "..."}`) and keeps it as a diff:
 
 ```ts
-// pb_pages/wiki/[id]/+api.ts: every edit of a page's body is kept as a diff in revisions
+// pb_pages/wiki/[id].ts: every edit of a page's body is kept as a diff in revisions
 interface Diff {
   changed: boolean
   unified: string
@@ -44186,7 +44220,7 @@ A `photos` collection with two file fields, `image` (what the user uploads) and 
 upload (a multipart form with an `image` field) and saves the photo with its thumbnail:
 
 ```ts
-// pb_pages/photos/+api.ts: an uploaded photo is saved with a 256 px PNG thumbnail in its thumb field
+// pb_pages/photos.ts: an uploaded photo is saved with a 256 px PNG thumbnail in its thumb field
 export async function post(ctx: any) {
   if (!ctx.auth) throw ctx.httpError(401, "Sign in to upload")
   const [file] = ctx.req.files("image")
@@ -44269,7 +44303,7 @@ An API route that gives a ticket's owner their ticket's QR code. `tickets` has a
 relation to `users`:
 
 ```ts
-// pb_pages/tickets/[id]/qr/+api.ts: a ticket's QR code, for its owner, as SVG
+// pb_pages/tickets/[id]/qr.ts: a ticket's QR code, for its owner, as SVG
 export async function get(ctx: any) {
   if (!ctx.auth) throw ctx.httpError(401, "Sign in first")
   const ticket = ctx.app.findRecordById("tickets", ctx.params.id)
@@ -44333,7 +44367,7 @@ ends, Excel's UTF-8 BOM) and gives back one JSON object per row, keyed by the he
 An API route a superuser posts a file to, which imports it into `contacts` (`name` text, required; `email` email):
 
 ```ts
-// pb_pages/import/contacts/+api.ts: superusers import contacts from a CSV file (the request body)
+// pb_pages/import/contacts.ts: superusers import contacts from a CSV file (the request body)
 interface CsvImport {
   rows: Array<{ name: string; email: string }> // one object per row, keyed by the header line
   errors: Array<{ line: number; message: string }>
@@ -44464,12 +44498,12 @@ pb_admin_ext/
   bedtime/main.js      the tuning screen: Settings → Bedtime Story
 pb_pages/
   index.ets            ask for a story, or Inspire me; stories told, most listened to first
-  inspire/+api.ts      POST /inspire: a topic no story has covered yet
-  view/+api.ts         POST /view: counts a listen
-  story/+api.ts        POST /story: saves the record, starts making the story
+  inspire.ts           POST /inspire: a topic no story has covered yet
+  view.ts              POST /view: counts a listen
+  story.ts             POST /story: saves the record, starts making the story
   story/[id].ets       progress while it's made, then the player
-  admin/tuning/+api.ts GET/POST /admin/tuning: the tuning (superusers only)
-  admin/sample/+api.ts POST /admin/sample: tries a piece with unsaved tuning (superusers only)
+  admin/tuning.ts      GET/POST /admin/tuning: the tuning (superusers only)
+  admin/sample.ts      POST /admin/sample: tries a piece with unsaved tuning (superusers only)
   _private/story.ts    the default tuning, the limits and the six steps
 ```
 
@@ -44603,8 +44637,8 @@ routerAdd("GET", "/api/orders/{id}/total", async (e) => {
 ```
 
 **[Pages in TSX, TypeScript or EJS](https://pocketone.dev/docs/features/sites).** Put a `.tsx`, `.jsx`, `.ejs` or `.md` file in `pb_pages`
-and it's a server-rendered page, with your records a function call away. Components `import` each other, and `+page.ts`
-and `+api.ts` route files are TypeScript. Every part of a page can `await`: loaders, handlers, middleware, EJS tags and
+and it's a server-rendered page, with your records a function call away. Components `import` each other, and a page's
+code and endpoints are `.ts` files beside them. Every part of a page can `await`: loaders, handlers, middleware, EJS tags and
 `async` components, and sibling components render at the same time. esbuild is built into the binary: no Node, no
 `npm install`, no build step.
 
@@ -44679,7 +44713,7 @@ Source: https://pocketone.dev/docs/features/sites
 # Pages: sites in TSX, TypeScript or EJS
 
 Put a `.tsx`, `.jsx`, `.ejs` or `.md` file in a `pb_pages` folder next to `pb_data`, and your app serves it as a web
-page. Each file is a route. Components `import` each other, route files can be TypeScript (`+page.ts`, `+api.ts`), and
+page. Each file is a route. Components `import` each other, a `.ts` file runs (a page's code beside it, or an endpoint), and
 page code reads and writes your records directly. Every part of a page can `await`, and the app keeps serving other
 requests while it waits. This is Pages, built into PocketOne.
 
@@ -44731,7 +44765,7 @@ outside the JS VM, so the app serves other requests while a page waits.
   export default () => <p><Count collection="orders" /> orders, <Count collection="users" /> users</p>
   ```
 
-- **Loaders and handlers:** `load`, `get`, `post` and the rest in `+page.ts`, `+api.ts` handlers, and `+middleware`
+- **Loaders and handlers:** `load`, `get`, `post` and the rest in a page's `.ts` or an endpoint, and `+middleware`
   can be `async`.
 - **EJS:** a tag can `await`: `<% const n = await ctx.app.countRecords.async('orders') %>`.
 - **Sync stays free:** a page without `await` runs exactly as before.
@@ -44770,7 +44804,7 @@ To start from something bigger, `pocketone pages starters` lists the starter kit
 
 - **Files are routes:** `pb_pages/about.ejs` serves `/about`, and `pb_pages/blog/index.ejs` serves `/blog`.
 - **Templates:** TSX, JSX, EJS and Markdown, mixed freely (an EJS page can sit in a TSX layout), with layouts,
-  partials, middleware and JSON routes. Route files (`+page`, `+api`, `+middleware`) can be `.ts` or `.js`.
+  partials, middleware and JSON routes. A route's code is a `.ts` file (`about.ts` beside `about.ets`, or an endpoint like `feeds/rss.ts`); `.js` files are served to the browser.
 - **Leftovers go on:** a URL no page matches goes on to `pb_public`, then to PocketBase. URLs under `/api/` and `/_/`
   always belong to PocketBase.
 - **Errors:** in dev mode you get detailed error pages. Otherwise visitors see a plain error page and the details go to

@@ -293,7 +293,7 @@
       "needs": "render"
     },
     {
-      "name": "+api.js sends JSON; query values are strings",
+      "name": "an endpoint sends JSON; query values are strings",
       "request": {
         "method": "GET",
         "path": "/feeds/latest?q=x"

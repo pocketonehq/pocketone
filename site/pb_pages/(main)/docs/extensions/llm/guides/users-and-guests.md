@@ -12,7 +12,7 @@ Page code says so with one change: call the model through `$llm.for(ctx)` instea
 the call's context, carrying the subject `llm.SubjectOf(app, e)` works out from the request.
 
 ```ts
-// pb_pages/ask/+api.ts
+// pb_pages/ask.ts
 export async function post(ctx: pages.Context) {
   const { question } = ctx.req.body()
   const r: LlmTextAnswer = await $llm.for(ctx).text.completeAsync({ model: "vultr/glm-5.3", prompt: question })
@@ -118,7 +118,7 @@ code is `limit` and its message is written for the person who made the request (
 (used $0.10); it resets at 00:00 UTC", or your handler's own words), so the simplest handling is to show it:
 
 ```ts
-// pb_pages/ask/+api.ts
+// pb_pages/ask.ts
 export async function post(ctx: pages.Context) {
   const { question } = ctx.req.body()
   try {
@@ -147,7 +147,7 @@ A streamed answer fails the same way, before any text arrives. With server-sent 
 the page shows in place of the answer, as pocketone.dev's ask box does:
 
 ```ts
-// pb_pages/chat/+api.ts
+// pb_pages/chat.ts
 export async function post(ctx: pages.Context) {
   const { question } = ctx.req.body()
   const stream = ctx.res.sse()

@@ -36,4 +36,4 @@ pb_pages/
 pb_pages/docs/routing.md  -> "/docs/routing"
 ```
 
-The extension is always dropped from the URL. To add data or handle forms, put a `+page.ts` next to the page; see [Loading Data](https://pocketone.dev/docs/extensions/pages/loading-data).
+The extension is always dropped from the URL. To add data or handle forms, put a `.ts` file with the same name next to the page (`about.ts` beside `about.ets`); see [Loading Data](https://pocketone.dev/docs/extensions/pages/loading-data).

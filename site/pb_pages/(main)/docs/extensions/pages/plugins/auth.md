@@ -64,7 +64,7 @@ A bad or expired token throws an error.
 ## Example
 
 ```ts
-// pb_pages/login/+page.ts
+// pb_pages/login.ts
 module.exports = {
   post(ctx) {
     const { email, password } = ctx.req.body()
@@ -79,7 +79,7 @@ module.exports = {
 ```
 
 ```ts
-// pb_pages/logout/+page.ts
+// pb_pages/logout.ts
 module.exports = {
   post(ctx) {
     ctx.session.signOut()

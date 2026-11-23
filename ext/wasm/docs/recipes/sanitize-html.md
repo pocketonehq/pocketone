@@ -17,7 +17,7 @@ does (html5ever) and keeps only an allow list of tags and attributes. Links get 
 A `comments` collection with an `html` text field, cleaned before it's saved:
 
 ```ts
-// pb_pages/comments/+api.ts: comments arrive as HTML from a rich text editor
+// pb_pages/comments.ts: comments arrive as HTML from a rich text editor
 export async function post(ctx: any) {
   if (!ctx.auth) throw ctx.httpError(401, "Sign in to comment")
   const { html } = ctx.req.body()

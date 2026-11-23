@@ -74,7 +74,7 @@ The manifest says `"language": "AssemblyScript"`, since the module doesn't say i
 An API route that saves a post with its summary and word count:
 
 ```ts
-// pb_pages/posts/+api.ts
+// pb_pages/posts.ts
 export async function post(ctx: any) {
   const { body } = ctx.req.body()
   const out = await $wasm.run.async<{ text: string; words: number }>("summary", String(body ?? "")) // a string goes in as it is

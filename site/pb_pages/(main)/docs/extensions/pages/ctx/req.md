@@ -38,7 +38,7 @@ Query values and cookies are strings unless you ask for JSON. Nothing is parsed 
 `body()` parses JSON, `application/x-www-form-urlencoded` and `multipart/form-data`:
 
 ```ts
-// pb_pages/contact/+page.ts
+// pb_pages/contact.ts
 module.exports = {
   post(ctx) {
     const { email, message } = ctx.req.body()

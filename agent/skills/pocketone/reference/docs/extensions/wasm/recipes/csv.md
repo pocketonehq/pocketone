@@ -13,7 +13,7 @@ ends, Excel's UTF-8 BOM) and gives back one JSON object per row, keyed by the he
 An API route a superuser posts a file to, which imports it into `contacts` (`name` text, required; `email` email):
 
 ```ts
-// pb_pages/import/contacts/+api.ts: superusers import contacts from a CSV file (the request body)
+// pb_pages/import/contacts.ts: superusers import contacts from a CSV file (the request body)
 interface CsvImport {
   rows: Array<{ name: string; email: string }> // one object per row, keyed by the header line
   errors: Array<{ line: number; message: string }>

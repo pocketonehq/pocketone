@@ -14,7 +14,7 @@ A `photos` collection with two file fields, `image` (what the user uploads) and 
 upload (a multipart form with an `image` field) and saves the photo with its thumbnail:
 
 ```ts
-// pb_pages/photos/+api.ts: an uploaded photo is saved with a 256 px PNG thumbnail in its thumb field
+// pb_pages/photos.ts: an uploaded photo is saved with a 256 px PNG thumbnail in its thumb field
 export async function post(ctx: any) {
   if (!ctx.auth) throw ctx.httpError(401, "Sign in to upload")
   const [file] = ctx.req.files("image")

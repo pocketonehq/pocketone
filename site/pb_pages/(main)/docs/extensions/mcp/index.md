@@ -205,7 +205,7 @@ What it adds to `pb_hooks` and page code: [MCP JavaScript API](/docs/reference/j
 | [OAuth](/docs/extensions/api-tokens/oauth) (in Tokens) | Signs MCP clients in. MCP points clients at it from the protected resource metadata, turns on its client self-registration, and makes tokens bound to `/mcp` never expire. Who may sign in comes from its `Collections` (default: superusers and every auth collection). |
 | [Tokens](/docs/extensions/api-tokens) | The access tokens are API tokens bound to `https://<host>/mcp` (RFC 8707): they work nowhere else, and are listed and revoked under Settings → API tokens. |
 | Your token scopes | On a full-access connection a tool call holds every scope you registered (except ones its collection can't hold): `$apiTokens.requireScope` guards pass, and `@request.headers.x_token_scope_<name>` is `"1"` in collection rules. On a connection limited to scopes it holds only those, and requests they don't cover are refused (see [Scopes](#scopes)). |
-| [Pages](/docs/extensions/pages/extension) | A `pb_pages` `+api.js` route is a REST endpoint like any other; declare its tool with `$mcp.addEndpoint`. |
+| [Pages](/docs/extensions/pages/extension) | A `pb_pages` endpoint (a `.ts` file with no template) is a REST endpoint like any other; declare its tool with `$mcp.addEndpoint`. |
 | [S3 Redirect](/docs/extensions/s3redirect) | `pb_download_file` follows its one redirect to storage. |
 | JS hooks | `$mcp` in `pb_hooks` (above). |
 

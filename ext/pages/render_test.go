@@ -79,7 +79,7 @@ func TestMiddlewareMustCallNext(t *testing.T) {
 
 func TestModuleRequireRelative(t *testing.T) {
 	dir := writeTree(t, map[string]string{
-		"+page.js":           "const h = require('./_private/helper'); module.exports = { load(ctx) { return { v: h.twice(21) } } }",
+		"index.ts":           "const h = require('./_private/helper'); module.exports = { load(ctx) { return { v: h.twice(21) } } }",
 		"_private/helper.js": "exports.twice = (n) => n * 2",
 		"index.ejs":          "<%= data.v %>",
 	})
@@ -131,7 +131,7 @@ func TestAddonCopiesMatch(t *testing.T) {
 
 func TestSSE(t *testing.T) {
 	dir := writeTree(t, map[string]string{
-		"stream/+api.js": "module.exports = { get(ctx) { const s = ctx.res.sse(); s.send('hello', 'a\\nb', { id: 7 }); s.send('obj', { x: 1 }); s.comment('ping') } }",
+		"stream.ts": "module.exports = { get(ctx) { const s = ctx.res.sse(); s.send('hello', 'a\\nb', { id: 7 }); s.send('obj', { x: 1 }); s.comment('ping') } }",
 	})
 	h, _ := newServer(t, dir)
 	rec := httptest.NewRecorder()
@@ -149,7 +149,7 @@ func TestDatastarRequestGetsAPatch(t *testing.T) {
 		"_private/datastar.js": string(addon),
 		"+layout.ejs":          "<html><%- slot() %></html>",
 		"index.ejs":            "<div id=\"x\">\nhi\n</div>",
-		"sig/+api.js":          "module.exports = { get(ctx) { const s = ctx.datastar.signals(); ctx.datastar.patchSignals({ seen: s.n }) } }",
+		"sig.ts":               "module.exports = { get(ctx) { const s = ctx.datastar.signals(); ctx.datastar.patchSignals({ seen: s.n }) } }",
 	})
 	h, _ := newServer(t, dir)
 	req := httptest.NewRequest("GET", "/", nil)
@@ -177,14 +177,14 @@ func TestDatastarRequestGetsAPatch(t *testing.T) {
 func TestAuthSession(t *testing.T) {
 	dir := writeTree(t, map[string]string{
 		"+config.js": "module.exports = { plugins: ['auth'] }",
-		"login/+api.js": `module.exports = { post(ctx) {
+		"login.ts": `module.exports = { post(ctx) {
 			const b = ctx.req.body()
 			try { ctx.session.signInWithPassword(b.email, b.password) } catch (e) { return ctx.res.json(401, { error: String(e) }) }
 			return ctx.res.json({ id: ctx.auth.id, email: ctx.auth.email() })
 		} }`,
-		"me/+api.js":      "module.exports = { get(ctx) { return ctx.res.json({ id: ctx.auth ? ctx.auth.id : null }) } }",
-		"logout/+api.js":  "module.exports = { post(ctx) { ctx.session.signOut(); return ctx.res.json({ id: ctx.auth }) } }",
-		"methods/+api.js": "module.exports = { get(ctx) { return ctx.res.json(ctx.session.authMethods()) } }",
+		"me.ts":      "module.exports = { get(ctx) { return ctx.res.json({ id: ctx.auth ? ctx.auth.id : null }) } }",
+		"logout.ts":  "module.exports = { post(ctx) { ctx.session.signOut(); return ctx.res.json({ id: ctx.auth }) } }",
+		"methods.ts": "module.exports = { get(ctx) { return ctx.res.json(ctx.session.authMethods()) } }",
 	})
 	h, p := newServer(t, dir)
 	setMFA(t, p, false, "")
@@ -241,8 +241,8 @@ func TestAuthSession(t *testing.T) {
 
 func TestRealtimeSend(t *testing.T) {
 	dir := writeTree(t, map[string]string{
-		"+config.js":   "module.exports = { plugins: ['realtime'] }",
-		"send/+api.js": "module.exports = { post(ctx) { ctx.realtime.send('chat', '<p>hi</p>', { filter: (c) => c.get('room') === 'a' }); return ctx.res.json({ ok: true }) } }",
+		"+config.js": "module.exports = { plugins: ['realtime'] }",
+		"send.ts":    "module.exports = { post(ctx) { ctx.realtime.send('chat', '<p>hi</p>', { filter: (c) => c.get('room') === 'a' }); return ctx.res.json({ ok: true }) } }",
 	})
 	h, p := newServer(t, dir)
 	broker := p.app.SubscriptionsBroker()
@@ -282,7 +282,7 @@ func TestRealtimeSend(t *testing.T) {
 func TestJSSDKAppliesAPIRules(t *testing.T) {
 	dir := writeTree(t, map[string]string{
 		"+config.js": "module.exports = { plugins: ['auth'] }",
-		"check/+api.js": `module.exports = { get(ctx) {
+		"check.ts": `module.exports = { get(ctx) {
 			const guest = ctx.pb().collection('users').getList(1, 50)
 			ctx.session.signInWithPassword('test@example.com', '1234567890')
 			const mine = ctx.pb().collection('users').getList(1, 50)

@@ -67,7 +67,7 @@ return you to where you were scrolled.
 ```
 
 ```ts
-// pb_pages/counter/+page.ts
+// pb_pages/counter/index.ts
 module.exports = {
   post(ctx) {
     const count = (ctx.store('count') || 0) + 1

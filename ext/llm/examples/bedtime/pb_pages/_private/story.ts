@@ -11,7 +11,7 @@
 // The models, the narrator's voice, the prompts and the budget are the app's tuning: DEFAULT_TUNING below, with
 // whatever a superuser saved on /admin on top (the `settings` collection). Every $llm call is awaited, so the work runs
 // off the app's JS VM: the app keeps serving pages (and this story's own progress polls) while the models work. The
-// request that starts a story doesn't wait for it; see story/+api.ts.
+// request that starts a story doesn't wait for it; see story.ts.
 
 /** A story's length in minutes, and how many pictures it gets, when the form doesn't say. */
 export const DEFAULTS = { minutes: 1, pictures: 3 }

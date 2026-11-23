@@ -17,7 +17,7 @@ tables, strikethrough and task lists on.
 A `posts` collection with a `body` text field (the Markdown) and an `html` text field:
 
 ```ts
-// pb_pages/posts/+api.ts: posts are written in Markdown; html is what your pages show
+// pb_pages/posts.ts: posts are written in Markdown; html is what your pages show
 async function renderPost(markdown: string): Promise<string> {
   const html = (await $wasm.run.async<string | null>("markdown", markdown || "")) ?? ""
   return (await $wasm.run.async<string | null>("sanitize-html", html)) ?? "" // users wrote it: keep only safe HTML

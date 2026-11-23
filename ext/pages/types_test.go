@@ -25,7 +25,7 @@ func TestTypesInAppTypesFile(t *testing.T) {
 	}
 }
 
-// tsc type-checks page code written against the declarations: middleware, handlers, +api, +config with a JS plugin,
+// tsc type-checks page code written against the declarations: middleware, page code, endpoints, +config with a JS plugin,
 // a TSX page and a partial with typed locals, an augmented ctx.data. Skipped when tsc isn't installed.
 func TestTypesCheckWithTSC(t *testing.T) {
 	files := map[string]string{
@@ -51,7 +51,7 @@ func TestTypesCheckWithTSC(t *testing.T) {
 			}
 			export default mw
 		`,
-		"pb_pages/products/[id]/+page.ts": `
+		"pb_pages/products/[id]/index.ts": `
 			export default {
 				async load(ctx) {
 					ctx.data.product = await ctx.app.findRecordById.async("products", ctx.params.id)
@@ -69,7 +69,7 @@ func TestTypesCheckWithTSC(t *testing.T) {
 				},
 			} satisfies pages.Handlers
 		`,
-		"pb_pages/feeds/+api.ts": `
+		"pb_pages/feeds.ts": `
 			export default {
 				get(ctx) {
 					if (ctx.req.header("x-key") !== ctx.env("FEED_KEY")) throw ctx.httpError(403, "no")

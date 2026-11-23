@@ -85,7 +85,7 @@ What `ctx.res.sse()` returns.
 | Member | Type | |
 |---|---|---|
 | `path` | `string` | The URL pattern without groups: `/products/[id]`. |
-| `name` | `string` | The file name without its extension: `[id]`, `index`, `+api`. |
+| `name` | `string` | The file name without its extension: `[id]`, `index`. |
 | `file` | `string` | The file relative to pb_pages, groups included. |
 
 ### pages.Log
@@ -173,7 +173,7 @@ The request context, passed to middleware, handlers, templates, components and p
 | `store()` | `(name: string, value: T): T` | Sets a value in the app's in-memory store; returns it. |
 | `flash()` | `(): T \| undefined` | The one-time message set by `ctx.res.redirect(..., { flash })`, or `undefined`. |
 | `pb()` | `(): any` | A PocketBase JS SDK client acting as the signed-in user (or a guest), in-process. |
-| `httpError()` | `(status: number, message?: string): Error` | An error to throw: sends `status` with `message` (JSON in a +api route). |
+| `httpError()` | `(status: number, message?: string): Error` | An error to throw: sends `status` with `message` (JSON from an endpoint, unless the request asks for HTML). |
 | `error?` | `{ status: number; message: string }` | Set while `+error` renders. |
 | `session` | `Session` | Needs the `auth` plugin in +config. |
 | `realtime` | `Realtime` | Needs the `realtime` plugin in +config. |
@@ -194,7 +194,7 @@ type pages.Handler = (ctx: Context) => HandlerResult | Promise<HandlerResult>;
 
 ### pages.Handlers
 
-The exports of a `+page.js` or `+api.js` (all optional).
+The exports of a route's `.ts` file: a page's code, or an endpoint (all optional).
 
 | Member | Type | |
 |---|---|---|

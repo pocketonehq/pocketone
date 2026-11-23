@@ -32,7 +32,7 @@ curl -L -o pb_hooks/markdown.pb.wasm \
 Add an API route that saves a note with its Markdown rendered to HTML:
 
 ```ts
-// pb_pages/notes/+api.ts
+// pb_pages/notes.ts
 export async function post(ctx: any) {
   const { body } = ctx.req.body()
   const note = new Record(ctx.app.findCollectionByNameOrId("notes"))
@@ -89,7 +89,7 @@ tinygo build -target=wasip1 -opt=z -no-debug -scheduler=none -o pb_hooks/hello.p
 Call it from an API route:
 
 ```ts
-// pb_pages/hello/[name]/+api.ts
+// pb_pages/hello/[name].ts
 export async function get(ctx: any) {
   const out = await $wasm.run.async<{ greeting: string }>("hello", { name: ctx.params.name })
   return ctx.res.json(out)

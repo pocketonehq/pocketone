@@ -37,7 +37,7 @@ each returns its result and an error.
 its current window, the tightest first:
 
 ```ts
-// pb_pages/ask/+page.ts: "4 questions left today"
+// pb_pages/ask/index.ts, beside ask/index.ets: "4 questions left today"
 export function load(ctx: pages.Context) {
   const tightest = $llm.for(ctx).ledger.remaining()[0]
   return { left: tightest }

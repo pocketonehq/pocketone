@@ -2,7 +2,7 @@
 
 Multi-page app (MPA) auth with the built-in `auth` plugin: register, password, anonymous, OTP and OAuth2 login, logout, email verification (with a resend page), password reset by email, email change with confirmation, and a protected `/account` section (`account/+middleware.ts`). Sessions are a `pb_auth` cookie managed through `ctx.session.*`; the logged-in user is `ctx.auth`. The included migrations point PocketBase's mail at a local maildev and its email templates at this app's `/auth/confirm/{TOKEN}/...` pages.
 
-Templates are `.ets` (EJS whose tags hold TypeScript) and code files (`+config`, `+page`, `+api`, `+middleware`) are `.ts`; Pages strips the types when it loads them, so there is still no build step.
+Templates are `.ets` (EJS whose tags hold TypeScript) and code files (`+config`, `+middleware`, and the `.ts` beside a page or serving an endpoint) are `.ts`; Pages strips the types when it loads them, so there is still no build step.
 
 ```bash
 pocketone pages create myapp --starter auth
@@ -31,7 +31,7 @@ pb_migrations/                   the users collection's auth settings and email 
 pb_pages/
   +config.ts                     turns on the auth plugin
   +layout.ets
-  auth/login/                    +page.ts signs in; _private/ holds one form per method (password, otp, oauth2, ...)
+  auth/login/                    index.ts signs in; _private/ holds one form per method (password, otp, oauth2, ...)
   auth/forgot/                   asks for a password reset email
   auth/confirm/[token]/          the pages the emails link to: verification, password reset, email change
   account/+middleware.ts         sends anyone not signed in to the login page

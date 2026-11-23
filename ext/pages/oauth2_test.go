@@ -44,9 +44,9 @@ func fakeOIDC(t *testing.T, sub, email string) (*httptest.Server, *url.Values) {
 func TestOAuth2SignIn(t *testing.T) {
 	dir := writeTree(t, map[string]string{
 		"+config.js":                   "module.exports = { plugins: ['auth'] }",
-		"auth/oauth/login/+page.js":    "module.exports = { get(ctx) { ctx.session.requestOAuth2('oidc') } }",
+		"auth/oauth/login/index.ts":    "module.exports = { get(ctx) { ctx.session.requestOAuth2('oidc') } }",
 		"auth/oauth/login/index.ejs":   "unused",
-		"auth/oauth/confirm/+page.js":  "module.exports = { get(ctx) { try { const r = ctx.session.signInWithOAuth2(ctx.req.query('state'), ctx.req.query('code')); ctx.data.isNew = r.meta.isNew } catch (e) { ctx.data.err = String(e) } } }",
+		"auth/oauth/confirm/index.ts":  "module.exports = { get(ctx) { try { const r = ctx.session.signInWithOAuth2(ctx.req.query('state'), ctx.req.query('code')); ctx.data.isNew = r.meta.isNew } catch (e) { ctx.data.err = String(e) } } }",
 		"auth/oauth/confirm/index.ejs": "<%= data.err ? 'ERR ' + data.err : 'OK ' + ctx.auth.email() + ' new=' + data.isNew %>",
 	})
 	h, p := newServer(t, dir)

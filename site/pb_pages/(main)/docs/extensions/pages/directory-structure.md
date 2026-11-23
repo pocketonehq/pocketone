@@ -25,9 +25,10 @@ myapp/
     assets/
       app.css
     products/
-      [id]/
-        +page.ts
-        index.ets
+      [id].ets
+      [id].ts
+    feeds/
+      latest.ts
 ```
 
 ## Special names
@@ -36,7 +37,7 @@ A file or folder name starting with one of these characters is never a URL:
 
 | Prefix | Meaning |
 |---|---|
-| `+` | Framework file: `+layout.ets` (or `+layout.tsx`), `+middleware.ts`, `+page.ts`, `+api.ts`, one of each per folder. `+config.ts`, `+error.ets` and `+404.ets` are allowed only at the top of `pb_pages`. Any other `+` name, any other extension (such as `+layout.md`), and a top-only file in a subfolder are errors at startup. |
+| `+` | Framework file: `+layout.ets` (or `+layout.tsx`) and `+middleware.ts`, one of each per folder. `+config.ts`, `+error.ets` and `+404.ets` are allowed only at the top of `pb_pages`. Any other `+` name, any other extension (such as `+layout.md`), and a top-only file in a subfolder are errors at startup. |
 | `_` | Private. `_private/` folders hold partials and modules for `include()` and `ctx.resolve()`. Other `_` names are ignored. |
 | `-` | Ignored (drafts, notes). |
 | `.` | Ignored (dotfiles), except a top-level `.well-known/`, which is served as static files (ACME challenges, `security.txt`, app links). |
@@ -49,7 +50,9 @@ A folder named `(name)` groups files without adding a URL segment: `(marketing)/
 
 ## What else
 
-- Every other file is a [static file](/docs/extensions/pages/static-content), served as-is.
+- A `.ts` file beside a template of the same name is that page's code (`products/[id].ts`); any other `.ts` is an
+  [endpoint](/docs/extensions/pages/api-routes) at its own URL (`feeds/latest.ts` serves `/feeds/latest`).
+- Every other file, `.js` included, is a [static file](/docs/extensions/pages/static-content), served as-is.
 - Page code can `require()` modules by name from `_private/` folders (nearest first), then `pb_pages/node_modules`, then
   `pb_hooks/node_modules` and the app folder's `node_modules`, then the app's usual module paths.
 - Pages' own file access (routes, static files, includes, assets) never leaves `pb_pages`.

@@ -379,10 +379,10 @@ Every page below in one file: https://pocketone.dev/llms-full.txt
 - [Creating a Page](https://pocketone.dev/docs/extensions/pages/creating-a-page): Create .ets and .md files in pb_pages to add pages, with index files and nested folders mapping to URLs.
 - [Directory Structure](https://pocketone.dev/docs/extensions/pages/directory-structure): How a pb_pages folder is organized, and the special +, _, - and . prefixes.
 - [File types](https://pocketone.dev/docs/extensions/pages/file-types): Which file extensions Pages runs, the two template styles (ETS and TSX), and the JavaScript versions that work the same way.
-- [Routing](https://pocketone.dev/docs/extensions/pages/routing): How files in pb_pages map to URLs: pages, [param] segments, groups, API routes, static files, and which route wins.
+- [Routing](https://pocketone.dev/docs/extensions/pages/routing): How files in pb_pages map to URLs: pages, page code and endpoints (.ts), [param] segments, groups, static files, and which route wins.
 - [Accessing Parameters](https://pocketone.dev/docs/extensions/pages/parameters): Read route parameters from [param] file and folder names with ctx.params, and query strings with ctx.req.query().
-- [Loading Data](https://pocketone.dev/docs/extensions/pages/loading-data): Load data inline in templates or in a +page.ts file with load and per-method handlers.
-- [API Routes and JSON](https://pocketone.dev/docs/extensions/pages/api-routes): Serve JSON and other non-HTML responses from +api.ts files and ctx.res.json.
+- [Loading Data](https://pocketone.dev/docs/extensions/pages/loading-data): Load data inline in templates or in the page's own .ts file with load and per-method handlers.
+- [API Routes and JSON](https://pocketone.dev/docs/extensions/pages/api-routes): Serve JSON and other non-HTML responses from a .ts file with no template, and ctx.res.json.
 
 ## Pages: Templating
 
@@ -454,7 +454,7 @@ Every page below in one file: https://pocketone.dev/llms-full.txt
 - [htmx](https://pocketone.dev/docs/starters/htmx): A realtime demo with [htmx](https://htmx.org/) and the built-in `realtime` plugin.
 - [Minimal](https://pocketone.dev/docs/starters/minimal): A single `index.ets` page: a Tailwind (CDN) splash screen with no layout, no config and no build step.
 - [MVP.css](https://pocketone.dev/docs/starters/mvp): One page styled with [MVP.css](https://andybrewer.github.io/mvp/): classless CSS that makes plain semantic HTML look good, for a minimal, responsive, mobile-friendly site with no build step.
-- [TSX](https://pocketone.dev/docs/starters/tsx): Server-rendered components: a `+layout.tsx`, an `index.tsx` page built from a `_private/Feature.tsx` component, and a `+page.ts` that loads the page's data.
+- [TSX](https://pocketone.dev/docs/starters/tsx): Server-rendered components: a `+layout.tsx`, an `index.tsx` page built from a `_private/Feature.tsx` component, and `index.ts` beside it, which loads the page's data.
 
 ## WASM: Languages
 

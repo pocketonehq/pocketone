@@ -4,7 +4,7 @@
 Keep API keys, passwords and other secrets in environment variables, and read them with `ctx.env(name)`. It returns `''` when the variable is unset.
 
 ```ts
-// pb_pages/checkout/+page.ts
+// pb_pages/checkout.ts
 module.exports = {
   post(ctx) {
     const key = ctx.env('STRIPE_SECRET_KEY')

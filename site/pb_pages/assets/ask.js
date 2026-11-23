@@ -1,5 +1,5 @@
 // The ask box: type a question, press Enter, get a short answer citing the docs pages it came from (POST /ask,
-// pb_pages/ask/+api.ts, as server-sent events). The pages arrive first, then the answer as it's written; [n] in the
+// pb_pages/ask.ts, as server-sent events). The pages arrive first, then the answer as it's written; [n] in the
 // answer links to passage n. Open with the header button, "/" or Cmd/Ctrl-K.
 ;(() => {
   const dialog = document.getElementById('search')

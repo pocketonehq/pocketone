@@ -13,8 +13,8 @@ with esbuild built into the binary; it never checks them.
 
 ## Code
 
-`+page.ts`, `+api.ts`, `+middleware.ts`, `+config.ts` and the modules in `_private/` are TypeScript files. They export
-functions and objects, and never produce HTML themselves. To check their types with your editor or `tsc`, see
+A route's `.ts` (a page's code, or an endpoint), `+middleware.ts`, `+config.ts` and the modules in `_private/` are
+TypeScript files. They export functions and objects, and never produce HTML themselves. To check their types with your editor or `tsc`, see
 [TypeScript](/docs/extensions/pages/typescript).
 
 ## Templates: pick one style
@@ -41,8 +41,8 @@ plain JavaScript inside, as a small escape hatch in content.
 
 ## JavaScript works too
 
-Every TypeScript file type has a JavaScript twin that behaves the same, without types. Rename a file and nothing else
-changes:
+Templates, `+middleware`, `+config` and `_private/` modules have JavaScript twins that behave the same, without
+types. Rename a file and nothing else changes:
 
 | TypeScript | JavaScript |
 |---|---|
@@ -50,13 +50,16 @@ changes:
 | `.ets` | `.ejs` |
 | `.tsx` | `.jsx` |
 
-Apps written for [PocketPages 0.x](/docs/extensions/pages/moving-from-0x) use `.js` and `.ejs`, and keep doing so. A folder can't have two
+A route's code is the one exception: it is always `.ts`, because a `.js` file on a route path is a browser script,
+served as-is. Apps written for [PocketPages 0.x](/docs/extensions/pages/moving-from-0x) use `.js` and `.ejs`. A folder can't have two
 framework files with the same name, such as `+layout.ets` beside `+layout.ejs`.
 
 ## Everything else
 
 | File | What it is |
 |---|---|
+| `.ts` on a route path | A page's [code](/docs/extensions/pages/loading-data#page-code), or an [endpoint](/docs/extensions/pages/api-routes) |
+| `.d.ts` | Type declarations: neither served nor run |
 | `.md` | A [Markdown](/docs/extensions/pages/markdown) page or partial |
 | `.json` | Data you can `require` |
-| any other file | A [static file](/docs/extensions/pages/static-content), served as-is |
+| `.js` and any other file | A [static file](/docs/extensions/pages/static-content), served as-is |

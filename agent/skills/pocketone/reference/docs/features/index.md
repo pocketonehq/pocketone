@@ -29,8 +29,8 @@ routerAdd("GET", "/api/orders/{id}/total", async (e) => {
 ```
 
 **[Pages in TSX, TypeScript or EJS](https://pocketone.dev/docs/features/sites).** Put a `.tsx`, `.jsx`, `.ejs` or `.md` file in `pb_pages`
-and it's a server-rendered page, with your records a function call away. Components `import` each other, and `+page.ts`
-and `+api.ts` route files are TypeScript. Every part of a page can `await`: loaders, handlers, middleware, EJS tags and
+and it's a server-rendered page, with your records a function call away. Components `import` each other, and a page's
+code and endpoints are `.ts` files beside them. Every part of a page can `await`: loaders, handlers, middleware, EJS tags and
 `async` components, and sibling components render at the same time. esbuild is built into the binary: no Node, no
 `npm install`, no build step.
 

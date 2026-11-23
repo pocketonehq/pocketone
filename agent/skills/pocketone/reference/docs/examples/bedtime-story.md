@@ -17,12 +17,12 @@ pb_admin_ext/
   bedtime/main.js      the tuning screen: Settings → Bedtime Story
 pb_pages/
   index.ets            ask for a story, or Inspire me; stories told, most listened to first
-  inspire/+api.ts      POST /inspire: a topic no story has covered yet
-  view/+api.ts         POST /view: counts a listen
-  story/+api.ts        POST /story: saves the record, starts making the story
+  inspire.ts           POST /inspire: a topic no story has covered yet
+  view.ts              POST /view: counts a listen
+  story.ts             POST /story: saves the record, starts making the story
   story/[id].ets       progress while it's made, then the player
-  admin/tuning/+api.ts GET/POST /admin/tuning: the tuning (superusers only)
-  admin/sample/+api.ts POST /admin/sample: tries a piece with unsaved tuning (superusers only)
+  admin/tuning.ts      GET/POST /admin/tuning: the tuning (superusers only)
+  admin/sample.ts      POST /admin/sample: tries a piece with unsaved tuning (superusers only)
   _private/story.ts    the default tuning, the limits and the six steps
 ```
 

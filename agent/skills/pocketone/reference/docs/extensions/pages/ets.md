@@ -18,7 +18,7 @@ const products: Product[] = [{ name: 'Widget', cents: 1999 }] %>
 ```
 
 Nothing checks the types inside an `.ets` file, your editor included: editors don't know `.ets` yet, so associate it
-with EJS for highlighting. For checked types, keep logic in a `+page.ts` or a `_private/` module (see
+with EJS for highlighting. For checked types, keep logic in the page's `.ts` or a `_private/` module (see
 [TypeScript](https://pocketone.dev/docs/extensions/pages/typescript)).
 
 What you write is what the browser gets, with the tags filled in. ETS is the template style these docs use

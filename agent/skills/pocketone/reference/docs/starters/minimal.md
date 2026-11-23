@@ -7,7 +7,7 @@ Its files are in [`ext/pages/starters/minimal`](https://github.com/pocketonehq/p
 
 A single `index.ets` page: a Tailwind (CDN) splash screen with no layout, no config and no build step. The smallest possible PocketOne app.
 
-`.ets` is EJS whose tags hold TypeScript; Pages strips the types when it loads the page. Code files you add (`+page`, `+api`, `+middleware`, `+config`) are `.ts`.
+`.ets` is EJS whose tags hold TypeScript; Pages strips the types when it loads the page. Code files you add (a page's `.ts`, endpoints, `+middleware`, `+config`) are `.ts`.
 
 ```bash
 pocketone pages create myapp --starter minimal

@@ -65,7 +65,7 @@ It's 283 KB. Its first call compiles it (about 80 ms); later calls load it from 
 Give the collection a JSON field for the state: here, a `sensors` collection with `name` (text) and `stats` (JSON). An API route takes new readings, runs them through the module with the sensor's state, and saves the new state on the record:
 
 ```ts
-// pb_pages/sensors/[id]/readings/+api.ts
+// pb_pages/sensors/[id]/readings.ts
 // POST /sensors/{id}/readings {"values": [21.5, 22]}: adds readings to the sensor's running statistics
 type Stats = { count: number; mean: number; m2: number; min: number; max: number } // the module's state
 type Report = { count: number; mean: number; stddev: number; min: number; max: number }

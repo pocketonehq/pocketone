@@ -1,6 +1,6 @@
 // The page driver: one call per request. Go passes a getter for `rt` (request primitives and the route); this loads
 // +config.js and its plugins, builds `ctx`, runs plugins' onRequest/extendContext, middleware (root first), the
-// folder's +page.js / +api.js handlers, the template and its layouts, and sends the response. See SPEC.md section 3.
+// route's .ts code (load, then the method's handler), the template and its layouts, and sends the response. See SPEC.md section 3.
 // Templates, modules and components are called from here, not from Go, so JS values and exceptions stay as they are;
 // Go only finds, compiles and caches them (rt.template, rt.module, ...).
 (function (getRT) {
@@ -238,7 +238,7 @@
       onExtendContextApi: 'use extendContext(ctx)',
       onRender: 'use transform({ html, ctx, file })',
       onResponse: 'use transform, or ctx.res in onRequest',
-      handles: 'add a page or +api.js for the path instead',
+      handles: 'add a page or a .ts endpoint for the path instead',
     }
     // the plugins turned on by name (SPEC 9.1)
     var builtinPlugins = { auth: true, realtime: true }
@@ -660,7 +660,7 @@
       }
     }
 
-    // handle runs the folder's +page/+api module (load, then the method's handler), then renders the template and its
+    // handle runs the route's .ts module (load, then the method's handler), then renders the template and its
     // layouts. Each step may return a promise; the next one runs once it settles.
     function handle() {
       var mod = route.handler ? load(route.handler) : null
@@ -685,14 +685,14 @@
           if (rt.sent()) return
           return respond(m)
         })
-      } else if (route.kind === 'api' || route.kind === 'page-js') {
+      } else if (route.kind === 'endpoint') {
         // nothing to render, so a method without a handler is a 405. A page with a template renders for any
         // method (like PHP); the template can branch on ctx.req.method.
         var allow = ['GET', 'HEAD']
         for (var i = 1; i < methods.length; i++) {
           if (mod && typeof mod[methods[i]] === 'function') allow.push(methods[i].toUpperCase())
         }
-        if ((route.kind === 'api' || route.kind === 'page-js') && !(mod && typeof mod.get === 'function')) allow = allow.slice(2)
+        if (!(mod && typeof mod.get === 'function')) allow = allow.slice(2)
         rt.methodNotAllowed(allow.join(', '))
         return
       }
@@ -700,7 +700,7 @@
     }
 
     function respond(m) {
-      if (route.kind === 'api' || route.kind === 'page-js') {
+      if (route.kind === 'endpoint') {
         if (!rt.sent()) throw new Error(route.file + ': the ' + m + ' handler returned without sending a response')
         return
       }

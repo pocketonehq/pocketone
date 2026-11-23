@@ -5,7 +5,7 @@
 
 | Prefix | Meaning |
 |---|---|
-| `+` | Framework file (`+layout.ets`, `+page.ts`, ...) |
+| `+` | Framework file (`+layout.ets`, `+middleware.ts`, ...) |
 | `_` | Private. `_private/` folders hold partials and modules. Other `_` names are ignored. |
 | `-` | Ignored (drafts, notes) |
 | `.` | Ignored (dotfiles) |
@@ -15,7 +15,7 @@ pb_pages/
   _private/        # private (not routable)
   -drafts/         # ignored
   helpers/         # normal folder (routable)
-  +page.ts         # framework file (not routable)
+  +middleware.ts   # framework file (not routable)
   +layout.ets      # framework file (not routable)
   index.ets        # page
 ```

@@ -58,7 +58,7 @@ GOOS=wasip1 GOARCH=wasm go build -o pb_hooks/summary.pb.wasm .
 An API route that saves a post with its summary:
 
 ```ts
-// pb_pages/posts/+api.ts
+// pb_pages/posts.ts
 export async function post(ctx: any) {
   const { title, body } = ctx.req.body()
   const out = await $wasm.run.async<{ text: string }>("summary", { title, body })

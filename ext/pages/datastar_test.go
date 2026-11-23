@@ -12,7 +12,7 @@ func TestDatastarHelpers(t *testing.T) {
 	dir := writeTree(t, map[string]string{
 		"+config.js":           "module.exports = { plugins: ['datastar'] }",
 		"_private/datastar.js": string(addon),
-		"h/+api.js": `module.exports = { post(ctx) {
+		"h.ts": `module.exports = { post(ctx) {
 			const ds = ctx.datastar
 			const t = ds.readSignals(ctx.req, { kept: 1 })
 			const t2 = ds.readSignals({})
@@ -62,7 +62,7 @@ func TestDatastarSpecOptions(t *testing.T) {
 	dir := writeTree(t, map[string]string{
 		"+config.js":           "module.exports = { plugins: ['datastar'] }",
 		"_private/datastar.js": string(addon),
-		"p/+api.js": `module.exports = {
+		"p.ts": `module.exports = {
 			post(ctx) {
 				ctx.datastar.patchElements('<circle id="c"/>', { selector: '#vis', mode: 'append', namespace: 'svg', useViewTransition: true, viewTransitionSelector: '#main', retryDuration: 1000 })
 				ctx.datastar.patchSignals({ a: 1 }, { retryDuration: 2000 })

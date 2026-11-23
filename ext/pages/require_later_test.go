@@ -14,7 +14,7 @@ func TestRequireAtRequestTime(t *testing.T) {
 		"_private/helper.ts": `module.exports = { twice: (n: number) => n * 2 }`,
 		"_private/lazy.ts":   `module.exports = { get: () => require('helper').twice(5) }`,
 		"_private/data.json": `{ "n": 7 }`,
-		"check/+api.ts": `module.exports = {
+		"check.ts": `module.exports = {
 			get(ctx: any) {
 				return ctx.res.json({ a: require('helper').twice(21), b: require('lazy').get(), c: require('data').n })
 			},

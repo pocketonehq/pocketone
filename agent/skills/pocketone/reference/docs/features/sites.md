@@ -2,7 +2,7 @@
 # Pages: sites in TSX, TypeScript or EJS
 
 Put a `.tsx`, `.jsx`, `.ejs` or `.md` file in a `pb_pages` folder next to `pb_data`, and your app serves it as a web
-page. Each file is a route. Components `import` each other, route files can be TypeScript (`+page.ts`, `+api.ts`), and
+page. Each file is a route. Components `import` each other, a `.ts` file runs (a page's code beside it, or an endpoint), and
 page code reads and writes your records directly. Every part of a page can `await`, and the app keeps serving other
 requests while it waits. This is Pages, built into PocketOne.
 
@@ -54,7 +54,7 @@ outside the JS VM, so the app serves other requests while a page waits.
   export default () => <p><Count collection="orders" /> orders, <Count collection="users" /> users</p>
   ```
 
-- **Loaders and handlers:** `load`, `get`, `post` and the rest in `+page.ts`, `+api.ts` handlers, and `+middleware`
+- **Loaders and handlers:** `load`, `get`, `post` and the rest in a page's `.ts` or an endpoint, and `+middleware`
   can be `async`.
 - **EJS:** a tag can `await`: `<% const n = await ctx.app.countRecords.async('orders') %>`.
 - **Sync stays free:** a page without `await` runs exactly as before.
@@ -93,7 +93,7 @@ To start from something bigger, `pocketone pages starters` lists the starter kit
 
 - **Files are routes:** `pb_pages/about.ejs` serves `/about`, and `pb_pages/blog/index.ejs` serves `/blog`.
 - **Templates:** TSX, JSX, EJS and Markdown, mixed freely (an EJS page can sit in a TSX layout), with layouts,
-  partials, middleware and JSON routes. Route files (`+page`, `+api`, `+middleware`) can be `.ts` or `.js`.
+  partials, middleware and JSON routes. A route's code is a `.ts` file (`about.ts` beside `about.ets`, or an endpoint like `feeds/rss.ts`); `.js` files are served to the browser.
 - **Leftovers go on:** a URL no page matches goes on to `pb_public`, then to PocketBase. URLs under `/api/` and `/_/`
   always belong to PocketBase.
 - **Errors:** in dev mode you get detailed error pages. Otherwise visitors see a plain error page and the details go to

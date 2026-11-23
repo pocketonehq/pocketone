@@ -111,7 +111,7 @@ module.exports = {
 ### 3. Start the flow
 
 ```ts
-// pb_pages/auth/oauth/+page.ts
+// pb_pages/auth/oauth.ts
 module.exports = {
   post(ctx) {
     ctx.session.requestOAuth2(ctx.req.body().provider)
@@ -124,7 +124,7 @@ module.exports = {
 ### 4. Callback
 
 ```ts
-// pb_pages/auth/oauth/confirm/+page.ts
+// pb_pages/auth/oauth/confirm/index.ts
 module.exports = {
   load(ctx) {
     try {
@@ -193,7 +193,7 @@ module.exports = (ctx, next) => {
 ### 8. Logout
 
 ```ts
-// pb_pages/logout/+page.ts
+// pb_pages/logout.ts
 module.exports = {
   post(ctx) {
     ctx.session.signOut()

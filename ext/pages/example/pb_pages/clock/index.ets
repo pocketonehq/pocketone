@@ -1,6 +1,6 @@
 <% slot('title', () => { %>Server-sent events<% }) %>
 <h1>Server-sent events</h1>
-<p><code>clock/stream/+api.ts</code> calls <code>ctx.res.sse()</code> and sends ten ticks, one a second.</p>
+<p><code>clock/stream.ts</code> calls <code>ctx.res.sse()</code> and sends ten ticks, one a second.</p>
 <button onclick="start()">Start</button>
 <pre id="ticks">(press start)</pre>
 <script>
