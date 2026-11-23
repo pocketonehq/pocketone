@@ -158,7 +158,9 @@ func (s *service) embedNext(ctx context.Context) (bool, error) {
 	docs := map[string]int{} // document -> its chunks this round
 	for _, c := range batch {
 		docs[c.Document]++
-		_, _ = s.app.DB().Update(DocumentsCollection, dbx.Params{"status": StatusEmbedding}, dbx.HashExp{"id": c.Document, "status": StatusQueued}).Execute()
+		if _, err := s.app.DB().Update(DocumentsCollection, dbx.Params{"status": StatusEmbedding}, dbx.HashExp{"id": c.Document, "status": StatusQueued}).Execute(); err != nil {
+			return true, err
+		}
 	}
 
 	type answer struct {

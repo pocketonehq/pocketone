@@ -484,7 +484,9 @@ func (s *service) Put(_ context.Context, _ extkit.Auth, in searchv1.PutInput) (s
 	}
 	if src.GetString("status") != SourceReading {
 		src.Set("status", SourceReading)
-		_ = s.app.Save(src)
+		if err := s.app.Save(src); err != nil {
+			return searchv1.Document{}, err
+		}
 	}
 	doc, _, err := s.addDoc(b, src, docIn{name: in.Path, text: in.Text}, addOpts{})
 	if err != nil {
@@ -637,7 +639,10 @@ func (s *service) Refresh(_ context.Context, _ extkit.Auth, in searchv1.SourceRe
 func (s *service) read(b, src *core.Record, force bool) {
 	src.Set("status", SourceReading)
 	src.Set("error", "")
-	_ = s.app.Save(src)
+	if err := s.app.Save(src); err != nil {
+		// the read still runs; finish saves its outcome
+		s.app.Logger().Warn("llm-search: mark source reading", "source", src.Id, "error", err)
+	}
 	run := func() {
 		state, err := s.readNow(b, src, force)
 		s.finish(src, err, state)
