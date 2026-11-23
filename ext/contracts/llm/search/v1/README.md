@@ -54,6 +54,7 @@ Over HTTP (a superuser, or a token with the scope shown):
 | Remove | `POST /api/_c/llm.search/v1/remove` | `{"bucket", "sources": [...]}` | `search` |
 | Documents | `GET /api/_c/llm.search/v1/documents` | `?bucket=&source=&prefix=` | `search:read` |
 | Search | `POST /api/_c/llm.search/v1/search` | `{"buckets": [...], "query", "limit", "prefix", "viewer"}` | `search:read` |
+| Sample | `POST /api/_c/llm.search/v1/sample` | `{"buckets": [...], "count", "prefix"}`: chunks picked at random (no query, no embedding) | `search:read` |
 
 A source answers `{"bucket", "name", "kind", "url", "every", "commits", "exclude", "collection", "fields", "filter",
 "path", "include", "pageURL", "hash", "status", "error", "documents", "chunks", "embedded", "bytes", "pending", "costMicroUSD", "refreshed", "next"}` (`embedded` below `chunks`: embedding under way; documents carry the same); `kind` is

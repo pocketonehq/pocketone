@@ -119,6 +119,12 @@ type Search interface {
 	//
 	//op: POST search scope=search:read
 	Search(ctx context.Context, a extkit.Auth, in SearchInput) (Results, error)
+	// Sample returns chunks picked at random from the buckets named: material to draw from ("surprise me", a topic
+	// nobody asked about), not matches. No query, no embedding, so it costs nothing. Like Search without a viewer, it
+	// may return any chunk, a followed record's included.
+	//
+	//op: POST sample scope=search:read
+	Sample(ctx context.Context, a extkit.Auth, in SampleInput) (Results, error)
 }
 
 // Status is the app's embedding model and its progress.
@@ -407,7 +413,17 @@ type SearchInput struct {
 	Viewer *Viewer `json:"viewer,omitempty"`
 }
 
-// Results are the best matches, best first.
+// SampleInput is where to draw random chunks from.
+type SampleInput struct {
+	// Buckets are drawn from together; none draws from every bucket. Bucket is one more.
+	Buckets []string `json:"buckets,omitempty"`
+	Bucket  string   `json:"bucket,omitempty"`
+	Count   int      `json:"count,omitempty"` // default 5, at most 50
+	// Prefix keeps chunks from documents whose name starts with it.
+	Prefix string `json:"prefix,omitempty"`
+}
+
+// Results are the best matches, best first (a Sample's are in no order, with no score).
 type Results struct {
 	Results []Result  `json:"results"`
 	Model   string    `json:"model,omitempty"` // the model that embedded the query

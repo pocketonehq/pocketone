@@ -173,6 +173,9 @@ type LlmAPI = {
   /** Takes sources out of a bucket, with their documents. */
   remove(bucket: string, sources: string | string[]): number
   documents(bucket: string | { bucket: string; source?: string; prefix?: string }): SearchDocument[]
+  /** Chunks picked at random from the buckets named (every bucket when none): material to draw from, not matches.
+   * Local and free (nothing is embedded). count defaults to 5, at most 50; prefix keeps documents whose name starts with it. */
+  sample(o: string | { buckets?: string | string[]; bucket?: string; count?: number; prefix?: string }): SearchResult[]
   /** The app's embedding model and how much is embedded. */
   status(): { model: string; chunks: number; embedded: number; note?: string }
   /** The best matches for a query across buckets (all of them when none are named), best first. viewer (an auth record,

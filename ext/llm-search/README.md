@@ -132,6 +132,8 @@ const found = await $llm.search.searchAsync({ buckets: "docs", query: "install o
 // found.results[0].url → "/docs/install#macos"
 ```
 
+**Drawing at random.** `$llm.search.sample({ buckets?, count?, prefix? })` returns chunks picked at random from the buckets named, in the same shape as search results (no score): material to draw from, for a "surprise me" or a topic nobody has asked about. Nothing is embedded, so it's local and free.
+
 **Searching.** `await $llm.search.searchAsync({ query, buckets?, limit?, prefix?, viewer? })` returns the best chunks across
 the buckets named (every bucket when none are): `{ results: [{ bucket, document, text, heading, startLine, endLine,
 record, url, score }], model, usage }`; `url` links to where the passage is published, for a web page or a server folder

@@ -235,6 +235,25 @@ declare namespace contracts.llm.search.v1 {
   }
 
   /**
+   * SampleInput is where to draw random chunks from.
+   */
+  interface SampleInput {
+    /**
+     * Buckets are drawn from together; none draws from every bucket. Bucket is one more.
+     */
+    buckets: Array<string>;
+    bucket: string;
+    /**
+     * default 5, at most 50
+     */
+    count: number;
+    /**
+     * Prefix keeps chunks from documents whose name starts with it.
+     */
+    prefix: string;
+  }
+
+  /**
    * Viewer is who a search is for. Matches from records they can't view (the collection's view rule, as PocketBase
    * checks it) are left out; documents that aren't records are for everyone. A search without one sees everything.
    */
@@ -438,3 +457,14 @@ declare function onLlmSearchDocuments(handler: (e: contracts.CallEvent<contracts
  * @group PocketOne
  */
 declare function onLlmSearchSearch(handler: (e: contracts.CallEvent<contracts.llm.search.v1.SearchInput>) => void): void;
+/**
+ * Sample returns chunks picked at random from the buckets named: material to draw from ("surprise me", a topic
+ * nobody asked about), not matches. No query, no embedding, so it costs nothing. Like Search without a viewer, it
+ * may return any chunk, a followed record's included.
+ *
+ * Runs on every sample call to llm.search/v1, from any surface (HTTP, Go, MCP, the CLI): change e.input, or throw to
+ * refuse.
+ *
+ * @group PocketOne
+ */
+declare function onLlmSearchSample(handler: (e: contracts.CallEvent<contracts.llm.search.v1.SampleInput>) => void): void;

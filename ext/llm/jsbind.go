@@ -237,6 +237,8 @@ var jsPrelude = `(() => {
     remove: (bucket, list) => sc("remove", { bucket, sources: names(list) }).count,
     documents: (x) => sc("documents", typeof x === "string" ? { bucket: x } : x).documents,
     status: () => sc("status"),
+    // random chunks to draw from: local, no embedding
+    sample: (o) => sc("sample", typeof o === "string" ? { bucket: o } : { ...o, buckets: o && typeof o.buckets === "string" ? [o.buckets] : o && o.buckets }).results,
     searchAsync: (o) => callAsync("search", "search", searchQuery(o)),
   });` + streamPrelude + chatPrelude + `
   return Object.freeze({

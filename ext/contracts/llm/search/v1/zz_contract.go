@@ -324,6 +324,22 @@ var W = extkit.NewWire(Contract, "search", func(inner Search, g *extkit.Guard[Se
 			return impl.Search(ctx, a, in)
 		},
 	},
+	extkit.Op[Search]{
+		Name:   "sample",
+		Desc:   "Returns chunks picked at random from the buckets named: material to draw from (\"surprise me\", a topic nobody asked about), not matches. No query, no embedding, so it costs nothing. Like Search without a viewer, it may return any chunk, a followed record's included.",
+		Method: "POST",
+		Path:   "sample",
+		Scope:  "search:read",
+		In:     reflect.TypeOf(SampleInput{}),
+		Out:    extkit.OutJSON,
+		Invoke: func(ctx context.Context, impl Search, a extkit.Auth, req extkit.OpRequest) (any, error) {
+			var in SampleInput
+			if err := extkit.DecodeInput(req.JSON, &in); err != nil {
+				return nil, err
+			}
+			return impl.Sample(ctx, a, in)
+		},
+	},
 )
 
 // guardSearch is the outermost layer: every call, from any surface, passes the scope check and the action hooks.
@@ -614,6 +630,20 @@ func OnSearch(owner any, fn func(e *extkit.CallEvent, in *SearchInput) error) {
 	})
 }
 
+func (d *guardSearch) Sample(ctx context.Context, a extkit.Auth, in SampleInput) (Results, error) {
+	return extkit.Run(d.g, a, "sample", &in, func(in *SampleInput) (Results, error) {
+		return d.inner.Sample(ctx, a, *in)
+	})
+}
+
+// OnSample binds fn to sample calls on owner (an app, or a host's scope for calls the host answers). Call e.Next()
+// to continue; return an error to refuse. in is the call's input; changes reach the provider.
+func OnSample(owner any, fn func(e *extkit.CallEvent, in *SampleInput) error) {
+	W.On(owner, "sample").BindFunc(func(e *extkit.CallEvent) error {
+		return fn(e, e.Input.(*SampleInput))
+	})
+}
+
 // Client is llm.search/v1 over HTTP, for the CLI and other apps. It implements Search; the token it was made with is
 // the credential, so the extkit.Auth argument is ignored.
 type Client struct{ c *extkit.Caller }
@@ -723,4 +753,9 @@ func (c *Client) Documents(ctx context.Context, _ extkit.Auth, in DocumentsInput
 func (c *Client) Search(ctx context.Context, _ extkit.Auth, in SearchInput) (Results, error) {
 	var out Results
 	return out, c.c.Call(ctx, "POST", "search", in, &out)
+}
+
+func (c *Client) Sample(ctx context.Context, _ extkit.Auth, in SampleInput) (Results, error) {
+	var out Results
+	return out, c.c.Call(ctx, "POST", "sample", in, &out)
 }
