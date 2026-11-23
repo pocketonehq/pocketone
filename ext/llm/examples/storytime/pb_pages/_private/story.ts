@@ -405,11 +405,31 @@ async function speakableSentences(t: Tuning, sentences: string[]): Promise<{ sen
   return { sentences: clean, result }
 }
 
-export async function write(t: Tuning, prompt: string, minutes: number): Promise<{ story: Story; result: any; fixes?: any }> {
-  // grounded in the knowledge buckets: their best passages for the topic go into the prompt after the request
-  const enrich = t.knowledge.buckets.length ? { enrich: { buckets: t.knowledge.buckets, query: prompt, limit: 8 } } : {}
-  const result = await ask(t.models.text, { system: writePrompt(t, minutes), prompt: `Tonight's story: ${prompt}`, schema: WRITE_SCHEMA,
-    temperature: 0.9, ...enrich })
+/**
+ * What the knowledge buckets hold about a topic, as a researcher would hand it over: one search, the matches sorted into
+ * what the docs say (they explain what it is and why), how it came to be (commits) and how it works (code), so the
+ * writer can orient a listener before the details. "" without knowledge buckets or matches.
+ */
+export async function research(t: Tuning, topic: string): Promise<{ text: string; found?: any }> {
+  if (!t.knowledge.buckets.length) return { text: '' }
+  const found = await $llm.search.searchAsync({ buckets: t.knowledge.buckets, query: topic, limit: 20 })
+  const piles: { [k: string]: string[] } = { docs: [], history: [], code: [] }
+  for (const r of found.results || []) {
+    const pile = /^commit /.test(r.document) ? 'history' : /\.(md|ets|html)$/i.test(r.document) ? 'docs' : 'code'
+    const cap = pile === 'docs' ? 6 : 4
+    if (piles[pile].length < cap) piles[pile].push(`(${r.document}${r.heading ? ` › ${r.heading}` : ''})\n${String(r.text).slice(0, 1500)}`)
+  }
+  const part = (title: string, list: string[]) => (list.length ? `## ${title}\n\n${list.join('\n\n')}` : '')
+  const text = [part('What the docs say', piles.docs), part('How it came to be (commits)', piles.history), part('How it works (code)', piles.code)]
+    .filter(Boolean).join('\n\n')
+  return { text, found }
+}
+
+export async function write(t: Tuning, prompt: string, minutes: number): Promise<{ story: Story; result: any; fixes?: any; searched?: any }> {
+  // grounded in the knowledge buckets: what they hold about the topic follows the request, docs first
+  const known = await research(t, prompt)
+  const request = `Tonight's story: ${prompt}` + (known.text ? `\n\nWhat the knowledge base holds about it:\n\n${known.text}` : '')
+  const result = await ask(t.models.text, { system: writePrompt(t, minutes), prompt: request, schema: WRITE_SCHEMA, temperature: 0.9 })
   const written = result.data || {}
   const story: Story = {
     title: String(written.title || 'A story'),
@@ -421,7 +441,7 @@ export async function write(t: Tuning, prompt: string, minutes: number): Promise
   if (story.sentences.length < 5) throw new Error(`the story came back too short: ${story.sentences.length} sentences, ${JSON.stringify(written).slice(0, 300)}`)
   const spoken = await speakableSentences(t, story.sentences)
   story.sentences = spoken.sentences
-  return { story, result, fixes: spoken.result }
+  return { story, result, fixes: spoken.result, searched: known.found }
 }
 
 /** The music call for a story's music prompt, as tuned. */
@@ -467,6 +487,7 @@ export async function make(app: any, id: string): Promise<void> {
     const w = await write(t, topic, minutes)
     spent += record(app, 'write', w.result, id)
     if (w.fixes) spent += record(app, 'write', w.fixes, id)
+    if (w.searched) spent += record(app, 'search', w.searched, id)
     const story = w.story
     save({ status: 'making', title: story.title, story, progress: 'Reading it aloud', cost: spent })
 
