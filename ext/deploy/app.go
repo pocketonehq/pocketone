@@ -86,10 +86,7 @@ func Register(app core.App, cfg Config) (*API, error) {
 	api := New(Options{
 		Prefix:  cfg.Prefix,
 		Backend: &AppBackend{App: app},
-		Files: func() fsv1.Files {
-			f, _ := fsv1.Contract.Of(app)
-			return f
-		},
+		Files: func() fsv1.Files { return fsv1.Contract.Must(app) },
 		Logger: slog.New(slogHandler{app}),
 	})
 	// deploy/v1: the contracts' seal mounts its routes under /api/_c/deploy/v1/ (a multisite host provides its own)

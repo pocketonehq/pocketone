@@ -523,7 +523,11 @@ func (a *API) commit(w http.ResponseWriter, r *http.Request) error {
 	needsRestart := restartNeeded(st, createsHooks)
 
 	var applied *applyResult
-	running, _ := c.fs.Running(ctx)
+	running, err := c.fs.Running(ctx)
+	if err != nil {
+		_ = os.RemoveAll(st.stagingDir)
+		return err
+	}
 	wasRunning := false
 	restarted, startError := false, ""
 	if needsRestart && wantRestart && running && c.inst.Power {
