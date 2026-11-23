@@ -511,14 +511,17 @@ func hashSecret(s string) string {
 }
 
 // Collections returns the auth collections whose records may own tokens.
-func (t *Tokens) Collections() []string {
+func (t *Tokens) Collections() ([]string, error) {
 	if len(t.cfg.Collections) > 0 {
-		return t.cfg.Collections
+		return t.cfg.Collections, nil
+	}
+	cols, err := t.app.FindAllCollections(core.CollectionTypeAuth)
+	if err != nil {
+		return nil, err
 	}
 	out := []string{}
-	cols, _ := t.app.FindAllCollections(core.CollectionTypeAuth)
 	for _, c := range cols {
 		out = append(out, c.Name)
 	}
-	return out
+	return out, nil
 }

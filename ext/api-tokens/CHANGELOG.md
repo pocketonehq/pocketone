@@ -7,7 +7,14 @@ Sections named after a PocketOne release are from before extensions had versions
 
 ## Unreleased
 
+### Upgrading
+
+1. Go: `Tokens.Collections()` returns `([]string, error)`; handle the error.
+
 ### Changed
+
+- `Collections()` and `GET /api/_c/api-tokens/v1/scopes` report a failure to read the auth collections instead of
+  answering with an empty list.
 
 - The OAuth server's signing key is kept in the app's key-value store (kv/v1) under the private name
   `_api-tokens/oauth-server`; the old `_params` row `oauth_server` moves there by itself on first use, so signed-in
