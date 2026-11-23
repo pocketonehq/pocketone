@@ -68,9 +68,12 @@ func checkRESTCoverage(root string) error {
 	if err != nil {
 		return err
 	}
-	pages, _ := filepath.Glob(filepath.Join(root, restPagesDir, "*.md"))
+	pages, err := filepath.Glob(filepath.Join(root, restPagesDir, "*.md"))
+	if err != nil {
+		return err
+	}
 	if len(pages) == 0 {
-		return nil
+		return fmt.Errorf("no REST pages in %s", restPagesDir)
 	}
 	var all strings.Builder
 	for _, p := range pages {

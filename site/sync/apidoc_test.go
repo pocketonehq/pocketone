@@ -86,9 +86,9 @@ func TestParseJSAPI(t *testing.T) {
 }
 
 func TestGoRefKV(t *testing.T) {
-	p, ok := goRefRead("../..", "ext/contracts/kv/v1", "pocketone.dev/ext/contracts/kv/v1", goRefURL("ext/contracts/kv/v1"))
-	if !ok {
-		t.Fatal("kv/v1 not read")
+	p, ok, err := goRefRead("../..", "ext/contracts/kv/v1", "pocketone.dev/ext/contracts/kv/v1", goRefURL("ext/contracts/kv/v1"))
+	if err != nil || !ok {
+		t.Fatal("kv/v1 not read:", err)
 	}
 	for _, want := range []string{"# kvv1", "### Get\n", `<a id="maxnamelength"></a>`, "](#get)", "Example:\n\n```go"} {
 		if !strings.Contains(p.Page, want) {
