@@ -9,7 +9,7 @@ description: Query your app with the PocketBase JS SDK from page code, as the si
 browser:
 
 ```ts
-// pb_pages/posts/+page.ts
+// pb_pages/posts.ts
 module.exports = {
   load(ctx) {
     const page = ctx.pb().collection('posts').getList(1, 20, {

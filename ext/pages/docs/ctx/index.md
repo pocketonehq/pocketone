@@ -11,7 +11,7 @@ Pages creates one `ctx` object per request and passes it to middleware, handlers
 // +middleware.ts
 module.exports = (ctx, next) => next()
 
-// +page.ts / +api.ts
+// about.ts (beside about.ets), or an endpoint such as feeds/rss.ts
 module.exports = { load(ctx) {} }
 ```
 

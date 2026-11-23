@@ -1,9 +1,9 @@
 // ---- ext/pages: Pages (pb_pages) ----
 //
-// Types for page code: middleware, +page/+api handlers, +config, JS plugins and JSX/TSX components. Nothing here is a
+// Types for page code: middleware, route code (.ts), +config, JS plugins and JSX/TSX components. Nothing here is a
 // global at runtime; use the types in your own files:
 //
-//   // pb_pages/products/[id]/+page.ts
+//   // pb_pages/products/[id].ts (beside [id].ets)
 //   export default {
 //     load(ctx) { ctx.data.product = ctx.app.findRecordById("products", ctx.params.id) },
 //   } satisfies pages.Handlers
@@ -113,7 +113,7 @@ declare namespace pages {
   interface Route {
     /** The URL pattern without groups: `/products/[id]`. */
     path: string;
-    /** The file name without its extension: `[id]`, `index`, `+api`. */
+    /** The file name without its extension: `[id]`, `index`. */
     name: string;
     /** The file relative to pb_pages, groups included. */
     file: string;
@@ -220,7 +220,7 @@ declare namespace pages {
     flash<T = any>(): T | undefined;
     /** A PocketBase JS SDK client acting as the signed-in user (or a guest), in-process. */
     pb(): any;
-    /** An error to throw: sends `status` with `message` (JSON in a +api route). */
+    /** An error to throw: sends `status` with `message` (JSON from an endpoint, unless the request asks for HTML). */
     httpError(status: number, message?: string): Error;
     /** Set while `+error` renders. */
     error?: { status: number; message: string };
@@ -235,7 +235,7 @@ declare namespace pages {
 
   type Handler = (ctx: Context) => HandlerResult | Promise<HandlerResult>;
 
-  /** The exports of a `+page.js` or `+api.js` (all optional). */
+  /** The exports of a route's `.ts` file: a page's code, or an endpoint (all optional). */
   interface Handlers {
     /** Runs for every method, before the method's handler. */
     load?: Handler;

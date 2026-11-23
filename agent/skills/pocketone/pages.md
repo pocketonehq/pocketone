@@ -1,7 +1,7 @@
 # Building pages (`pb_pages`)
 
-Read this when a project has a `pb_pages/` folder, a `+layout.ets`, `+page.ts`, `+config.ts`, `+middleware.ts` or
-`+api.ts` file (or their `.ejs`/`.js` twins), or wants a server-rendered site on PocketOne. It covers routing,
+Read this when a project has a `pb_pages/` folder, a `+layout.ets`, `+config.ts` or `+middleware.ts`
+file, `.ets` templates with `.ts` code beside them (or their `.ejs`/`.js` twins), or wants a server-rendered site on PocketOne. It covers routing,
 handlers, middleware, layouts and slots, partials, the `ctx` API, plugins (auth, realtime, the Datastar add-on), JSVM
 limits, and running and deploying.
 
@@ -16,7 +16,7 @@ The contract is [spec](reference/docs/extensions/pages/spec.md). Where a doc and
 
 ## Write TypeScript and ETS
 
-- **Code is `.ts`, templates are `.ets`.** Code: `+page`, `+api`, `+middleware`, `+config`, `_private/` modules,
+- **Code is `.ts`, templates are `.ets`.** Code: a route's `.ts` (page code or endpoint), `+middleware`, `+config`, `_private/` modules,
   plugins. Templates: pages, `+layout`, `+error`, `+404`, partials. ETS is EJS syntax whose tags hold TypeScript.
   Types are stripped, never checked: no build step, no `tsconfig`.
 - **One style per app.** Use TSX (`.tsx` components) only when the app already uses it or the user asks for it.
@@ -103,13 +103,12 @@ pocketone serve --dir ./pb_data --dev
 | `robots.txt.ets`, `feed.xml.ets` | `/robots.txt` as `text/plain`, `/feed.xml` as XML; no layouts |
 | `+layout.ets` / `.tsx` | Wraps pages in this folder and below. One per folder. Innermost applies first |
 | `+middleware.ts` | `(ctx, next)`, runs root first for every route below |
-| `+page.ts` | Handlers for every page in this folder: `load`, `get`, `post`, `put`, `patch`, `delete` |
-| `+page.ts` with no template | Serves the folder URL from code (e.g. `logout/+page.ts` → `/logout`) |
-| `+api.ts` | Serves the folder URL with no template (JSON, feeds, webhooks) |
+| `about.ts` beside `about.ets` | That page's code: `load`, `get`, `post`, `put`, `patch`, `delete` (`index.ts` with `index.ets`, `[id].ts` with `[id].ets`) |
+| `logout.ts`, `feeds/rss.ts` (no template of that name) | An endpoint at its own URL (`/logout`, `/feeds/rss`): handlers send the whole response (JSON, feeds, webhooks, redirects, SSE) |
 | `+config.ts`, `+error.*`, `+404.*` | Top of `pb_pages` only |
 | `_private/` | Partials for `include()`, modules for `require()` / `ctx.resolve()`. Never served |
 | name starting `_`, `-`, `.` | Not routed (`-` for drafts and build inputs like `-app.tailwind.css`). Top-level `.well-known/` is served |
-| any other file (`.css`, `.png`, `.html`, `.js`) | Static file at its path (groups removed), with ETag |
+| any other file (`.css`, `.png`, `.html`, `.js`) | Static file at its path (groups removed), with ETag. Only `.ts` runs; `.d.ts` is never served |
 
 Which route wins: `/api/...` and `/_/...` always belong to PocketBase. A literal segment beats `[param]`, compared
 from the left. Segment counts must match: `products/[id].ets` doesn't match `/products/1/reviews`. A URL nothing in
@@ -122,7 +121,7 @@ Details: [routing](reference/docs/extensions/pages/routing.md), [directory-struc
 
 1. Plugins: every `extendContext(ctx)`, then every `onRequest(ctx)`, in `+config.ts` order.
 2. Every `+middleware.ts` from `pb_pages/` down to the route's folder (groups included).
-3. The folder's `+page.ts` or `+api.ts`: `load`, then the handler for the request method, if any.
+3. The route's `.ts` (page code or endpoint): `load`, then the handler for the request method, if any.
 4. The template, then layouts, innermost first.
 5. The response: `200 text/html` unless code set a status or sent something else.
 
@@ -130,10 +129,10 @@ If any step sends a response (`ctx.res.redirect`, `json`, `html`, `text`, `file`
 
 - **A page renders for any HTTP method.** Handlers are optional; a template can handle a form itself by checking
   `ctx.req.method`. `HEAD` runs `load` and `get` like `GET`, so keep side effects in `post`/`put`/`patch`/`delete`.
-- Only routes with nothing to render (`+api.ts`, a template-less `+page.ts`) answer `405` for a method with no
-  handler, and they must send a response or it's a 500.
+- Only endpoints (a `.ts` with no template) answer `405` for a method with no handler, and they must send a
+  response or it's a 500. Their errors are JSON unless the request's `Accept` puts `text/html` first.
 - A handler can set `ctx.data.x` or return a plain object, which is **shallow**-assigned into `ctx.data`.
-- **JSON is only sent by `ctx.res.json()`** (or from `+api.ts`). Template output is never parsed as JSON.
+- **JSON is only sent by `ctx.res.json()`** (and an endpoint's errors). Template output is never parsed as JSON.
 
 More: [loading-data](reference/docs/extensions/pages/loading-data.md), [middleware](reference/docs/extensions/pages/middleware.md), [api-routes](reference/docs/extensions/pages/api-routes.md).
 
@@ -142,7 +141,7 @@ More: [loading-data](reference/docs/extensions/pages/loading-data.md), [middlewa
 **Page with a handler**
 
 ```ts
-// pb_pages/posts/[slug]/+page.ts
+// pb_pages/posts/[slug]/index.ts
 module.exports = {
   load(ctx) {
     try {
@@ -187,7 +186,7 @@ A page sets a named slot with `<% slot('title', () => { %>About<% }) %>`; it out
 **Form POST + redirect with a flash**
 
 ```ts
-// pb_pages/contact/+page.ts
+// pb_pages/contact.ts
 module.exports = {
   post(ctx) {
     const { email, message } = ctx.req.body()
@@ -217,7 +216,7 @@ module.exports = (ctx, next) => {
 **JSON route**
 
 ```ts
-// pb_pages/feeds/latest/+api.ts
+// pb_pages/feeds/latest.ts
 module.exports = {
   get(ctx) {
     const posts = ctx.app.findRecordsByFilter('posts', 'published = true', '-created', 20, 0)
@@ -262,7 +261,7 @@ More: [ets](reference/docs/extensions/pages/ets.md), [partials](reference/docs/e
 | `ctx.flash()` | One-time message from the previous redirect, or `undefined` |
 | `ctx.meta(k, v?)`, `ctx.asset(path)` | Page metadata / fingerprinted static URL (`/assets/app.3f9a1c2b7d4e.css`) |
 | `ctx.env(name)`, `ctx.log.*`, `ctx.store(k, v?)` | Env var (`''` if unset) / `debug`, `info`, `warn`, `error` / app in-memory store |
-| `ctx.httpError(status, msg)` | Throw it for a 404/403/...; JSON in `+api.ts` |
+| `ctx.httpError(status, msg)` | Throw it for a 404/403/...; JSON from an endpoint |
 | `ctx.pagesDir`, `ctx.dev`, `ctx.error` | `pb_pages` path / dev mode flag / `{ status, message }` in `+error.ets` |
 | `ctx.session`, `ctx.realtime`, `ctx.datastar` | Added by the `auth`, `realtime` and Datastar plugins |
 
@@ -305,13 +304,14 @@ Details: [plugins](reference/docs/extensions/pages/plugins/index.md), [auth](ref
 These are **startup errors** (logged as `pages: ...` with the file path; the previous route table keeps serving):
 
 - 0.x loader files: `+load.js`, `+get.js`, `+post.js`, ... Any `+` name other than `+config`, `+layout`,
-  `+middleware`, `+page`, `+api`, `+error`, `+404` is an error. Use one `+page.ts` exporting `load`, `get`, `post`, ...
+  `+middleware`, `+error`, `+404` is an error, `+page` and `+api` included. Put a page's code in `<page>.ts` beside it,
+  exporting `load`, `get`, `post`, ...; an endpoint is `<name>.ts` with no template.
 - `+layout.md` (a layout must be `.ets` or `.tsx`, or their `.ejs`/`.jsx` twins), or two layouts in one folder.
 - `*.pb.js` / `*.pb.ts` hook files in `pb_pages`. They belong in `pb_hooks`.
 - A `pb_pages/api/` folder (`/api/` is PocketBase's). Use `xapi/`, `feeds/`, `hooks/`, ...
 - `post-[id].ets`: a param must be the whole segment. Folders can't start with `+`.
-- `+config.ts`, `+error`, `+404` below the top level; a `+api.ts` beside an `index` page; a static file and a page
-  claiming the same URL.
+- `+config.ts`, `+error`, `+404` below the top level; two files claiming the same URL (`feed.ts` and `feed/index.ets`,
+  or a static file and a page).
 
 These **fail on every request** (500, reason in the log and on the dev error page):
 
@@ -374,9 +374,9 @@ Getting started
 Routing and request flow
 - [routing](reference/docs/extensions/pages/routing.md): files to URLs, params, groups, API routes, precedence.
 - [parameters](reference/docs/extensions/pages/parameters.md): `ctx.params` and `ctx.req.query()`.
-- [loading-data](reference/docs/extensions/pages/loading-data.md): inline loading, `+page.ts` handlers, template-less pages.
+- [loading-data](reference/docs/extensions/pages/loading-data.md): inline loading, page code (`<page>.ts`), template-less pages.
 - [middleware](reference/docs/extensions/pages/middleware.md): `(ctx, next)`, order, common uses.
-- [api-routes](reference/docs/extensions/pages/api-routes.md): `+api.ts` and JSON responses.
+- [api-routes](reference/docs/extensions/pages/api-routes.md): endpoints (`<name>.ts`) and JSON responses.
 - [errors](reference/docs/extensions/pages/errors.md): thrown errors, `ctx.httpError`, `+error` and `+404` pages.
 
 Templates

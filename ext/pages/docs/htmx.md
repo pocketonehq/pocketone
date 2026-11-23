@@ -37,8 +37,8 @@ pb_pages/
     products/
       search.ets      # /xapi/products/search
       create/
-        +page.ts
         index.ets     # /xapi/products/create
+        index.ts      # its code
 ```
 
 1. `(site)` holds full pages. Its `+layout.ets` wraps them, and the group adds nothing to the URL.
@@ -136,7 +136,7 @@ pb_pages/
 ```
 
 ```ts
-// pb_pages/xapi/products/create/+page.ts
+// pb_pages/xapi/products/create/index.ts
 module.exports = {
   post(ctx) {
     const { name, description } = ctx.req.body()
@@ -182,7 +182,7 @@ module.exports = { plugins: ['realtime'] }
 ```
 
 ```ts
-// pb_pages/xapi/chat/+page.ts
+// pb_pages/xapi/chat/index.ts
 module.exports = {
   post() {}, // accept POST; the page below does the work
 }

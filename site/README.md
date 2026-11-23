@@ -49,15 +49,15 @@ cd site/sync && go run .
 - It also writes `/docs/config-reference`: every `pocketone.yaml` section.
 - Links between extensions and docs point at the site pages; links to source files point at GitHub.
 - The old URLs from before plugins were called extensions (`/docs/plugins/**`, `/docs/writing-a-plugin`) answer 301
-  redirects to the new ones, from the hand-written `+api.js` files under `pb_pages/(main)/docs/plugins/` and
-  `pb_pages/(main)/docs/writing-a-plugin/`.
+  redirects to the new ones, from the hand-written endpoints `pb_pages/(main)/docs/plugins.ts`, `plugins/[name].ts`,
+  `plugins/[name]/[guide].ts` and `writing-a-plugin.ts`.
 - It also writes the extension index (`/docs/extensions`) and the extension part of the docs nav (between the markers in
   `pb_pages/(main)/_private/toc.md`).
 - CI (`.github/workflows/site.yml`) runs `go test .` and `go run . --check`, and fails when a page is out of date.
 
 ## Ask and comments
 
-- **Ask** (`pb_pages/assets/ask.js`, `pb_pages/ask/+api.ts`, `pb_pages/_private/ask.ts`): the header button, `/` or
+- **Ask** (`pb_pages/assets/ask.js`, `pb_pages/ask.ts`, `pb_pages/_private/ask.ts`): the header button, `/` or
   Cmd/Ctrl-K opens a box that answers a question from the docs, citing the pages it used. The pages come from an LLM
   Search bucket, `docs`, holding the site's own docs folder (`$llm.search.addFolder` on `pb_pages/(main)/docs`, read
   again every five minutes, each result linked to its page and section). The answer is one `$llm` call per question,

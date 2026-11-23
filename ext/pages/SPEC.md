@@ -55,7 +55,7 @@ A path segment (file or folder name) starting with one of these characters is ne
 
 | Prefix | Meaning |
 |---|---|
-| `+` | Framework file: `+config`, `+middleware`, `+page`, `+api` (`.js` or `.ts`); `+layout`, `+error`, `+404` (`.ets`, `.ejs`, `.jsx` or `.tsx`). `+middleware`, `+page`, `+api` and `+layout`: one of each per folder. `+config`, `+error` and `+404`: only at the top of `pb_pages` (in a subfolder they're an error at startup). Any other `+` name is an error at startup. |
+| `+` | Framework file: `+config`, `+middleware` (`.js` or `.ts`); `+layout`, `+error`, `+404` (`.ets`, `.ejs`, `.jsx` or `.tsx`). `+middleware` and `+layout`: one of each per folder. `+config`, `+error` and `+404`: only at the top of `pb_pages` (in a subfolder they're an error at startup). Any other `+` name is an error at startup. |
 | `_` | Private. `_private/` folders hold partials and modules for `include()` and `ctx.resolve()`. Other `_` names are ignored. |
 | `-` | Ignored (drafts, notes). |
 | `.` | Ignored (dotfiles), except a top-level `.well-known/`, which is served as static files (ACME challenges, `security.txt`, app links). |
@@ -89,13 +89,20 @@ A **page** is a template file: `.ets`, `.ejs`, `.md`, `.jsx` or `.tsx` (4.1, 4.5
 - A URL with a trailing slash matches the same route as without it. Pages never redirect to add or remove one.
 - Matching is case-sensitive.
 
-### 2.2 API routes
+### 2.2 Route code: `.ts` files
 
-A `+api.js` file serves its folder's URL without a template: `feeds/rss/+api.js` serves `/feeds/rss`.
-`[param]` folders work as for pages. If a folder has both `+api.js` and an `index` page, startup fails.
+A `.ts` file on a route path is that route's code; its extension says it runs, as in PHP.
 
-A `+page.js` in a folder with no page (no template file) and no `+api.js` serves the folder's URL the same way, from
-JS: `logout/+page.js` serves `/logout` (3.2).
+| File | What it is |
+|---|---|
+| `about.ts` beside `about.ets` | the page's code (3.2) |
+| `feeds/rss.ts` (no template of that name) | an **endpoint** at `/feeds/rss`: its handlers send the whole response (3.3) |
+| `index.ts`, `[id].ts` | the folder's URL, a `[param]` route, as for pages |
+
+- Only `.ts` runs. `.js` and every other file is static (2.3), so browser scripts sit anywhere in `pb_pages`.
+  `.d.ts` files are neither served nor run.
+- An endpoint and a page or static file claiming the same URL is a startup error (`feed.ts` and `feed/index.ets`).
+  A `.ts` beside a template of the same name is a pair, not a conflict.
 
 ### 2.3 Static files
 
@@ -124,12 +131,12 @@ previous table keeps serving if there was one.
 
 ## 3. Request flow
 
-For a URL that matches a page or API route, one JS call does all of this, in order:
+For a URL that matches a page or an endpoint, one JS call does all of this, in order:
 
 1. **Plugins:** every plugin's `extendContext`, then every plugin's `onRequest` (built-in and custom plugins, in config
    order), so an `onRequest` can use what any plugin added to `ctx`.
 2. **Middleware**, root first: every `+middleware.js` from `pb_pages/` down to the route's folder (groups included).
-3. **Handlers**: the folder's `+page.js` (or `+api.js`): `load`, then the handler for the request method.
+3. **Handlers**: the route's `.ts` (the page's code, or the endpoint): `load`, then the handler for the request method.
 4. **Template** (pages only), then **layouts**, innermost first.
 5. **Response.**
 
@@ -160,10 +167,10 @@ module.exports = (ctx, next) => {
   middleware that calls `next()` without returning it still has the rest of the request awaited after it.
 - Share data through `ctx.data`.
 
-### 3.2 Handlers: `+page.js`
+### 3.2 Page code: `<page>.ts`
 
 ```js
-// pb_pages/products/[id]/+page.js
+// pb_pages/products/[id].ts, beside products/[id].ets
 module.exports = {
   load(ctx) {
     ctx.data.product = ctx.app.findRecordById('products', ctx.params.id)
@@ -182,24 +189,21 @@ module.exports = {
 - A handler may set `ctx.data` fields, or return a plain object, which is shallow-assigned into `ctx.data`
   (`Object.assign`). There is no deep merge.
 - Handlers may be async. A returned promise is awaited, and what it settles to is treated as a returned value.
-- A `+page.js` applies to every page in its folder. `ctx.route.name` tells them apart.
+- Each page has its own code file. Code several pages share goes in a `_private/` module or a `+middleware`.
 - A method with no handler still renders the page, for every method (like PHP): a template can handle a form itself
-  by checking `ctx.req.method`, with no `+page.js`.
-- Only routes with nothing to render (`+api.js`, and a `+page.js` without a page) answer `405` for a method with no
-  handler, with an `Allow` header listing the methods that have handlers (`GET, HEAD` when there's a `get`), in the
-  order `GET, HEAD, POST, PUT, PATCH, DELETE`.
-- **Without a page.** A `+page.js` in a folder with no template serves the folder's URL from JS (2.2): there's nothing
-  to render, so a handler must send a response (`ctx.res.html`, `ctx.res.redirect`, `ctx.res.json`, ...), and
-  returning without one is a 500. Methods without a handler answer `405`, `GET` included. Unlike `+api.js`, errors
-  are pages (`+error.ejs` or the HTML error page), not JSON. Folder middleware runs; layouts don't.
+  by checking `ctx.req.method`, with no `.ts`.
 
-### 3.3 API handlers: `+api.js`
+### 3.3 Endpoints: `<name>.ts`
 
-Same exports as `+page.js`. There is no template, so a handler must send a response; returning without one is a
-500.
+Same exports as page code. There is no template, so a handler must send a response (`ctx.res.json`, `html`,
+`redirect`, `sse`, ...); returning without one is a 500. A method with no handler answers `405`, with an `Allow`
+header listing the methods that have handlers (`GET, HEAD` when there's a `get`), in the order
+`GET, HEAD, POST, PUT, PATCH, DELETE`. Folder middleware runs; layouts don't. Errors are JSON
+(`{ "status": 404, "message": "..." }`) unless the request's `Accept` puts `text/html` first (a browser navigating to
+it), when they're pages like any other (`+error.ejs` or the HTML error page).
 
 ```js
-// pb_pages/feeds/latest/+api.js
+// pb_pages/feeds/latest.ts
 module.exports = {
   get(ctx) {
     const posts = ctx.app.findRecordsByFilter('posts', 'published = true', '-created', 20)
@@ -345,7 +349,7 @@ export default function Product({ data, slot }: pages.Props) {
   wherever it sits in the tree; sibling async components run concurrently. `include()` of an async partial and
   `slot(name, content)` with async content work the same way, and a layout reads the slot once it has settled.
 
-**TypeScript modules.** `+page.ts`, `+api.ts`, `+middleware.ts`, `+config.ts` and any `.ts` file reached by
+**TypeScript modules.** Route code (`.ts`), `+middleware.ts`, `+config.ts` and any `.ts` file reached by
 `require`/`import` work like their `.js` versions. A module whose only export is `export default` behaves like
 `module.exports = ...`.
 
@@ -360,10 +364,10 @@ namespace. They add no globals. `pages.Data` and `pages.Context` are interfaces 
 | A handler or middleware sent one | That one |
 | Page rendered | `200 text/html; charset=utf-8` (or the status set with `ctx.res.status`) |
 | `HEAD` | As `GET`, without a body |
-| No handler for the method | Page: rendered as usual. `+api.js` or a `+page.js` without a page: `405` + `Allow` |
+| No handler for the method | Page: rendered as usual. Endpoint: `405` + `Allow` |
 | Error thrown | `500` (see 8) |
 
-JSON is only sent through `ctx.res.json` (or `+api.js`). Template output is never parsed as JSON.
+JSON is only sent through `ctx.res.json` (and an endpoint's errors). Template output is never parsed as JSON.
 
 ## 6. The `ctx` object
 
@@ -412,7 +416,7 @@ Query values and cookies are strings unless you ask for JSON. Nothing is parsed 
 |---|---|
 | `ctx.data` | Plain object shared by middleware, handlers and templates. Starts as `{}`. |
 | `ctx.params` | Route parameters, strings. Never includes query parameters. |
-| `ctx.route` | `{ path, name, file }`: the URL pattern without groups (`/products/[id]`, `/docs` for `docs/index.md`), the file name without extension (`[id]`, `index`; `+api` for API routes) and the file relative to `pb_pages`, groups included. |
+| `ctx.route` | `{ path, name, file }`: the URL pattern without groups (`/products/[id]`, `/docs` for `docs/index.md`), the file name without extension (`[id]`, `index`) and the file relative to `pb_pages`, groups included. |
 
 ### 6.4 Flash messages
 
@@ -474,7 +478,7 @@ reason on the page), and the reason goes to the log.
   `.ets`/`.ejs`/`.md` source), and the stack trimmed to `pb_pages`-relative paths.
 - **Otherwise:** a plain "Something went wrong" page. The full error always goes to the app's log.
 - `throw ctx.httpError(status, message)` sends that status (e.g. `404`, `403`) with a plain page showing `message`.
-  In a `+api.js` it's JSON: `{ "status": 404, "message": "..." }`.
+  From an endpoint it's JSON, unless the request asks for HTML first: `{ "status": 404, "message": "..." }`.
 - A custom error page: `pb_pages/+error.ejs` renders for every `ctx.httpError` and every 500 outside dev mode, with
   `ctx.error = { status, message }`, inside the root layout.
 
@@ -608,9 +612,9 @@ inside `ext/pages` (`starters/`).
 | Query parameters mixed into `params`, JSON-parsed | `ctx.params` is route parameters only; `ctx.req.query()` returns strings |
 | Cookies JSON-parsed on read | Strings; `{ json: true }` to parse |
 | Middleware: return a value, or call `next(extra)`, chosen by arity | `(ctx, next)`, data on `ctx.data` |
-| `+load.js`, `+get.js`, `+post.js`, ... per folder, results deep-merged | One `+page.js` exporting `load`, `get`, `post`, ...; returned objects shallow-assigned |
+| `+load.js`, `+get.js`, `+post.js`, ... per folder, results deep-merged | One `.ts` per page exporting `load`, `get`, `post`, ...; returned objects shallow-assigned |
 | `+config.js` may export `(api) => ({...})` | It must export an object; a function is an error |
-| Template output that parses as JSON is sent as JSON | Only `ctx.res.json` or `+api.js` |
+| Template output that parses as JSON is sent as JSON | Only `ctx.res.json` or an endpoint's errors |
 | `<!-- slot:name -->` comments; layouts read `slot` / `slots` | `slot(name, fn)` to define, `slot(name)` / `slot()` to read |
 | `echo()` writes during render | Templates return text; streaming only through `ctx.res.sse()` |
 | `redirect(path, { message })` puts the flash in `?__flash=` | `ctx.res.redirect(path, { flash })`, one-time cookie, `ctx.flash()` |

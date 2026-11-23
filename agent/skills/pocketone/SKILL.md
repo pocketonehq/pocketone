@@ -8,8 +8,8 @@ description: >-
   wants something PocketOne adds: point-in-time restore (PITR) or restore to a moment from backups, a dev mail inbox,
   a mail relay or bulk mail, many sites behind one listener (multisite, Pocker, Docker), long-lived API tokens and an
   OAuth server, an MCP endpoint for agents, automatic TLS, or signed S3 download redirects. Also use for building a
-  PocketOne app's pages: a pb_pages/ folder, +layout.ets, +page.ts, +config.ts, +middleware.ts or +api.ts files
-  (or their .ejs/.js twins), `pocketone pages`, or a server-rendered site on PocketOne (formerly PocketPages).
+  PocketOne app's pages: a pb_pages/ folder, .ets/.tsx templates and their .ts code, +layout.ets, +config.ts or
+  +middleware.ts files (or their .ejs/.js twins), `pocketone pages`, or a server-rendered site on PocketOne (formerly PocketPages).
 ---
 
 # PocketOne

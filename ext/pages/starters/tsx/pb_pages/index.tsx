@@ -1,6 +1,6 @@
 import Feature, { type FeatureProps } from './_private/Feature'
 
-// pages.Props is in the app's types.d.ts (see the TypeScript docs); data is what +page.ts load() returned
+// pages.Props is in the app's types.d.ts (see the TypeScript docs); data is what index.ts load() returned
 type PageProps = pages.Props & { data: { features: FeatureProps[]; now: string } }
 
 export default function Home({ data, slot }: PageProps) {

@@ -20,10 +20,12 @@ Delete the `.pb.js` boot file and the `pocketpages` dependencies, and move the c
 
 ## JavaScript or TypeScript
 
-Your `.js` and `.ejs` files stay as they are. v1 also runs TypeScript (`.ts` code and `.ets` templates, types
-stripped, never checked), and the rest of these docs use it. Renaming a file from `.js` to `.ts` or `.ejs` to `.ets`
-changes nothing else, so you can switch a file at a time or not at all. This guide shows v1 code as `.js` to match
-yours. See [File types](file-types.md).
+Your `.ejs` templates, `+middleware.js`, `+config.js` and `_private/` modules stay as they are. v1 also runs
+TypeScript (`.ts` code and `.ets` templates, types stripped, never checked), and the rest of these docs use it.
+Renaming a file from `.js` to `.ts` or `.ejs` to `.ets` changes nothing else, so you can switch a file at a time or not
+at all. A route's own code (a page's loaders and handlers, an endpoint) is always `.ts`, since a `.js` file on a route
+path is served to the browser as-is; plain JavaScript is valid there. This guide shows the rest of v1's code as `.js`
+to match yours. See [File types](file-types.md).
 
 ## The context object
 
@@ -63,13 +65,13 @@ Put shared data on `ctx.data`. See [Middleware](middleware.md).
 
 ## Loaders
 
-`+load.js`, `+get.js`, `+post.js` and friends are replaced by one `+page.js` per folder that exports `load`, `get`, `post`, `put`, `patch` and `delete`. Returned objects are shallow-assigned into `ctx.data` (no deep merge). As in 0.x, every handler is optional and a page renders for any method, so templates that check the request method keep working (`request.method` becomes `ctx.req.method`).
+`+load.js`, `+get.js`, `+post.js` and friends are replaced by one `.ts` file beside each page (`products.ts` beside `products.ejs`) that exports `load`, `get`, `post`, `put`, `patch` and `delete`. Returned objects are shallow-assigned into `ctx.data` (no deep merge). As in 0.x, every handler is optional and a page renders for any method, so templates that check the request method keep working (`request.method` becomes `ctx.req.method`).
 
 ```js
 // 0.x: +load.js
 module.exports = (api) => ({ products: $app.findAllRecords('products') })
 
-// v1: +page.js
+// v1: products.ts, beside products.ejs
 module.exports = {
   load(ctx) {
     return { products: ctx.app.findAllRecords('products') }
@@ -81,7 +83,7 @@ See [Loading Data](loading-data.md).
 
 ## JSON
 
-0.x sent template output as JSON if it parsed as JSON. v1 never does. Send JSON with `ctx.res.json()`, usually from a `+api.js` file. See [API Routes and JSON](api-routes.md).
+0.x sent template output as JSON if it parsed as JSON. v1 never does. Send JSON with `ctx.res.json()`, usually from an endpoint: a `.ts` file with no template, such as `feeds/latest.ts`. See [Endpoints and JSON](api-routes.md).
 
 ## Layouts and slots
 

@@ -16,7 +16,7 @@ const targets: [string, string, string][] = [
   ['/jsx', 'JSX page', 'TSX components'],
   ['/docs', 'Markdown', 'EJS → goldmark'],
   ['/notes', 'Notes', 'ctx.pb() query'],
-  ['/stats', 'JSON', '+api.ts'],
+  ['/stats', 'JSON', 'stats.ts'],
   [asset('../assets/app.css'), 'Static file', 'fingerprinted CSS'],
   ['/api/health', 'PocketBase API', 'the ceiling'],
 ]

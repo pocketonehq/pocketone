@@ -17,25 +17,20 @@ import (
 type Kind int
 
 const (
-	// KindPage is a template (.ets, .ejs, .md, .tsx, .jsx).
+	// KindPage is a template (.ets, .ejs, .md, .tsx, .jsx), with the same-name .ts beside it as its code.
 	KindPage Kind = iota
-	// KindAPI is a folder's +api.js.
-	KindAPI
+	// KindEndpoint is a .ts file with no template of the same name: its handlers send the whole response.
+	KindEndpoint
 	// KindStatic is any other file, served as-is.
 	KindStatic
-	// KindPageJS is a folder's +page.js when the folder has no page: the handlers serve the folder's URL from JS,
-	// like +api.js, but errors are pages (HTML), not JSON.
-	KindPageJS
 )
 
 func (k Kind) String() string {
 	switch k {
 	case KindPage:
 		return "page"
-	case KindAPI:
-		return "api"
-	case KindPageJS:
-		return "page-js"
+	case KindEndpoint:
+		return "endpoint"
 	default:
 		return "static"
 	}
@@ -52,10 +47,10 @@ type Route struct {
 	Kind     Kind
 	Segments []Segment
 	Pattern  string // URL pattern without groups, e.g. "/products/[id]" ("/" for the root)
-	Name     string // file name without extension ("index", "[id]", "+api")
+	Name     string // file name without extension ("index", "[id]")
 	File     string
 
-	Handler     string   // +page.js beside a page ("" if none)
+	Handler     string   // the route's .ts code: beside a page, or the endpoint itself ("" if none)
 	Middlewares []string // +middleware.js files, root first
 	Layouts     []string // +layout.ejs files, innermost first
 }
@@ -86,8 +81,17 @@ var (
 	// rootOnly are + files allowed only at the top of pb_pages.
 	rootOnly = map[string]map[string]bool{"+config": codeExts, "+error": tplExts, "+404": tplExts}
 	// perFolder are + files allowed in any folder.
-	perFolder = map[string]map[string]bool{"+layout": tplExts, "+middleware": codeExts, "+page": codeExts, "+api": codeExts}
+	perFolder = map[string]map[string]bool{"+layout": tplExts, "+middleware": codeExts}
 )
+
+// isRouteCode reports a .ts file that is a route's code: a page's (beside a template of the same name) or an
+// endpoint's. Only plain .ts; .js and every other file is static.
+func isRouteCode(name string) bool {
+	return strings.HasSuffix(name, ".ts") && !isTypeDecl(name)
+}
+
+// isTypeDecl reports a TypeScript declaration file (.d.ts), which is neither served nor run.
+func isTypeDecl(name string) bool { return strings.HasSuffix(name, ".d.ts") }
 
 // ignored reports whether a path segment never becomes part of a URL and isn't walked.
 func ignored(name string) bool {
@@ -129,9 +133,7 @@ func Build(dir string) (*Table, []error) {
 	}
 
 	type folder struct {
-		layout, middleware, page, api string
-		hasIndexPage                  bool
-		hasPage                       bool // any page template in the folder
+		layout, middleware string
 	}
 	folders := map[string]*folder{} // physical folder ("." = root) → its + files
 	getFolder := func(d string) *folder {
@@ -144,6 +146,7 @@ func Build(dir string) (*Table, []error) {
 	}
 
 	var files []string // routable files (pages, statics), slash paths
+	var code []string  // route code (.ts), slash paths
 	walkErr := fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			addErr(p, "%v", err)
@@ -209,17 +212,19 @@ func Build(dir string) (*Table, []error) {
 					set(&f.layout)
 				case "+middleware":
 					set(&f.middleware)
-				case "+page":
-					set(&f.page)
-				case "+api":
-					set(&f.api)
 				}
 			default:
 				addErr(p, "unknown framework file %s", name)
 			}
 			return nil
 		}
-		files = append(files, p)
+		switch {
+		case isTypeDecl(name):
+		case isRouteCode(name):
+			code = append(code, p)
+		default:
+			files = append(files, p)
+		}
 		return nil
 	})
 	if walkErr != nil {
@@ -277,6 +282,7 @@ func Build(dir string) (*Table, []error) {
 	}
 
 	var routes []*Route
+	pages := map[string]*Route{} // folder + "/" + name → its page, to pair with a same-name .ts
 	for _, file := range files {
 		dirName := path.Dir(file)
 		base := path.Base(file)
@@ -288,17 +294,12 @@ func Build(dir string) (*Table, []error) {
 
 		r := &Route{File: file}
 		if templateExt[ext] {
-			getFolder(dirName).hasPage = true
 			r.Kind = KindPage
 			r.Name = strings.TrimSuffix(base, ext)
 			if r.Name != "index" {
 				parts = append(parts, r.Name)
-			} else {
-				getFolder(dirName).hasIndexPage = true
 			}
-			if f := folders[dirName]; f != nil {
-				r.Handler = f.page
-			}
+			pages[dirName+"/"+r.Name] = r
 			r.Middlewares = middlewaresFor(dirName)
 			r.Layouts = layoutsFor(dirName)
 		} else {
@@ -313,52 +314,32 @@ func Build(dir string) (*Table, []error) {
 		r.Segments = segs
 		routes = append(routes, r)
 	}
-	for d, f := range folders {
-		if f.api == "" {
-			continue
-		}
-		if f.hasIndexPage {
-			addErr(f.api, "a folder can't have both +api.js and an index page")
+	// A .ts beside a template of the same name is that page's code; any other .ts is an endpoint at its own URL.
+	for _, file := range code {
+		dirName := path.Dir(file)
+		name := strings.TrimSuffix(path.Base(file), ".ts")
+		if pg := pages[dirName+"/"+name]; pg != nil {
+			pg.Handler = file
 			continue
 		}
 		var parts []string
-		if d != "." {
-			parts = strings.Split(d, "/")
+		if dirName != "." {
+			parts = strings.Split(dirName, "/")
 		}
-		segs, ok := urlSegments(f.api, parts)
+		if name != "index" {
+			parts = append(parts, name)
+		}
+		segs, ok := urlSegments(file, parts)
 		if !ok {
 			continue
 		}
 		routes = append(routes, &Route{
-			Kind:        KindAPI,
+			Kind:        KindEndpoint,
 			Segments:    segs,
-			Name:        "+api",
-			File:        f.api,
-			Handler:     f.api,
-			Middlewares: middlewaresFor(d),
-		})
-	}
-
-	// A +page.js in a folder with no page (and no +api.js) serves the folder's URL from JS (SPEC 3.2).
-	for d, f := range folders {
-		if f.page == "" || f.hasPage || f.api != "" {
-			continue
-		}
-		var parts []string
-		if d != "." {
-			parts = strings.Split(d, "/")
-		}
-		segs, ok := urlSegments(f.page, parts)
-		if !ok {
-			continue
-		}
-		routes = append(routes, &Route{
-			Kind:        KindPageJS,
-			Segments:    segs,
-			Name:        "+page",
-			File:        f.page,
-			Handler:     f.page,
-			Middlewares: middlewaresFor(d),
+			Name:        name,
+			File:        file,
+			Handler:     file,
+			Middlewares: middlewaresFor(dirName),
 		})
 	}
 

@@ -11,7 +11,7 @@ import (
 // getFirstListItem.
 func TestJSSDKLists(t *testing.T) {
 	dir := writeTree(t, map[string]string{
-		"check/+api.ts": `export function get(ctx: any) {
+		"check.ts": `export function get(ctx: any) {
 			const c = ctx.pb().collection('items')
 			const all = c.getFullList({ sort: 'n' })
 			const batched = c.getFullList({ sort: 'n', batch: 2 })

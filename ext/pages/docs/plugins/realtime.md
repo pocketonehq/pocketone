@@ -19,7 +19,7 @@ module.exports = {
 Sends `data` to the subscribers of `topic`. `filter(client)` may limit the recipients.
 
 ```ts
-// pb_pages/ping/+api.ts
+// pb_pages/ping.ts
 module.exports = {
   post(ctx) {
     ctx.realtime.send('ping', { at: new Date().toISOString() })
@@ -51,7 +51,7 @@ ctx.realtime.send('alerts', 'Maintenance at 10:00', {
 For hypermedia libraries (HTMX, Datastar), send rendered HTML. `include()` is available in templates, so render the partial there:
 
 ```ts
-// pb_pages/xapi/chat/+page.ts
+// pb_pages/xapi/chat/index.ts
 module.exports = {
   post() {}, // accept POST; the page renders and sends
 }

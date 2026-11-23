@@ -19,7 +19,7 @@ func TestRequestsDontAccumulate(t *testing.T) {
 		"index.ejs":   `<h1><%= ctx.request.url %></h1><%- include('part.ejs', { n: 1 }) %>`,
 		"part.ejs":    `<p><%= n %></p>`,
 		"doc.md":      "---\ntitle: Doc\n---\n# Doc\n\nSome *text*.\n",
-		"api/+api.js": `module.exports = { get(ctx) { return ctx.res.json({ ok: true }) } }`,
+		"api.ts":      `module.exports = { get(ctx) { return ctx.res.json({ ok: true }) } }`,
 		"boom.ejs":    `<% throw new Error('boom') %>`,
 		"+error.ejs":  `<p>error</p>`,
 	})

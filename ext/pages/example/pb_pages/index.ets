@@ -8,9 +8,9 @@ EJS and esbuild run in Go, page code in PocketBase's JS VM. No Node, no build st
     ['/jsx', 'JSX and TSX', 'Components and typed props, the alternative template style.'],
     ['/docs', 'Markdown', 'Front matter, headings with ids, fingerprinted images.'],
     ['/notes', 'Notes', 'A collection read with ctx.pb() as the visitor; sign in to post.'],
-    ['/clock', 'Server-sent events', 'ctx.res.sse() streams ticks from a +api.ts.'],
+    ['/clock', 'Server-sent events', 'ctx.res.sse() streams ticks from an endpoint (clock/stream.ts).'],
     ['/speed', 'Speed', 'Animated results vs npm 0.x, and a live speed check against this server.'],
-    ['/stats', 'JSON API', 'A +api.ts route returning JSON.'],
+    ['/stats', 'JSON API', 'An endpoint (stats.ts) returning JSON.'],
     ['/robots.txt', 'robots.txt', 'robots.txt.ets, served as text/plain.'],
     ['/nope', '404 page', 'Anything unmatched renders +404.ets.'],
   ]) { %>

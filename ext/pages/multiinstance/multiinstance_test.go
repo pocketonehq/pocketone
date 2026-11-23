@@ -159,7 +159,7 @@ func TestSandboxHoldsInPages(t *testing.T) {
 				"pb_pages/inc.ejs":           "<%- include('../../b/pb_pages/_private/secret') %>",
 				"pb_pages/req.ejs":           "<% require('../../b/pb_pages/secret.txt') %>",
 				"pb_pages/resolve.ejs":       "<%- ctx.resolve('../../b/secret.txt', { mode: 'raw' }) %>",
-				"pb_pages/file/+api.js":      "module.exports = { get(ctx) { ctx.res.file('../../b/pb_pages/secret.txt') } }",
+				"pb_pages/file.ts":           "module.exports = { get(ctx) { ctx.res.file('../../b/pb_pages/secret.txt') } }",
 				"pb_pages/os.ejs":            "<%= $os.readFile('../b/secret.txt') %>",
 				"pb_pages/asset.ejs":         "<%= asset('../../b/pb_pages/secret.txt') %>",
 				"pb_pages/loop.ejs":          "<% while (true) {} %>",

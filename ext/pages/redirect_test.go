@@ -8,11 +8,11 @@ import (
 
 func TestRedirectStatus(t *testing.T) {
 	dir := writeTree(t, map[string]string{
-		"a/+api.js":    "module.exports = { get(ctx) { ctx.res.redirect('/x') } }",
-		"b/+api.js":    "module.exports = { get(ctx) { ctx.res.redirect('/x', 301) } }",
-		"c/+api.js":    "module.exports = { get(ctx) { ctx.res.redirect('/x', { status: 303, flash: 'hi' }) } }",
-		"bad/+api.js":  "module.exports = { get(ctx) { ctx.res.redirect('/x', 200) } }",
-		"bad2/+api.js": "module.exports = { get(ctx) { ctx.res.redirect('/x', { status: '301' }) } }",
+		"a.ts":    "module.exports = { get(ctx) { ctx.res.redirect('/x') } }",
+		"b.ts":    "module.exports = { get(ctx) { ctx.res.redirect('/x', 301) } }",
+		"c.ts":    "module.exports = { get(ctx) { ctx.res.redirect('/x', { status: 303, flash: 'hi' }) } }",
+		"bad.ts":  "module.exports = { get(ctx) { ctx.res.redirect('/x', 200) } }",
+		"bad2.ts": "module.exports = { get(ctx) { ctx.res.redirect('/x', { status: '301' }) } }",
 	})
 	h, _ := newServer(t, dir)
 	for p, want := range map[string]int{"/a": 302, "/b": 301, "/c": 303, "/bad": 500, "/bad2": 500} {

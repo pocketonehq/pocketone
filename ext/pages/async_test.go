@@ -38,7 +38,7 @@ func wantBody(t *testing.T, code int, body string, wants ...string) {
 
 func TestAsyncLoad(t *testing.T) {
 	dir := writeTree(t, map[string]string{
-		"+page.ts":  "export default { async load(ctx: any) { ctx.data.n = " + asyncCount + "; return { m: await Promise.resolve(2) } } }",
+		"index.ts":  "export default { async load(ctx: any) { ctx.data.n = " + asyncCount + "; return { m: await Promise.resolve(2) } } }",
 		"index.ejs": "n=<%= data.n %> m=<%= data.m %>",
 	})
 	code, body := get(t, dir, "/", true)
@@ -47,7 +47,7 @@ func TestAsyncLoad(t *testing.T) {
 
 func TestAsyncMethodHandler(t *testing.T) {
 	dir := writeTree(t, map[string]string{
-		"+page.js": `module.exports = {
+		"index.ts": `module.exports = {
 			async load(ctx) { ctx.data.trail = ['load'] },
 			async post(ctx) { await null; ctx.data.trail.push('post'); return { posted: ` + asyncCount + ` } },
 		}`,
@@ -59,9 +59,9 @@ func TestAsyncMethodHandler(t *testing.T) {
 
 func TestAsyncAPIHandler(t *testing.T) {
 	dir := writeTree(t, map[string]string{
-		"feed/+api.ts": "export async function get(ctx: any) { return ctx.res.json({ n: " + asyncCount + " }) }",
-		"none/+api.js": "module.exports = { async get(ctx) { await null } }",
-		"err/+api.js":  "module.exports = { async get(ctx) { await null; throw ctx.httpError(418, 'teapot') } }",
+		"feed.ts": "export async function get(ctx: any) { return ctx.res.json({ n: " + asyncCount + " }) }",
+		"none.ts": "module.exports = { async get(ctx) { await null } }",
+		"err.ts":  "module.exports = { async get(ctx) { await null; throw ctx.httpError(418, 'teapot') } }",
 	})
 	code, body := get(t, dir, "/feed", true)
 	wantBody(t, code, body, `"n":"ok"`)
@@ -87,13 +87,13 @@ func TestAsyncMiddleware(t *testing.T) {
 		}`,
 		// sync, calls next() without returning it: the async rest is still awaited
 		"a/+middleware.js": "module.exports = (ctx, next) => { ctx.data.trail.push('a'); next() }",
-		"a/+page.js":       "module.exports = { async load(ctx) { await null; ctx.data.trail.push('load') } }",
+		"a/index.ts":       "module.exports = { async load(ctx) { await null; ctx.data.trail.push('load') } }",
 		"a/index.ejs":      "<%= data.trail.join(',') %>",
 		// async, catches what next() throws
 		"b/+middleware.js": `module.exports = async (ctx, next) => {
 			try { await next() } catch (e) { ctx.res.html('caught ' + e.message) }
 		}`,
-		"b/+page.js":  "module.exports = { async load(ctx) { await null; throw new Error('boom') } }",
+		"b/index.ts":  "module.exports = { async load(ctx) { await null; throw new Error('boom') } }",
 		"b/index.ejs": "never",
 		// async, ends the request without next() or a response
 		"c/+middleware.js": "module.exports = async (ctx, next) => { await null }",

@@ -7,6 +7,27 @@ Sections named after a PocketOne release are from before extensions had versions
 
 ## Unreleased
 
+### Changed
+
+- Routes go by file extension, like PHP: a `.ts` file on a route path runs. `about.ts` beside `about.ets` is that
+  page's code (`load` and method handlers); a `.ts` with no template of the same name is an endpoint at its own URL
+  (`admin/sample.ts` serves `/admin/sample`). `.js` files and every other file are static, so browser scripts can sit
+  anywhere in `pb_pages`; `.d.ts` files are neither served nor run. `+page` and `+api` are gone: `+` now marks only
+  framework files (`+middleware`, `+layout`, `+config`, `+error`, `+404`). Two files claiming one URL (`feed.ts` and
+  `feed/index.ets`) is a startup error.
+- An endpoint's errors are JSON unless the request's `Accept` puts `text/html` first (a browser opening the URL),
+  when they're your `+error` page. A page's errors are always pages.
+
+### Upgrading
+
+- Rename each `+page.ts` (or `+page.js`) to the name of the page it serves, as `.ts`: `products/[id]/+page.ts` beside
+  `index.ets` becomes `products/[id]/index.ts`. A `+page.ts` that served several pages in its folder is split into one
+  `.ts` per page; move code they share into a `_private/` module (`ctx.route.name` checks go away).
+- Rename each `+api.ts` (or `+api.js`) to `<folder>.ts` beside its folder (`feeds/rss/+api.ts` becomes
+  `feeds/rss.ts`), or to `<folder>/index.ts` when the folder has a `+middleware` that must keep applying to it. Do the
+  same for a `+page.ts` in a folder with no template.
+- Route code must be `.ts`; plain JavaScript is valid in it. A `.js` file left on a route path is served as source.
+
 ### Added
 
 - The `ask` starter kit (`pocketone pages create mydocs --starter ask`): ask your docs a question and get a short

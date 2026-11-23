@@ -17,7 +17,7 @@ An API route that gives a ticket's owner their ticket's QR code. `tickets` has a
 relation to `users`:
 
 ```ts
-// pb_pages/tickets/[id]/qr/+api.ts: a ticket's QR code, for its owner, as SVG
+// pb_pages/tickets/[id]/qr.ts: a ticket's QR code, for its owner, as SVG
 export async function get(ctx: any) {
   if (!ctx.auth) throw ctx.httpError(401, "Sign in first")
   const ticket = ctx.app.findRecordById("tickets", ctx.params.id)

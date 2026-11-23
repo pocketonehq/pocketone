@@ -40,11 +40,11 @@ pb_hooks/admin_plugins.pb.js            registers the dashboard screen (a superu
 pb_admin_ext/bedtime/main.js            Settings → Bedtime Story in the dashboard: tuning, with Sample buttons
 pb_pages/
   index.ets            ask for a story (prompt, minutes, pictures, Inspire me); stories told, most listened to first
-  inspire/+api.ts      POST /inspire {avoid?}: a topic no story has covered yet (the model sees every title)
-  admin/tuning/+api.ts GET/POST /admin/tuning: the tuning, for the dashboard screen (superusers only)
-  admin/sample/+api.ts POST /admin/sample: tries a voice, music, a picture, a story's text or an idea with unsaved tuning
-  view/+api.ts         POST /view {id}: counts a listen (the player sends it after 10 seconds heard)
-  story/+api.ts        POST /story {prompt?, minutes?, pictures?}: saves the record, starts making it (no prompt: it picks the topic)
+  inspire.ts           POST /inspire {avoid?}: a topic no story has covered yet (the model sees every title)
+  admin/tuning.ts      GET/POST /admin/tuning: the tuning, for the dashboard screen (superusers only)
+  admin/sample.ts      POST /admin/sample: tries a voice, music, a picture, a story's text or an idea with unsaved tuning
+  view.ts              POST /view {id}: counts a listen (the player sends it after 10 seconds heard)
+  story.ts             POST /story {prompt?, minutes?, pictures?}: saves the record, starts making it (no prompt: it picks the topic)
   story/[id].ets       progress while it's made, then the player (scrubber, space to pause, arrows to skip 10 s)
   _private/story.ts    the models, the limits and the six steps
 ```

@@ -55,7 +55,7 @@ The full order for a request is:
 
 1. Plugins' `onRequest`
 2. Middleware, root first
-3. The folder's `+page.ts` or `+api.ts` (`load`, then the method's handler)
+3. The route's `.ts`, the page's code or the endpoint (`load`, then the method's handler)
 4. The template, then layouts, innermost first
 5. The response
 

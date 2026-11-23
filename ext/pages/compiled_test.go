@@ -57,7 +57,7 @@ func (b mapBucket) Clear(context.Context) error          { return nil }
 // from there instead of compiling it, front matter included.
 func TestCompiledFilesUseCache(t *testing.T) {
 	dir := writeTree(t, map[string]string{
-		"+page.js":           "const h = require('./_private/helper'); module.exports = { load(ctx) { return { v: h.twice(21) } } }",
+		"index.ts":           "const h = require('./_private/helper'); module.exports = { load(ctx) { return { v: h.twice(21) } } }",
 		"_private/helper.js": "exports.twice = (n) => n * 2",
 		"index.md":           "---\ntitle: Cached\n---\n<%= meta('title') %> <%= data.v %>",
 	})
@@ -77,7 +77,7 @@ func TestCompiledFilesUseCache(t *testing.T) {
 		t.Fatalf("first app: %d %s", code, body)
 	}
 	written := c.sets
-	if written < 3 { // the page, its +page.js and the helper
+	if written < 3 { // the page, its index.ts and the helper
 		t.Fatalf("%d compiled files cached, want 3", written)
 	}
 

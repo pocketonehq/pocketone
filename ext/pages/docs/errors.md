@@ -19,7 +19,7 @@ The full error always goes to the app's log.
 Throw `ctx.httpError()` to answer with a specific status:
 
 ```ts
-// pb_pages/products/[id]/+page.ts
+// pb_pages/products/[id].ts
 module.exports = {
   load(ctx) {
     let product
@@ -34,7 +34,7 @@ module.exports = {
 ```
 
 - In a page, it sends that status with a plain page showing `message`.
-- In a `+api.ts`, it sends JSON: `{ "status": 404, "message": "No such product" }`.
+- In an [endpoint](api-routes.md), it sends JSON (unless the request's `Accept` puts `text/html` first): `{ "status": 404, "message": "No such product" }`.
 
 ## A custom error page
 

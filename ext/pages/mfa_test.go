@@ -11,16 +11,16 @@ import (
 func TestSignInRefusesMFA(t *testing.T) {
 	dir := writeTree(t, map[string]string{
 		"+config.js": "module.exports = { plugins: ['auth'] }",
-		"pw/+api.js": `module.exports = { post(ctx) {
+		"pw.ts": `module.exports = { post(ctx) {
 			const b = ctx.req.body()
 			try { ctx.session.signInWithPassword(b.email, b.password) } catch (e) { return ctx.res.json({ error: String(e), auth: !!ctx.auth }) }
 			return ctx.res.json({ ok: true, auth: !!ctx.auth })
 		} }`,
-		"anon/+api.js": `module.exports = { post(ctx) {
+		"anon.ts": `module.exports = { post(ctx) {
 			try { ctx.session.signInAnonymously() } catch (e) { return ctx.res.json({ error: String(e) }) }
 			return ctx.res.json({ ok: true })
 		} }`,
-		"otp/+api.js": `module.exports = { post(ctx) {
+		"otp.ts": `module.exports = { post(ctx) {
 			const b = ctx.req.body()
 			try { ctx.session.signInWithOTP(b.id, b.code) } catch (e) { return ctx.res.json({ error: String(e) }) }
 			return ctx.res.json({ ok: true })

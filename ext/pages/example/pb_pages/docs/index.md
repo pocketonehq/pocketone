@@ -23,7 +23,7 @@ The image above is a relative path; the rendered `src` is fingerprinted and serv
 | `notes/[id].ets` | `/notes/abc123` |
 
 ```ts
-// notes/+page.ts
+// notes/index.ts, beside notes/index.ets
 export function load(ctx) {
   return { notes: ctx.pb().collection('notes').getFullList({ sort: '-created' }) }
 }

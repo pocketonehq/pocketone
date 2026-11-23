@@ -17,7 +17,7 @@ import (
 //
 //	jsvm.MustRegister(app, jsvm.Config{OnInit: func(rt js.Runtime) { mcp.BindJS(app, rt) }})
 //
-// A tool maps one REST endpoint. Write the route as usual (routerAdd, pb_pages +api.js), then declare its tool at
+// A tool maps one REST endpoint. Write the route as usual (routerAdd, a pb_pages .ts endpoint), then declare its tool at
 // the top level of a pb_hooks file:
 //
 //	$mcp.addEndpoint({
