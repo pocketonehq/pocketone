@@ -753,7 +753,19 @@ export function rememberAll(app: any): number {
   return added
 }
 
-const CANDIDATES_SCHEMA = { type: 'object', properties: { candidates: { type: 'array', items: { type: 'string' }, minItems: 3, maxItems: 6 } }, required: ['candidates'] }
+const CANDIDATES_SCHEMA = {
+  type: 'object',
+  properties: {
+    candidates: {
+      type: 'array', minItems: 3, maxItems: 6,
+      items: { type: 'object', properties: { subject: { type: 'string' }, prompt: { type: 'string' } }, required: ['subject', 'prompt'] },
+    },
+  },
+  required: ['candidates'],
+}
+
+/** Passages that make poor story seeds: dependency lists, lock files, navigation tables. */
+const NOT_A_SEED = /(^|\/)(go\.(mod|sum)|[^/]*\.lock|package(-lock)?\.json|toc[^/]*\.md|_private\/toc[^/]*)$/i
 /** The pick: which of n candidates (its number) and why. */
 const pickSchema = (n: number) => ({
   type: 'object',
@@ -789,19 +801,49 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
     return { topic: String((r.data && r.data.topic) || '').trim() }
   }
 
-  // 1. raw material: passages picked at random from what the stories know
-  const passages = $llm.search.sample({ buckets: t.knowledge.buckets, count: 8 })
-  if (!passages.length) throw new Error(`the knowledge buckets (${t.knowledge.buckets.join(', ')}) are empty: fill them on the dashboard's Search screen`)
-  const material = passages.map((p: any, i: number) => `[${i + 1}] ${p.document}${p.heading ? ` › ${p.heading}` : ''}\n${String(p.text).slice(0, 1200)}`)
+  // 1. seeds: passages picked at random from what the stories know, at most one per thing they belong to, each with that
+  // thing's README opening, so an idea starts from a subject and not from a stray fragment
+  const drawn = $llm.search.sample({ buckets: t.knowledge.buckets, count: 24 })
+  if (!drawn.length) throw new Error(`the knowledge buckets (${t.knowledge.buckets.join(', ')}) are empty: fill them on the dashboard's Search screen`)
+  ownerCache.clear()
+  const seen = new Set<string>()
+  const passages: any[] = []
+  for (const p of drawn) {
+    if (NOT_A_SEED.test(p.document) || String(p.text).trim().length < 200) continue
+    const owner = /^commit /.test(p.document) ? null : ownerOf(p.bucket, p.document)
+    const key = owner ? owner.folder : p.document
+    if (seen.has(key)) continue
+    seen.add(key)
+    passages.push({ ...p, owner })
+    if (passages.length === 5) break
+  }
+  if (!passages.length) passages.push(...drawn.slice(0, 5))
+  const material = passages.map((p: any, i: number) => [
+    `[${i + 1}] ${p.document}${p.heading ? ` › ${p.heading}` : ''}${p.owner ? `, part of ${p.owner.folder}` : ''}`,
+    p.owner ? `What ${p.owner.folder} is (its README):\n${p.owner.opening.slice(0, 500)}` : '',
+    `The passage:\n${String(p.text).slice(0, 1200)}`,
+  ].filter(Boolean).join('\n'))
 
-  // 2. candidates grounded in it
-  const c = await $llm.text.completeAsync({ model: t.models.idea, system: t.prompts.inspire, reasoning: 'off', maxTokens: 2000, temperature: 1,
-    prompt: `Material to draw from (random passages):\n\n${material.join('\n\n')}\n\nPropose 5 different story topics, each grounded in this material, as short specific phrases.` + avoiding,
+  // 2. one idea per seed, each a story request that stands on its own
+  const c = await $llm.text.completeAsync({ model: t.models.idea, system: t.prompts.inspire, reasoning: 'off', maxTokens: 3000, temperature: 0.9,
+    prompt: `Material to draw from (random passages, each with what it belongs to):\n\n${material.join('\n\n')}\n\n` +
+      `Propose one story idea per passage, ${passages.length} in all, each grounded in its passage. "subject" is what the ` +
+      'story is about, by its own name (the extension or feature the passage is part of, or what a commit changed). ' +
+      '"prompt" asks for the story in one or two plain sentences that someone who has never seen the passage understands: ' +
+      'name the subject, say what it is, then the question, decision or moment the story is about and why a listener ' +
+      'would care. Here the prompt is a full request, not a short phrase, at most 35 words. Write it the way a person ' +
+      'asks: call things by their names (the S3 redirect extension, the deploy command), never file paths, commit hashes, ' +
+      'function or field names; no "Tell the story of". When the passage is code, the idea is what that code does for ' +
+      'the people using it, not how the code reads.' + avoiding,
     schema: CANDIDATES_SCHEMA })
   record(app, 'inspire', c)
-  // the model may number what it lists ("3. Why..."): a topic never starts with its place in a list
-  const unnumbered = (x: any) => speakable(String(x).replace(/^\s*(?:\d{1,2}[.)]|[a-z]\))\s+/i, ''))
-  const candidates: string[] = ((c.data && c.data.candidates) || []).map(unnumbered).filter(Boolean)
+  // the model may number what it lists ("3. Why..."): a prompt never starts with its place in a list
+  // and a folder that slips through is said as a name ("ext/desktop": "the desktop extension")
+  const unnumbered = (x: any) => String(x || '').replace(/^\s*(?:\d{1,2}[.)]|[a-z]\))\s+/i, '')
+    .replace(/(?:\b[Tt]he\s+)?\bext\/([\w-]+)(?:\s+extension\b)?/g, 'the $1 extension').replace(/\s+/g, ' ').trim()
+  const ideas = ((c.data && c.data.candidates) || [])
+    .map((x: any) => ({ subject: unnumbered(x && x.subject), prompt: unnumbered(x && x.prompt) })).filter((x: any) => x.prompt)
+  const candidates: string[] = ideas.map((x: any) => x.prompt)
   if (!candidates.length) throw new Error('no candidate topics came back')
 
   // 3. the told stories nearest each candidate, by meaning
@@ -814,7 +856,7 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
     }
   }
   const near: { topic: string; nearest: string[] }[] = []
-  for (const topic of candidates) {
+  for (const topic of candidates) { // by the whole request: it names the subject and the angle
     const found = await $llm.search.searchAsync({ bucket: STORIES_BUCKET, query: topic, limit: 3 })
     const titles = [...new Set((found.results || []).map((r: any) => titleOf(r.document)).filter(Boolean))] as string[]
     near.push({ topic, nearest: titles })
@@ -823,9 +865,10 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
   // 4. the candidate the told stories cover least. The model answers with the candidate's number (a schema holds it to
   // 1..n), never the topic retyped, so the topic is exactly the candidate's words
   const pick = await $llm.text.completeAsync({ model: t.models.idea, reasoning: 'off', maxTokens: 1000, temperature: 0.3,
-    system: 'You choose the next story topic. You get numbered candidate topics, each with the stories already told that are ' +
-      'closest to it. Pick the candidate those stories cover least, so the next story is about something new. "choice" is ' +
-      'its number; "why" says in one short sentence what makes it new.',
+    system: 'You choose the next story. You get numbered candidate story requests, each with the stories already told that are ' +
+      'closest to it. Pick the one those stories cover least, so the next story is about something new; between ones ' +
+      'equally new, pick the one a listener would find most interesting. "choice" is its number; "why" says in one short ' +
+      'sentence what makes it new.',
     prompt: near.map((n, i) => `${i + 1}. ${n.topic}\n   closest told: ${n.nearest.length ? n.nearest.join('; ') : 'none'}`).join('\n'),
     schema: pickSchema(near.length) })
   record(app, 'inspire', pick)
