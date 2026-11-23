@@ -1,5 +1,5 @@
 <%
-// One story: progress while it's being made (the page polls its record), then the player.
+// One story: progress while it's being made (the page polls GET /progress), then the player.
 let rec: any
 try {
   rec = ctx.app.findRecordById('stories', params.id)
@@ -131,7 +131,7 @@ const madeLine = [
   </div>
   <% if (making && !stale) { %>
   <script>
-    // poll the record (open to anyone through the records API) until the story is done or failed
+    // poll its progress (GET /progress, which also retries a stalled story) until the story is done or failed
     const id = <%- JSON.stringify(rec.id) %>
     const started = new Date(<%- JSON.stringify(rec.getString('created').replace(' ', 'T')) %>).getTime()
     // which steps are done and which is running, read from the progress line the story saves
@@ -160,7 +160,7 @@ const madeLine = [
     setInterval(clock, 1000)
     const tick = async () => {
       try {
-        const r = await (await fetch('/api/collections/stories/records/' + id + '?fields=status,title,progress')).json()
+        const r = await (await fetch('/progress?id=' + encodeURIComponent(id))).json()
         if (r.status === 'done' || r.status === 'failed') return location.reload()
         if (r.title) document.getElementById('title').textContent = r.title
         if (r.progress) document.getElementById('progress').textContent = r.progress

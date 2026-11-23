@@ -1,11 +1,12 @@
 // POST /story {prompt?, minutes?}: saves (no prompt: the model picks the topic) a new story record and starts making it,
 // without waiting: making one takes a few
-// minutes, and a request may wait 30 seconds at most. The page then polls the record (GET
-// /api/collections/stories/records/<id>, open to anyone) until its status is done or failed.
+// minutes, and a request may wait 30 seconds at most. The page then polls GET /progress?id= until its status is done
+// or failed.
 export async function post(ctx: any) {
   const story = ctx.resolve('story')
   const { prompt, minutes } = ctx.req.body()
   if (prompt !== undefined && typeof prompt !== 'string') throw ctx.httpError(400, 'send {prompt?, minutes?}')
+  story.watchAll(ctx.app) // stories that stalled with nobody watching are retried (or failed) before counting the limits
   // the models must be there and answering, and today's spending under the budget
   const no = await story.refusal(ctx.app, 'story')
   if (no) return ctx.res.json(no.status, { message: no.message, reason: no.reason })

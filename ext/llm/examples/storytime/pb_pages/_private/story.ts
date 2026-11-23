@@ -595,112 +595,245 @@ export const pictureCall = (t: Tuning, style: string, prompt: string) => ({
   aspectRatio: '16:9',
 })
 
-/** Makes the story for record id. Never throws: a failure is saved on the record. */
+/** The longest each step may take before the story counts as stalled (seconds). */
+export const STEP_TIMEOUT: { [step: string]: number } = {
+  topic: 240,
+  write: 300, // the story, the speakable rewrite and the pronunciations, together
+  speech: 300,
+  align: 180,
+  place: 180,
+  'paint and compose': 540, // the song call itself waits up to 6 minutes
+}
+
+/** How many times a story is attempted: the first try and one retry, which resumes where the first one stopped. */
+export const ATTEMPTS = 2
+
+/** Thrown in an attempt that a newer attempt replaced: it stops quietly, leaving the record to the newer one. */
+class Superseded extends Error {}
+
+/** One line of a story's log: when, which attempt, which step, what happened, how long it took, and any detail. */
+export type LogEntry = { at: string; attempt: number; step: string; event: string; ms?: number; detail?: string }
+
+const UNFINISHED = ['queued', 'writing', 'making']
+
+/**
+ * Checks a story still being made: if the step it's on has run past STEP_TIMEOUT (a model call that never answered,
+ * or a server restart mid-story), the story is tried again from its last saved step, once; after the last attempt it's
+ * failed. Called whenever someone watches a story (its page's progress poll) and when a story is started, so a stall
+ * is noticed without a timer (a timer can't outlive the request that set it).
+ */
+export function watch(app: any, id: string): void {
+  const r = app.findRecordById('stories', id)
+  if (!UNFINISHED.includes(r.getString('status'))) return
+  const entries: LogEntry[] = JSON.parse(r.getString('log') || '[]') || []
+  const attempt = r.getInt('attempts')
+  // the step this attempt is on: its last start with no end after it
+  const mine = entries.filter((e) => e.attempt === attempt)
+  const last = mine[mine.length - 1]
+  if (!last || last.event !== 'start') return
+  const limit = STEP_TIMEOUT[last.step] || 300
+  const ms = Date.now() - new Date(last.at).getTime()
+  if (ms < limit * 1000) return
+  const detail = `${last.step} took longer than ${limit} s`
+  appendLog(app, id, { at: new Date().toISOString(), attempt, step: last.step, event: 'timeout', ms, detail })
+  if (attempt < ATTEMPTS) {
+    appendLog(app, id, { at: new Date().toISOString(), attempt, step: 'story', event: 'retry', detail })
+    make(app, id) // not awaited; it takes the next attempt, so the stalled one is ignored if it ever answers
+  } else {
+    const f = app.findRecordById('stories', id)
+    f.set('status', 'failed')
+    f.set('error', detail)
+    f.set('attempts', attempt + 1) // nothing from the stalled attempt touches the record now
+    app.save(f)
+    appendLog(app, id, { at: new Date().toISOString(), attempt, step: 'story', event: 'failed', detail })
+  }
+}
+
+/** Every story still being made, checked as watch does. */
+export function watchAll(app: any): void {
+  for (const r of app.findRecordsByFilter('stories', "status = 'queued' || status = 'writing' || status = 'making'", 'created', 20, 0)) {
+    watch(app, r.id)
+  }
+}
+
+function appendLog(app: any, id: string, e: LogEntry) {
+  const r = app.findRecordById('stories', id)
+  const entries: LogEntry[] = JSON.parse(r.getString('log') || '[]') || []
+  entries.push(e)
+  r.set('log', entries.slice(-200))
+  app.save(r)
+}
+
+/**
+ * Makes the story for record id. Never throws: a failure is saved on the record.
+ *
+ * Each step's result is saved on the record as it's reached (the story after writing, the narration file after reading
+ * it aloud, the timings after aligning, the pictures' places after placing), and every step is written to the record's
+ * log (hidden: superusers see it in the dashboard). A step that fails, or runs past STEP_TIMEOUT (see watch), ends the
+ * attempt; the story is then tried once more (ATTEMPTS), and the retry skips every step already saved. The attempt
+ * count lives on the record: each attempt takes the next number, an attempt that's no longer the latest stops at its
+ * next step, and nothing runs a story more than ATTEMPTS times.
+ */
 export async function make(app: any, id: string): Promise<void> {
   const save = (fields: { [k: string]: any }) => {
     const r = app.findRecordById('stories', id)
     for (const k in fields) r.set(k, fields[k])
     app.save(r)
   }
-  let spent = 0
+  // the attempt this is, counted on the record so a retry happens once at most
+  const first = app.findRecordById('stories', id)
+  const attempt = first.getInt('attempts') + 1
+  if (attempt > ATTEMPTS) return
+  first.set('attempts', attempt)
+  app.save(first)
+
+  const log = (step: string, event: string, extra: { ms?: number; detail?: string } = {}) =>
+    appendLog(app, id, { at: new Date().toISOString(), attempt, step, event, ...extra })
+  /** Stops this attempt if a newer one took over (a retry after it stalled). */
+  const current = () => {
+    if (app.findRecordById('stories', id).getInt('attempts') !== attempt) throw new Superseded()
+  }
+  /** Runs one step: logged when it starts and ends, with how long it took. */
+  const step = async <T>(name: string, run: () => Promise<T>): Promise<T> => {
+    current()
+    const t0 = Date.now()
+    log(name, 'start')
+    let out: T
+    try {
+      out = await run()
+    } catch (err: any) {
+      current()
+      log(name, 'error', { ms: Date.now() - t0, detail: String(err.message).slice(0, 500) })
+      throw err
+    }
+    current()
+    log(name, 'done', { ms: Date.now() - t0 })
+    return out
+  }
+
+  let spent = first.getFloat('cost')
   const t = tuning(app)
   const began = Date.now()
   try {
+    if (attempt > 1) log('story', 'resume')
     const rec = app.findRecordById('stories', id)
     const prompt = rec.getString('prompt')
     const fallback = storyLength(t)
     const minutes = rec.getInt('minutes') || fallback.minutes
     const wanted = rec.getInt('picture_count') || fallback.pictures
+    const saved: Story | null = JSON.parse(rec.getString('story') || 'null')
 
     // 1. write. "Your pick" with knowledge buckets: Inspire me picks a topic from them first, one not told yet
-    let topic = prompt
-    if (prompt === ANY_TOPIC && t.knowledge.buckets.length) {
-      save({ status: 'writing', progress: 'Choosing a topic' })
-      topic = (await inspire(app, [], t)) || prompt
+    let story: Story
+    if (saved && saved.sentences && saved.sentences.length) {
+      story = saved
+    } else {
+      let topic = prompt
+      if (prompt === ANY_TOPIC && t.knowledge.buckets.length) {
+        save({ status: 'writing', progress: 'Choosing a topic' })
+        topic = (await step('topic', () => inspire(app, [], t))) || prompt
+      }
+      save({ status: 'writing', progress: 'Writing the story' })
+      const w = await step('write', () => write(t, topic, minutes))
+      spent += record(app, 'write', w.result, id)
+      if (w.fixes) spent += record(app, 'write', w.fixes, id)
+      if (w.said) spent += record(app, 'write', w.said, id)
+      if (w.searched) spent += record(app, 'search', w.searched, id)
+      story = w.story
+      save({ title: story.title, story, cost: spent })
     }
-    save({ status: 'writing', progress: 'Writing the story' })
-    const w = await write(t, topic, minutes)
-    spent += record(app, 'write', w.result, id)
-    if (w.fixes) spent += record(app, 'write', w.fixes, id)
-    if (w.said) spent += record(app, 'write', w.said, id)
-    if (w.searched) spent += record(app, 'search', w.searched, id)
-    const story = w.story
-    save({ status: 'making', title: story.title, story, progress: 'Reading it aloud', cost: spent })
+    save({ status: 'making', title: story.title, progress: 'Reading it aloud' })
 
     // 2. one voiceover of the whole story, in the tuned voice (or the other model, told the language, for a language
     // the main one doesn't speak)
     // read respelled; the captions (story.sentences, and each line's text below) keep the written words
     const spoken = story.sentences.map((x) => respell(x, story.say))
     const call = speechCall(t, spoken.join(' '), story.language, app)
-    const voice = await $llm.speech.speakAsync(call)
-    spent += record(app, 'speech', voice, id)
-    save({ progress: 'Listening for when each word is said', cost: spent })
+    if (!app.findRecordById('stories', id).getString('narration')) {
+      const voice = await step('speech', () => $llm.speech.speakAsync(call))
+      spent += record(app, 'speech', voice, id)
+      const r = app.findRecordById('stories', id)
+      r.set('narration', $llm.file(voice.file))
+      r.set('cost', spent)
+      app.save(r)
+    }
+    const narration = $llm.fromRecord(app.findRecordById('stories', id), 'narration')
 
     // 3. align: one line per sentence
-    const a = await $llm.align.alignAsync({ model: t.models.align, audio: voice.file, text: spoken.join('\n'), mode: 'speech',
-      language: story.language })
-    spent += record(app, 'align', a, id)
-    story.duration = a.duration
-    story.lines = a.lines.map((l: any) => ({ index: l.index, text: story.sentences[l.index] || l.text, start: l.start, end: l.end }))
-    story.words = a.words.map((x: any) => ({ line: x.line, text: x.text, start: x.start, end: x.end }))
-    if (!story.lines.length) throw new Error('the voiceover could not be lined up with the story')
-    save({ story, progress: 'Choosing the pictures', cost: spent })
+    if (!story.lines || !story.lines.length) {
+      save({ progress: 'Listening for when each word is said' })
+      const a = await step('align', () => $llm.align.alignAsync({ model: t.models.align, audio: narration,
+        text: spoken.join('\n'), mode: 'speech', language: story.language }))
+      spent += record(app, 'align', a, id)
+      story.duration = a.duration
+      story.lines = a.lines.map((l: any) => ({ index: l.index, text: story.sentences[l.index] || l.text, start: l.start, end: l.end }))
+      story.words = a.words.map((x: any) => ({ line: x.line, text: x.text, start: x.start, end: x.end }))
+      if (!story.lines.length) throw new Error('the voiceover could not be lined up with the story')
+      save({ story, cost: spent })
+    }
+    const duration = story.duration!
 
     // 4. place the pictures from the timed transcript
-    const n = wanted
-    const minGap = Math.min(10, a.duration / n / 2) // seconds a picture shows at least
-    const transcript = story.lines.map((l) => `[${l.index}] ${l.start.toFixed(1)}s ${l.text}`).join('\n')
-    const placedCall = await ask(t.models.text, {
-      system: fill(t.prompts.place, { n }),
-      prompt: `Topic: ${story.topic}\nWhat recurs in the pictures: ${story.look}\nLength: ${a.duration.toFixed(0)} seconds\n\n${transcript}`,
-      schema: PLACE_SCHEMA,
-    })
-    spent += record(app, 'place', placedCall, id)
-    const placed = placedCall.data
-    const startOf = new Map(story.lines.map((l) => [l.index, l.start]))
-    const chosen = (placed.pictures || []).filter((p: any) => p && p.prompt).slice(0, n)
-    if (!chosen.length) throw new Error('no pictures were chosen')
-    // where the model put them, when every choice is a real line, in order, and not too close to the one before;
-    // otherwise spread them evenly, each at the line nearest its share of the story
-    let starts = chosen.map((p: any, i: number) => (i === 0 ? 0 : startOf.get(Number(p.line))))
-    const placedWell = starts.every((s: any, i: number) => s !== undefined && (i === 0 || s >= starts[i - 1] + minGap))
-    if (!placedWell) {
-      starts = chosen.map((_: any, i: number) => {
-        if (i === 0) return 0
-        const target = (a.duration * i) / chosen.length
-        return story.lines!.reduce((best, l) => (Math.abs(l.start - target) < Math.abs(best - target) ? l.start : best), 0)
-      })
+    if (!story.pictures || !story.pictures.length) {
+      save({ progress: 'Choosing the pictures' })
+      const n = wanted
+      const minGap = Math.min(10, duration / n / 2) // seconds a picture shows at least
+      const transcript = story.lines!.map((l) => `[${l.index}] ${l.start.toFixed(1)}s ${l.text}`).join('\n')
+      const placedCall = await step('place', () => ask(t.models.text, {
+        system: fill(t.prompts.place, { n }),
+        prompt: `Topic: ${story.topic}\nWhat recurs in the pictures: ${story.look}\nLength: ${duration.toFixed(0)} seconds\n\n${transcript}`,
+        schema: PLACE_SCHEMA,
+      }))
+      spent += record(app, 'place', placedCall, id)
+      const placed = placedCall.data
+      const startOf = new Map(story.lines!.map((l) => [l.index, l.start]))
+      const chosen = (placed.pictures || []).filter((p: any) => p && p.prompt).slice(0, n)
+      if (!chosen.length) throw new Error('no pictures were chosen')
+      // where the model put them, when every choice is a real line, in order, and not too close to the one before;
+      // otherwise spread them evenly, each at the line nearest its share of the story
+      let starts = chosen.map((p: any, i: number) => (i === 0 ? 0 : startOf.get(Number(p.line))))
+      const placedWell = starts.every((s: any, i: number) => s !== undefined && (i === 0 || s >= starts[i - 1] + minGap))
+      if (!placedWell) {
+        starts = chosen.map((_: any, i: number) => {
+          if (i === 0) return 0
+          const target = (duration * i) / chosen.length
+          return story.lines!.reduce((best, l) => (Math.abs(l.start - target) < Math.abs(best - target) ? l.start : best), 0)
+        })
+      }
+      story.pictures = chosen.map((p: any, i: number) => ({ start: starts[i] as number, prompt: String(p.prompt) }))
+      story.style = String(placed.style || 'soft watercolor, warm night light')
+      story.music = String(placed.music || 'quiet ambient music on soft piano and strings')
+      save({ story, cost: spent })
     }
-    const pictures: Picture[] = chosen.map((p: any, i: number) => ({ start: starts[i] as number, prompt: String(p.prompt) }))
-    story.style = String(placed.style || 'soft watercolor, warm night light')
-    story.music = String(placed.music || 'quiet ambient music on soft piano and strings')
-    story.pictures = pictures
-    save({ story, cost: spent })
+    const pictures = story.pictures!
 
     // 5. paint the pictures and 6. compose the song, at the same time; progress saved as each piece arrives
     const done = { pictures: 0, music: false }
-    const report = () =>
+    // a picture or song that answers after this attempt gave up stays quiet: the retry owns the progress line now
+    const report = () => {
+      if (app.findRecordById('stories', id).getInt('attempts') !== attempt) return
       save({ progress: `Painting pictures ${done.pictures}/${pictures.length} · ${done.music ? 'Song ready' : 'Composing the song'}` })
+    }
     report()
-    const painted = Promise.all(pictures.map(async (p) => {
-      const r = await $llm.image.generateAsync(pictureCall(t, story.style!, p.prompt))
-      spent += record(app, 'image', r, id)
-      done.pictures++
-      report()
-      return r.files[0]
-    }))
-    const composed = (async () => {
-      const r = await $llm.music.createAsync(musicCall(t, story.music!))
-      spent += record(app, 'music', r, id)
-      done.music = true
-      report()
-      return r.files && r.files[0]
-    })()
-    const [images, song] = await Promise.all([painted, composed])
+    const [images, song] = await step('paint and compose', () => Promise.all([
+      Promise.all(pictures.map(async (p) => {
+        const r = await $llm.image.generateAsync(pictureCall(t, story.style!, p.prompt))
+        spent += record(app, 'image', r, id)
+        done.pictures++
+        report()
+        return r.files[0]
+      })),
+      (async () => {
+        const r = await $llm.music.createAsync(musicCall(t, story.music!))
+        spent += record(app, 'music', r, id)
+        done.music = true
+        report()
+        return r.files && r.files[0]
+      })(),
+    ]))
 
     // the files, then each picture's file name (the record keeps them in the order they were set)
     const r = app.findRecordById('stories', id)
-    r.set('narration', $llm.file(voice.file))
     r.set('pictures', images.map((f: any) => $llm.file(f)))
     if (song) r.set('music', await $llm.fileAsync(song))
     app.save(r)
@@ -712,17 +845,27 @@ export async function make(app: any, id: string): Promise<void> {
       : [call.voice || 'default', call.instructions ? `"${call.instructions}"` : '', t.voice.seed !== null ? `seed ${t.voice.seed}` : '',
           call.speed ? `speed ${call.speed}` : ''].filter(Boolean).join(', ')
     story.made = {
-      seconds: Math.round((Date.now() - began) / 1000),
+      seconds: Math.round((Date.now() - new Date(rec.getString('created').replace(' ', 'T')).getTime()) / 1000),
       models: { writing: t.models.text, voice: call.model, timing: t.models.align, pictures: t.models.image, music: t.models.music },
       voice: voiceName,
     }
     rememberStory(id, story)
     save({ story, status: 'done', progress: '', cost: spent })
+    log('story', 'done', { ms: Date.now() - began })
   } catch (err: any) {
+    if (err instanceof Superseded) return
     const message = err.message
-    console.log(`storytime: story ${id} failed: ${message}`)
+    console.log(`storytime: story ${id} attempt ${attempt} failed: ${message}`)
     try {
+      if (app.findRecordById('stories', id).getInt('attempts') !== attempt) return // a newer attempt took over
+      if (attempt < ATTEMPTS) {
+        log('story', 'retry', { detail: String(message).slice(0, 500) })
+        save({ progress: 'Trying again', cost: spent })
+        make(app, id) // not awaited, like the first attempt; it resumes from what this one saved
+        return
+      }
       save({ status: 'failed', error: message, cost: spent })
+      log('story', 'failed', { detail: String(message).slice(0, 500) })
     } catch (_) {
       // the record is gone
     }

@@ -25,8 +25,8 @@ The pictures stay consistent because every prompt repeats the same description o
 line. A story in a language `auk` doesn't speak (it speaks English and Chinese) is read by `chatterbox`.
 
 `POST /story` saves a `stories` record and starts the work without awaiting it, then answers at once. The work saves
-each step's progress on the record, and the page polls the record through the records API (`listRule` and `viewRule`
-are open, so anyone with the link can watch and play) until it's done. Every `$llm` call is awaited, so the models work
+each step's progress and result on the record, and the page polls `GET /progress?id=` until it's done (`listRule` and
+`viewRule` are open, so anyone with the link can watch and play). Every `$llm` call is awaited, so the models work
 off the app's JS VM and the app keeps serving pages meanwhile.
 
 **Inspire me** sends the titles and topics of every story told (and the page's earlier suggestions) to the text model,
@@ -40,6 +40,7 @@ pb_migrations/1763800001_stories_views.js   views: listens of 10 seconds or more
 pb_migrations/1763800002_costs.js       costs: each model call's cost, for the daily budget
 pb_migrations/1763800004_samples.js     samples: audio samples the dashboard plays
 pb_migrations/1763800005_voices.js      voices: recordings a cloned narrator imitates (superusers only)
+pb_migrations/1763800006_stories_log.js   log and attempts: each story's step-by-step log (hidden) and how many times it was tried
 pb_hooks/admin_plugins.pb.js            registers the dashboard screen (a superuser UI extension)
 pb_admin_ext/storytime/main.js          Settings → Story Time in the dashboard: the settings, with Sample buttons
 pb_pages/
@@ -55,6 +56,7 @@ pb_pages/
   view.ts              POST /view {id}: counts a listen (the player sends it after 10 seconds heard)
   story.ts             POST /story {prompt?, minutes?}: saves the record, starts making it (no prompt: it picks the topic)
   story/[id].ets       progress while it's made, then the player (scrubber, space to pause, arrows to skip 10 s)
+  progress.ts          GET /progress?id=: a story's status and progress, for its page's poll; retries a stalled story
   _private/story.ts    the models, the limits and the six steps
 ```
 
@@ -122,6 +124,13 @@ cost, since the settings can change.
   too). Checked at most once a minute. If not, the front page says the storyteller can't reach its models and turns
   the form off, and both endpoints answer 503, with the reason for admins in `reason` and the server log.
 - **Progress:** the front page lists stories being made with their progress, and a story's page shows the six steps
-  and how long it has run, both kept current by polling the records API.
-
-A story that was being made when the app stopped shows as unfinished after 15 minutes.
+  and how long it has run, kept current by polling.
+- **Log:** every step writes to the story's `log` (when it started and ended, how long it took, any error), a hidden
+  field superusers read on the record in the dashboard.
+- **Stalls and retries:** each step has a time limit (`STEP_TIMEOUT` in `_private/story.ts`: 5 minutes for writing and
+  reading aloud, 9 for the pictures and song). A story whose step runs past it (a model call that never answers, or
+  the app stopped mid-story) is noticed the next time its page polls or someone starts a story, since a timer can't
+  outlive the request that started the story. A step that fails, or stalls, is tried again once: the retry skips every
+  step already saved on the record (the story, the narration, the timings, the pictures' places), and the record counts
+  the attempts, so a story is never tried a third time and a stalled call that answers late is ignored. After the
+  second attempt the story fails, with the reason in `error`.
