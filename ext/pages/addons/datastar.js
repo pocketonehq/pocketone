@@ -17,6 +17,7 @@ var MODES = ['outer', 'inner', 'replace', 'prepend', 'append', 'before', 'after'
 var NAMESPACES = ['html', 'svg', 'mathml']
 // Datastar's default SSE retry; the SDK spec leaves it out of the stream.
 var DEFAULT_RETRY = 1000
+var KEEP_ALIVE = 30 // seconds between keep-alive comments on an open stream
 
 function elementLines(html, opts) {
   var lines = []
@@ -67,8 +68,17 @@ module.exports = function () {
     name: 'datastar',
     extendContext: function (ctx) {
       var stream = null
+      // open starts the SSE response, with a keep-alive comment every KEEP_ALIVE seconds so proxies don't close a
+      // quiet stream (keepAlive: 0 turns it off).
+      function open(opts) {
+        if (!stream) {
+          var keepAlive = opts && opts.keepAlive !== undefined ? opts.keepAlive : KEEP_ALIVE
+          stream = ctx.res.sse({ keepAlive: keepAlive })
+        }
+        return stream
+      }
       function send(event, lines, opts) {
-        if (!stream) stream = ctx.res.sse()
+        open()
         var retry = opts.retryDuration === DEFAULT_RETRY ? undefined : opts.retryDuration
         stream.send(event, lines.join('\n'), { id: opts.eventId, retry: retry })
       }
@@ -77,6 +87,10 @@ module.exports = function () {
         ctx.realtime.send('datastar', { type: type, el: null, argsRaw: argsRaw }, realtimeOpts || {})
       }
       var ds = {
+        // Starts the response now instead of with the first patch: a route that waits for changes calls it first.
+        open: function (opts) {
+          open(opts)
+        },
         scripts: function (opts) {
           opts = opts || {}
           var out = [LOADER]

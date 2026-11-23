@@ -26,7 +26,7 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Fatalf("gave up after 2 s waiting for %s", what)
 }
 
-// openStream starts a GET on the test server in the background and sends each SSE "event: data" pair it reads to the returned channel,
+// openStream starts a GET on the test server in the background (headers may come only with the first event) and sends each SSE "event: data" pair it reads to the returned channel,
 // which closes when the response ends.
 func openStream(t *testing.T, ctx context.Context, url, token string) <-chan string {
 	t.Helper()
@@ -35,7 +35,7 @@ func openStream(t *testing.T, ctx context.Context, url, token string) <-chan str
 		req.Header.Set("Authorization", token)
 	}
 	out := make(chan string, 256)
-	go func() { // headers may come only with the first event
+	go func() {
 		defer close(out)
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -210,6 +210,7 @@ func TestRealtimeSubscribeDatastarExample(t *testing.T) {
 		"todos/_private/todo.ets": `<li id="todo-<%= todo.id %>"><%= todo.title %></li>`,
 		"todos/live.ts": `module.exports = {
   async get(ctx) {
+    ctx.datastar.open() // start the response now, not with the first change
     for await (const { action, record } of ctx.realtime.subscribe('todos/*')) {
       if (action === 'delete') {
         ctx.datastar.patchElements('', { selector: ` + "`#todo-${record.id}`" + `, mode: 'remove' })
@@ -276,5 +277,57 @@ func TestRealtimeSubscribeDatastarExample(t *testing.T) {
 	}
 	if got := next(); !strings.Contains(got, "selector #todo-"+rec.Id+"|datastar-patch-elements mode remove") {
 		t.Fatalf("delete patch: %q", got)
+	}
+}
+
+// sse({ keepAlive }) writes a comment that often while the handler runs, and stops when it's done. The Datastar
+// add-on's open() starts its stream at once, with a keep-alive by default.
+func TestSSEKeepAlive(t *testing.T) {
+	addon, err := os.ReadFile("addons/datastar.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := writeTree(t, map[string]string{
+		"+config.js":           "module.exports = { plugins: ['realtime', 'datastar'] }",
+		"_private/datastar.js": string(addon),
+		"ka.ts": `export async function get(ctx: any) {
+			const s = ctx.res.sse({ keepAlive: 0.03 })
+			await new Promise((r) => setTimeout(r, 200))
+			s.send('end', '1')
+		}`,
+		"live.ts": `export async function get(ctx: any) {
+			ctx.datastar.open({ keepAlive: 0.03 })
+			for await (const m of ctx.realtime.subscribe('chat')) ctx.datastar.patchElements(m.html)
+		}`,
+	})
+	h, _ := newServer(t, dir)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/ka", nil))
+	body := rec.Body.String()
+	before, after, ok := strings.Cut(body, "event: end\ndata: 1\n\n")
+	if !ok || strings.Count(before, ": keep-alive\n\n") < 3 || after != "" {
+		t.Fatalf("want keep-alives, then the end event, then nothing:\n%q", body)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	rec = httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h.ServeHTTP(rec, httptest.NewRequest("GET", "/live", nil).WithContext(ctx))
+	}()
+	time.Sleep(150 * time.Millisecond)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the Datastar stream didn't end when its client left")
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("Content-Type %q before any patch", ct)
+	}
+	if n := strings.Count(rec.Body.String(), ": keep-alive\n\n"); n < 2 {
+		t.Fatalf("%d keep-alives on the Datastar stream:\n%q", n, rec.Body.String())
 	}
 }

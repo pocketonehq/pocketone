@@ -75,6 +75,7 @@ declare namespace pages {
   interface EventStream {
     /** Sends an event; non-string data is JSON-encoded. */
     send(event: string, data: any, opts?: { id?: string | number; retry?: number }): void;
+    /** Writes an SSE comment (`: text`), which browsers ignore. */
     comment(text: string): void;
     close(): void;
   }
@@ -102,8 +103,11 @@ declare namespace pages {
     text(status: number, text: string): Response;
     /** Sends a file from pb_pages (path relative to pb_pages). */
     file(path: string): Response;
-    /** Starts a `text/event-stream` response. */
-    sse(): EventStream;
+    /**
+     * Starts a `text/event-stream` response. `keepAlive` (seconds) writes a comment that often while the handler runs,
+     * so proxies keep a quiet stream open.
+     */
+    sse(opts?: { keepAlive?: number }): EventStream;
     /** `layout(false)` renders this page without layouts (e.g. an htmx fragment). */
     layout(on: boolean): Response;
     /** True once a response has been sent. */

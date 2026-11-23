@@ -61,7 +61,10 @@ return ctx.res.file('downloads/manual.pdf')
 
 ## Server-sent events
 
-`sse()` starts a `text/event-stream` response and returns `{ send(event, data, { id, retry }?), comment(text), close() }`:
+`sse({ keepAlive }?)` starts a `text/event-stream` response and returns `{ send(event, data, { id, retry }?), comment(text), close() }`.
+`comment(text)` writes an SSE comment (`: text`), which browsers ignore. `keepAlive` is a number of seconds: while the
+handler runs, a comment is written that often, so proxies that close quiet connections (Cloudflare after about
+100 seconds) keep the stream open.
 
 ```ts
 // pb_pages/clock.ts
@@ -82,7 +85,7 @@ cleared:
 // pb_pages/ticks.ts
 module.exports = {
   async get(ctx) {
-    const stream = ctx.res.sse()
+    const stream = ctx.res.sse({ keepAlive: 30 })
     setInterval(() => stream.send('time', new Date().toISOString()), 1000)
     await new Promise(() => {}) // wait until the client leaves
   },

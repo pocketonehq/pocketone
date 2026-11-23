@@ -142,9 +142,10 @@ type request struct {
 	where    string     // template location of the error that failed the request (__ppWhere)
 	httpErr  *httpError // a ctx.httpError() that failed the request
 
-	subsMu    sync.Mutex
-	subs      []*realtimeSub // ctx.realtime.subscribe(), ended with the request
-	subsEnded bool
+	endMu sync.Mutex
+	subs  []*realtimeSub // ctx.realtime.subscribe(), ended with the request
+	ends  []func()       // run when the handler is done (keep-alive tickers), before the response is finished
+	ended bool
 }
 
 // render runs a page or API route in the app's JS VM.
@@ -181,10 +182,12 @@ func (p *Pages) renderStatus(e *core.RequestEvent, root *os.Root, route *Route, 
 	}
 	// release on the loop: the VM may be closing meanwhile, and a closed VM has freed them anyway
 	defer func() { _ = js.Run(p.app, func(js.Runtime) error { r.release(); return nil }) }()
-	defer r.endSubscriptions()
+	defer r.finish()
 	if setupErr == nil {
 		_, setupErr = r.callJS(r.cache, "driver", js.NativeFunc(func(js.Call) (any, error) { return r.obj, nil }))
 	}
+	// before anything else writes the response
+	r.finish()
 	if setupErr != nil && e.Request.Context().Err() == nil { // a client that went away gets no answer
 		r.fail(setupErr)
 	}
@@ -960,7 +963,7 @@ func (r *request) rtObject(t *Table) js.Object {
 		}
 		return r.write(http.StatusOK, ct, body)
 	})
-	set("sse", js.NativeFunc(func(js.Call) (any, error) { return r.sse() }))
+	set("sse", func(opts map[string]any) (js.Object, error) { return r.sse(opts) })
 	set("setLayout", func(on bool) { r.layouts = on })
 	set("layoutsOn", func() bool {
 		if !r.layouts {

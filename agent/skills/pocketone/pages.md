@@ -254,7 +254,7 @@ More: [ets](reference/docs/extensions/pages/ets.md), [partials](reference/docs/e
 | Member | |
 |---|---|
 | `ctx.req` | `method`, `url` (`{ href, origin, pathname, search }`), `query(name)` (string or `undefined`; `{ all: true }` for arrays), `header(name)`, `cookie(name, { json }?)`, `cookies()`, `body()` (JSON or form fields), `files(name)`, `ip`, `event` |
-| `ctx.res` | `status(code)`, `header(name, value)`, `cookie(name, value, opts?)`, `clearCookie`, `redirect(url, { status, flash }?)` or `redirect(url, status)`, `json`, `html`, `text`, `file(path)`, `sse()`, `layout(false)`, `sent` |
+| `ctx.res` | `status(code)`, `header(name, value)`, `cookie(name, value, opts?)`, `clearCookie`, `redirect(url, { status, flash }?)` or `redirect(url, status)`, `json`, `html`, `text`, `file(path)`, `sse({ keepAlive }?)` (keepAlive = seconds between keep-alive comments), `layout(false)`, `sent` |
 | `ctx.data` / `ctx.params` / `ctx.route` | Shared data (`{}` to start) / route params (strings, no query) / `{ path, name, file }` |
 | `ctx.auth` | Authenticated record or `null` (an `Authorization` header, or the `auth` plugin's cookie) |
 | `ctx.app` / `ctx.pb()` | `$app` with full access / JS SDK client acting as the visitor, in-process |

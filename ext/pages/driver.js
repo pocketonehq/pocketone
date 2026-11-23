@@ -445,8 +445,8 @@
         rt.sendFile(String(path))
         return ctx.res
       },
-      sse: function () {
-        return rt.sse()
+      sse: function (opts) {
+        return rt.sse(opts || {})
       },
       layout: function (on) {
         rt.setLayout(!!on)

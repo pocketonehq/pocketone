@@ -75,12 +75,10 @@ browser with no polling:
 // pb_pages/posts/live.ts
 module.exports = {
   async get(ctx) {
-    const stream = ctx.res.sse()
-    const ping = setInterval(() => stream.comment('ping'), 30_000) // keeps proxies from closing a quiet stream
+    const stream = ctx.res.sse({ keepAlive: 30 }) // a comment every 30 s, so proxies keep a quiet stream open
     for await (const { action, record } of ctx.realtime.subscribe('posts/*', { filter: 'published = true' })) {
       stream.send(action, record)
     }
-    clearInterval(ping)
   },
 }
 ```
@@ -121,6 +119,7 @@ With the [Datastar add-on](datastar.md), each change becomes a patch:
 // pb_pages/todos/live.ts
 module.exports = {
   async get(ctx) {
+    ctx.datastar.open() // start the response now, not with the first change
     for await (const { action, record } of ctx.realtime.subscribe('todos/*')) {
       if (action === 'delete') {
         ctx.datastar.patchElements('', { selector: `#todo-${record.id}`, mode: 'remove' })
@@ -134,5 +133,4 @@ module.exports = {
 }
 ```
 
-The response starts with its first patch. Behind a proxy that closes quiet connections, patch something on a timer
-too.
+The add-on's stream sends a keep-alive comment every 30 seconds while the route waits.

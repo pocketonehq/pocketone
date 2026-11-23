@@ -406,7 +406,7 @@ Query values and cookies are strings unless you ask for JSON. Nothing is parsed 
 | `html(html)` / `html(status, html)` | Send HTML as-is (no layouts). |
 | `text(text)` / `text(status, text)` | Send plain text. |
 | `file(path)` | Send a file from `pb_pages` (path relative to `pb_pages`). |
-| `sse()` | Start a `text/event-stream` response; returns `{ send(event, data, { id, retry }?), comment(text), close() }`. |
+| `sse({ keepAlive }?)` | Start a `text/event-stream` response; returns `{ send(event, data, { id, retry }?), comment(text), close() }`. With `keepAlive` (seconds), a `: keep-alive` comment is written that often until the handler is done. |
 | `layout(false)` | Render this page without layouts (e.g. an HTML fragment for htmx). |
 | `sent` | `true` once a response has been sent. |
 
@@ -575,7 +575,8 @@ Plugins for third-party libraries ship as JS files in `ext/pages/addons/`, not b
 - `ctx.datastar.patchElements(html, { selector, mode }?)`, `ctx.datastar.patchSignals(signals, { onlyIfMissing }?)`
   (`signals` is an object), `ctx.datastar.executeScript(js)` send SSE events on the current response. The first one
   starts the stream (`ctx.res.sent` becomes `true`); later steps still run, but their output isn't sent and the
-  automatic patch below doesn't happen. The stream closes when the request ends.
+  automatic patch below doesn't happen. The stream closes when the request ends. It sends a keep-alive comment every
+  30 seconds. `ctx.datastar.open({ keepAlive }?)` starts it before any patch (`keepAlive` in seconds, `0` for none).
 - `ctx.datastar.signals()` returns the request's signals as an object (from the `datastar` query parameter on
   `GET`, the JSON body otherwise). `readSignals(target)` (or 0.x's `readSignals(request, target)`) merges them into
   `target` and returns it.

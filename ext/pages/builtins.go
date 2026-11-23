@@ -27,8 +27,9 @@ import (
 
 // ---- ctx.res.sse() ----
 
-// sse starts a text/event-stream response and returns the stream object for JS.
-func (r *request) sse() (js.Object, error) {
+// sse starts a text/event-stream response and returns the stream object for JS. With keepAlive (seconds), a comment
+// is written that often until the handler is done, so proxies don't close a quiet stream.
+func (r *request) sse(opts map[string]any) (js.Object, error) {
 	if r.sent {
 		return nil, errors.New("ctx.res.sse(): a response was already sent")
 	}
@@ -41,13 +42,33 @@ func (r *request) sse() (js.Object, error) {
 	r.e.Response.WriteHeader(http.StatusOK)
 	_ = r.e.Flush()
 
+	var mu sync.Mutex // the keep-alive writes from its own goroutine
 	closed := false
 	write := func(s string) {
+		mu.Lock()
+		defer mu.Unlock()
 		if closed || r.isHead() {
 			return
 		}
 		_, _ = r.e.Response.Write([]byte(s))
 		_ = r.e.Flush()
+	}
+	if every := toSeconds(opts["keepAlive"]); every > 0 {
+		stop, stopped := make(chan struct{}), make(chan struct{})
+		go func() {
+			defer close(stopped)
+			t := time.NewTicker(every)
+			defer t.Stop()
+			for {
+				select {
+				case <-t.C:
+					write(": keep-alive\n\n")
+				case <-stop:
+					return
+				}
+			}
+		}()
+		r.onEnd(func() { close(stop); <-stopped })
 	}
 	o := r.rt.NewObject()
 	err := errors.Join(
@@ -87,9 +108,30 @@ func (r *request) sse() (js.Object, error) {
 			b.WriteString("\n")
 			write(b.String())
 		}),
-		o.Set("close", func() { closed = true }),
+		o.Set("close", func() {
+			mu.Lock()
+			closed = true
+			mu.Unlock()
+		}),
 	)
 	return o, err
+}
+
+// toSeconds reads a JS number of seconds as a duration (0 if it isn't a positive number).
+func toSeconds(v any) time.Duration {
+	var s float64
+	switch n := v.(type) {
+	case int:
+		s = float64(n)
+	case int64:
+		s = float64(n)
+	case float64:
+		s = n
+	}
+	if s <= 0 {
+		return 0
+	}
+	return time.Duration(s * float64(time.Second))
 }
 
 // ---- realtime (ctx.realtime, built by the driver) ----
@@ -161,8 +203,10 @@ type realtimeSub struct {
 }
 
 // realtimeSubscribe(topic, { filter, expand, fields }) registers a realtime client for the request, subscribed to
-// topic with PocketBase's own subscription options, and returns it. It ends when the request does.
-func (r *request) realtimeSubscribe(topic string, opts map[string]any) (*realtimeSub, error) {
+// topic with PocketBase's own subscription options, and returns { next, close } for JS. It ends when the request
+// does. JS gets only the two functions, never the struct: the engine reads the fields of Go values it holds (to
+// account their memory) while the subscription's goroutines change them.
+func (r *request) realtimeSubscribe(topic string, opts map[string]any) (js.Object, error) {
 	if topic == "" {
 		return nil, errors.New("ctx.realtime.subscribe(): topic is required")
 	}
@@ -194,13 +238,13 @@ func (r *request) realtimeSubscribe(topic string, opts map[string]any) (*realtim
 		ctx:    r.context(),
 	}
 
-	r.subsMu.Lock()
-	if r.subsEnded {
-		r.subsMu.Unlock()
+	r.endMu.Lock()
+	if r.ended {
+		r.endMu.Unlock()
 		return nil, errors.New("ctx.realtime.subscribe(): the request has ended")
 	}
 	r.subs = append(r.subs, s)
-	r.subsMu.Unlock()
+	r.endMu.Unlock()
 
 	s.broker.Register(client)
 	// The broker's senders block until the client's channel is read, so it's read at once into the queue.
@@ -220,7 +264,8 @@ func (r *request) realtimeSubscribe(topic string, opts map[string]any) (*realtim
 		case <-s.done:
 		}
 	}()
-	return s, nil
+	o := r.rt.NewObject()
+	return o, errors.Join(o.Set("next", s.Next), o.Set("close", s.Close))
 }
 
 // end unregisters the client (once); err, if any, is what the next Next returns.
@@ -253,14 +298,30 @@ func (s *realtimeSub) Next() (string, error) {
 // Close ends the subscription.
 func (s *realtimeSub) Close() { s.end(nil) }
 
-// endSubscriptions ends the request's subscriptions, once its handler has returned, and refuses new ones.
-func (r *request) endSubscriptions() {
-	r.subsMu.Lock()
-	subs := r.subs
-	r.subs, r.subsEnded = nil, true
-	r.subsMu.Unlock()
+// onEnd runs fn when the handler is done (at once if it already is).
+func (r *request) onEnd(fn func()) {
+	r.endMu.Lock()
+	if r.ended {
+		r.endMu.Unlock()
+		fn()
+		return
+	}
+	r.ends = append(r.ends, fn)
+	r.endMu.Unlock()
+}
+
+// finish runs once the handler is done (returned, given up, or its client gone): it ends the request's
+// subscriptions and keep-alives and refuses new ones. Safe to call again.
+func (r *request) finish() {
+	r.endMu.Lock()
+	subs, ends := r.subs, r.ends
+	r.subs, r.ends, r.ended = nil, nil, true
+	r.endMu.Unlock()
 	for _, s := range subs {
 		s.end(nil)
+	}
+	for _, fn := range ends {
+		fn()
 	}
 }
 
