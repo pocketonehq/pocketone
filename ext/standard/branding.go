@@ -36,8 +36,14 @@ func bindBranding(app core.App) {
 // browser inside /_/extensions.js; UI Cache (a standard member) sends that file with no-cache, so an upgrade shows on
 // the next page load.
 func brandingUI(version string) core.UIExtension {
-	logo, _ := fs.ReadFile(brandingFiles, "branding/logo.svg")
-	tmpl, _ := fs.ReadFile(brandingFiles, "branding/main.js")
+	logo, err := fs.ReadFile(brandingFiles, "branding/logo.svg")
+	if err != nil {
+		panic(err) // embedded: missing only if the files were renamed
+	}
+	tmpl, err := fs.ReadFile(brandingFiles, "branding/main.js")
+	if err != nil {
+		panic(err)
+	}
 	if version != "" && version[0] >= '0' && version[0] <= '9' {
 		version = "v" + version
 	}
