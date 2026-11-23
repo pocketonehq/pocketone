@@ -35,6 +35,10 @@ type Server struct {
 	// application's Go code (routes, settings) that uses Instance.Private instead of env.
 	SetupApp func(inst Instance, app core.App) error
 
+	// Env, if set, adds host values to each app's environment ($os.getenv, process.env) over the instance's own
+	// secrets, so a secret can't override them (e.g. facts about the runtime the host wants every app to read).
+	Env func(inst Instance) map[string]string
+
 	// Wrap, if set, wraps the instance handler (e.g. firewall or rate-limit middleware from a host application).
 	Wrap func(http.Handler) http.Handler
 
@@ -224,6 +228,7 @@ func (s *Server) RegisterHost(h *multisite.Host) error {
 		Init:          chainIniters(initers),
 		InitJS:        chainJSIniters(jsIniters),
 		Setup:         s.SetupApp,
+		Env:           s.Env,
 		Standard:      s.Standard,
 		IsolateConfig: s.Config.IsolateConfig,
 		Host:          host,

@@ -48,6 +48,9 @@ type appOptions struct {
 	InitJS func(inst Instance, app core.App, rt js.Runtime)
 	// Setup, if set, runs for each app after migrations and before it serves (host application Go code).
 	Setup func(inst Instance, app core.App) error
+	// Env, if set, adds host values to each app's environment ($os.getenv, process.env), over the instance's own
+	// secrets: a secret can't override them.
+	Env func(inst Instance) map[string]string
 	// IsolateConfig is every instance's base config, one section per extension, under its own extensions.<name>.
 	IsolateConfig map[string]map[string]any
 	// Standard, if set, is registered on every app (ext/standard's Set): before its hooks load, with the instance's
@@ -118,6 +121,11 @@ func startApp(opts appOptions, inst Instance) (r *runningApp, err error) {
 	env := make(map[string]string, len(inst.Secrets))
 	for k, v := range inst.Secrets {
 		env[k] = v
+	}
+	if opts.Env != nil {
+		for k, v := range opts.Env(inst) {
+			env[k] = v
+		}
 	}
 
 	sb := &sandbox.Sandbox{

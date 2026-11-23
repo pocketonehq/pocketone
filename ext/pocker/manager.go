@@ -44,7 +44,7 @@ type Manager struct {
 	ownsDir bool
 
 	lookupOnce sync.Once // picks up instance.lookup/v1 for ServeHTTP
-	handler *multisite.Handler
+	handler    *multisite.Handler
 
 	defaults Limits
 	onEvent  func(Event)
@@ -130,6 +130,8 @@ type ManagerOptions struct {
 	InitJS func(inst Instance, app core.App, rt js.Runtime)
 	// Setup runs host Go code for each app after migrations and before it serves (see [Server.SetupApp]).
 	Setup func(inst Instance, app core.App) error
+	// Env adds host values to each app's environment, over its secrets (see [Server.Env]).
+	Env func(inst Instance) map[string]string
 	// Forward serves requests for instances with [Instance.Remote] set, after the firewall checks. Nil = a plain
 	// reverse proxy to Remote.
 	Forward func(w http.ResponseWriter, r *http.Request, inst Instance)
@@ -159,7 +161,7 @@ func NewManager(scope *extkit.Scope, opts ManagerOptions) *Manager {
 	defaults := opts.Defaults.Over(DefaultLimits())
 	m := &Manager{
 		scope:    scope,
-		opts:     appOptions{PBRoot: opts.PBRoot, HooksPoolSize: opts.HooksPoolSize, ForceDev: opts.Dev, Defaults: defaults, Init: opts.Init, InitJS: opts.InitJS, Setup: opts.Setup, Standard: opts.Standard, Host: opts.Host, IsolateConfig: opts.IsolateConfig},
+		opts:     appOptions{PBRoot: opts.PBRoot, HooksPoolSize: opts.HooksPoolSize, ForceDev: opts.Dev, Defaults: defaults, Init: opts.Init, InitJS: opts.InitJS, Setup: opts.Setup, Env: opts.Env, Standard: opts.Standard, Host: opts.Host, IsolateConfig: opts.IsolateConfig},
 		defaults: defaults,
 		onEvent:  opts.OnEvent,
 		gate:     opts.Gate,
