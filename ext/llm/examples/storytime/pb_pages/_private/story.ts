@@ -36,6 +36,9 @@ export type Tuning = {
   /** how long a story may be: the front page's slider runs from minMinutes (short) to maxMinutes (long), starting at
    * defaultMinutes; a story gets picturesPerMinute pictures a minute, at most maxPictures */
   length: { minMinutes: number; maxMinutes: number; defaultMinutes: number; picturesPerMinute: number; maxPictures: number }
+  /** the player's final mix: the narration's loudness (dBFS, measured over its sounding parts) and how many dB the
+   * music sits under it; every story's files are levelled to these when it plays */
+  mix: { voiceDb: number; musicUnderDb: number }
   /** each as provider/model: a provider added in Settings → LLM, then its model */
   models: { text: string; idea: string; image: string; speech: string; speechOther: string; align: string; music: string }
   /** the narrator, for the speech model (not speechOther, which reads other languages with its own voice) */
@@ -112,6 +115,9 @@ export function merge(base: any, over: any): any {
     L.defaultMinutes = whole(L.defaultMinutes, D.defaultMinutes, L.minMinutes, L.maxMinutes)
     L.maxPictures = whole(L.maxPictures, D.maxPictures, 1, 20)
     L.picturesPerMinute = Math.max(0.1, Math.min(10, Number(L.picturesPerMinute) || D.picturesPerMinute))
+    const M = out.mix, DM = DEFAULT_TUNING.mix
+    M.voiceDb = Math.max(-40, Math.min(-6, Number.isFinite(Number(M.voiceDb)) && M.voiceDb !== null ? Number(M.voiceDb) : DM.voiceDb))
+    M.musicUnderDb = Math.max(0, Math.min(40, Number.isFinite(Number(M.musicUnderDb)) && M.musicUnderDb !== null ? Number(M.musicUnderDb) : DM.musicUnderDb))
   }
   return out
 }

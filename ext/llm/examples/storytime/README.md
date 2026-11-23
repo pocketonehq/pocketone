@@ -81,7 +81,7 @@ saved or not: the voice reads a paragraph, the music plays 20 seconds, a picture
 written, or an idea suggested. **Save changes** stores it as one JSON blob in PocketOne's key-value store (`$kv`); new stories use it, on top of
 the defaults in `_private/defaults.json`. A seed makes `auk`'s generated voice the same from story to story. The narrator
 can also be a clone: record a passage on the screen, and every story is read in that voice (`reference` on the speech
-call, from the `voices` collection). **Export** and **Import** move the saved settings and the recordings between copies
+call, from the `voices` collection). A cloned voice is as loud as its recording, so each take is compressed and levelled in the browser before it's saved (**Compress and level** fixes an older one), and the player does the final mix: it measures each story's voice and music and levels them to the **Mix** settings. **Export** and **Import** move the saved settings and the recordings between copies
 of the app as one JSON file.
 
 `profiles/` holds settings files to Import: `pocketone.json` turns the app into PocketOne Stories, stories about

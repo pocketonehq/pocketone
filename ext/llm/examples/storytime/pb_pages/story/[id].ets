@@ -22,6 +22,7 @@ const data = status === 'done' ? {
   lines: story.lines,
   words: story.words,
   pictures: story.pictures.map((p: any) => ({ start: p.start, image: files(p.image) })),
+  mix: ctx.resolve('story').tuning(ctx.app).mix,
 } : null
 const title = rec.getString('title') || ctx.resolve('story').tuning(ctx.app).site.title
 // how it was made, for the splash: when, how long it took, what it cost, and the models (older stories lack some)
@@ -194,7 +195,12 @@ const madeLine = [
   </div>
   <script>
     const S = <%- JSON.stringify(data) %>
-    const MUSIC = 0.16 // the song's volume under the voice
+    // The final mix. Recordings come out at very different loudness (a cloned voice is as loud as its clip, a generated
+    // one can be very hot, songs vary by 10 dB or more), so on the first play each file is measured once and run
+    // through a gain: the voice to the settings' level (a limiter stops a big boost from clipping), the song that many
+    // dB under it. Until the measurement is in (or if it fails), the song plays at MUSIC of the voice.
+    const MUSIC = 0.16
+    const VOICE_DB = S.mix.voiceDb, MUSIC_DB = S.mix.voiceDb - S.mix.musicUnderDb
     const $ = (id) => document.getElementById(id)
     const stage = $('stage'), cap = $('caption'), cover = $('cover'), scrub = $('scrub'), time = $('time'), btn = $('toggle')
 
@@ -240,6 +246,47 @@ const madeLine = [
         if (k < 1) requestAnimationFrame(step); else if (to === 0) a.pause()
       }
       requestAnimationFrame(step)
+    }
+
+    // the loudness of a file's sounding parts: the median of 50 ms windows above -50 dBFS
+    const loudness = async (url) => {
+      const decoder = new OfflineAudioContext(1, 1, 16000)
+      const a = await decoder.decodeAudioData(await (await fetch(url)).arrayBuffer())
+      const x = a.getChannelData(0), win = Math.round(a.sampleRate * 0.05), dbs = []
+      for (let i = 0; i + win < x.length; i += win) {
+        let sum = 0
+        for (let j = i; j < i + win; j += 2) sum += x[j] * x[j]
+        const db = 10 * Math.log10(sum / (win / 2) + 1e-12)
+        if (db > -50) dbs.push(db)
+      }
+      dbs.sort((p, q) => p - q)
+      return dbs.length ? dbs[dbs.length >> 1] : null
+    }
+    let levelled = false
+    const level = () => {
+      if (levelled || !window.AudioContext) return
+      levelled = true
+      const ac = new AudioContext()
+      const route = (el, limit) => {
+        const gain = ac.createGain()
+        let node = ac.createMediaElementSource(el).connect(gain)
+        if (limit) {
+          const lim = ac.createDynamicsCompressor()
+          lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.003; lim.release.value = 0.1
+          node = node.connect(lim)
+        }
+        node.connect(ac.destination)
+        return gain
+      }
+      // the element volume does fades (music to MUSIC); the gain does the level, so for the song it makes up for MUSIC
+      // each gain chosen is kept on the page (data-mix-voice, data-mix-music: the file's loudness and the gain)
+      const set = (gain, url, target, under, which) => loudness(url).then((db) => {
+        if (db === null) return
+        gain.gain.value = Math.max(0.05, Math.min(16, Math.pow(10, (target - db) / 20) / under))
+        document.body.dataset['mix' + which] = `${db.toFixed(1)} dBFS x${gain.gain.value.toFixed(2)}`
+      }).catch(() => {})
+      set(route(voice, true), S.voice, VOICE_DB, 1, 'Voice')
+      if (music) set(route(music, false), S.music, MUSIC_DB, MUSIC, 'Music')
     }
 
     const clock = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0')
@@ -288,6 +335,7 @@ const madeLine = [
     requestAnimationFrame(render)
 
     const play = () => {
+      level()
       cover.classList.add('gone')
       if (voice.ended) voice.currentTime = 0
       playing = true

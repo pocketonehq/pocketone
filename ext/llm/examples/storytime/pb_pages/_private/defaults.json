@@ -42,6 +42,10 @@
       "seed": null,
       "speed": null,
       "voice": "default"
+    },
+    "mix": {
+      "voiceDb": -20,
+      "musicUnderDb": 18
     }
   },
   "voices": []

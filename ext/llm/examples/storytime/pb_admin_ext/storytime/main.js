@@ -48,6 +48,7 @@
             clips: [], // recordings a clone can imitate: { id, name, passage, created, file }
             clipChoice: "", // the recording picked on the page
             fileToken: "", // lets the superuser's browser play a recording (superusers only)
+            levelling: null, // Compress and level on a recording: { id, busy } or { id, text } or { id, error }
             check: null, // the last check of a recording: { id, busy } or { id, heard, match, missing, cutOff, model } or { id, error }
             rec: { state: "idle" }, // the recorder: idle, recording, saving, saved (seconds, name); error
             spent: 0,
@@ -237,6 +238,66 @@
         // A take is saved as soon as it stops and played back from the server: the dashboard's Content-Security-Policy
         // blocks playing blob: and data: audio, so an unsaved take can't be heard here. Delete a take that isn't right.
         let takeName = "My voice";
+        // A voice take straight off a microphone is quiet and uneven, and a clone copies its level, so every take is
+        // compressed and levelled before it's saved: a gentle compressor (3:1) evens out loud and soft words, then makeup
+        // gain brings it to TAKE_DB with peaks kept under -1 dBFS. Saved as 24 kHz mono 16-bit WAV.
+        const TAKE_DB = -16, RATE = 24000;
+        function measure(x) {
+            const win = Math.round(RATE * 0.05), dbs = [];
+            let peak = 0;
+            for (let i = 0; i + win <= x.length; i += win) {
+                let sum = 0;
+                for (let j = i; j < i + win; j++) { sum += x[j] * x[j]; peak = Math.max(peak, Math.abs(x[j])); }
+                const db = 10 * Math.log10(sum / win + 1e-12);
+                if (db > -50) dbs.push(db);
+            }
+            dbs.sort((a, b) => a - b);
+            return { db: dbs.length ? dbs[dbs.length >> 1] : null, peak };
+        }
+        function wav(x) {
+            const out = new DataView(new ArrayBuffer(44 + x.length * 2));
+            const str = (o, v) => [...v].forEach((c, i) => out.setUint8(o + i, c.charCodeAt(0)));
+            str(0, "RIFF"); out.setUint32(4, 36 + x.length * 2, true); str(8, "WAVEfmt ");
+            out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, 1, true);
+            out.setUint32(24, RATE, true); out.setUint32(28, RATE * 2, true); out.setUint16(32, 2, true); out.setUint16(34, 16, true);
+            str(36, "data"); out.setUint32(40, x.length * 2, true);
+            x.forEach((v, i) => out.setInt16(44 + i * 2, Math.max(-1, Math.min(1, v)) * 0x7fff, true));
+            return new Blob([out], { type: "audio/wav" });
+        }
+        const dbText = (m) => (m.db === null ? "silent" : `${Math.round(m.db)} dBFS`);
+        async function compressAndLevel(buffer) {
+            const decoded = await new OfflineAudioContext(1, 1, RATE).decodeAudioData(buffer);
+            const before = measure(decoded.getChannelData(0));
+            if (before.db === null) throw new Error("the recording is silent");
+            const ctx = new OfflineAudioContext(1, decoded.length, RATE);
+            const src = ctx.createBufferSource();
+            src.buffer = decoded;
+            const pre = ctx.createGain();
+            pre.gain.value = Math.max(0.1, Math.min(40, Math.pow(10, (-24 - before.db) / 20))); // into the compressor at -24
+            const comp = ctx.createDynamicsCompressor();
+            comp.threshold.value = -30; comp.knee.value = 10; comp.ratio.value = 3; comp.attack.value = 0.01; comp.release.value = 0.25;
+            src.connect(pre).connect(comp).connect(ctx.destination);
+            src.start();
+            const compressed = await ctx.startRendering();
+            const mid = measure(compressed.getChannelData(0));
+            // makeup gain to TAKE_DB, then a fast limiter holds the word attacks the compressor let through
+            const ctx2 = new OfflineAudioContext(1, compressed.length, RATE);
+            const src2 = ctx2.createBufferSource();
+            src2.buffer = compressed;
+            const makeup = ctx2.createGain();
+            makeup.gain.value = Math.pow(10, (TAKE_DB - mid.db) / 20);
+            const lim = ctx2.createDynamicsCompressor();
+            lim.threshold.value = -6; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.05;
+            src2.connect(makeup).connect(lim).connect(ctx2.destination);
+            src2.start();
+            const y = (await ctx2.startRendering()).getChannelData(0);
+            // Web Audio's compressor adds its own makeup gain, so trim to TAKE_DB as measured, nothing above -1 dBFS
+            const m = measure(y);
+            const trim = Math.min(Math.pow(10, (TAKE_DB - m.db) / 20), 0.89 / Math.max(m.peak, 1e-6));
+            for (let i = 0; i < y.length; i++) y[i] *= trim;
+            return { blob: wav(y), before, after: measure(y) };
+        }
+
         async function startRecording() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true } });
@@ -258,15 +319,25 @@
         async function saveTake(blob, seconds) {
             data.rec = { state: "saving", seconds };
             try {
-                const ext = blob.type.includes("mp4") ? "m4a" : blob.type.includes("ogg") ? "ogg" : blob.type.includes("wav") ? "wav" : "webm";
+                let file, levelled = "";
+                try {
+                    const done = await compressAndLevel(await blob.arrayBuffer());
+                    file = new File([done.blob], "voice.wav", { type: "audio/wav" });
+                    levelled = `compressed and levelled from ${dbText(done.before)} to ${dbText(done.after)}`;
+                } catch (err) {
+                    // the browser couldn't decode it: keep the take as recorded
+                    const ext = blob.type.includes("mp4") ? "m4a" : blob.type.includes("ogg") ? "ogg" : blob.type.includes("wav") ? "wav" : "webm";
+                    file = new File([blob], `voice.${ext}`, { type: blob.type.split(";")[0] });
+                    levelled = "saved as recorded (couldn't level it: " + errText(err) + ")";
+                }
                 const form = new FormData();
                 form.append("name", takeName.trim() || "My voice");
                 form.append("passage", PASSAGE);
-                form.append("audio", new File([blob], `voice.${ext}`, { type: blob.type.split(";")[0] }));
+                form.append("audio", file);
                 const saved = await app.pb.collection("voices").create(form, { requestKey: null });
                 await refreshClips();
                 pickClip(saved.id);
-                data.rec = { state: "saved", seconds, name: saved.name };
+                data.rec = { state: "saved", seconds, name: saved.name, levelled };
                 checkClip(saved.id);
             } catch (err) {
                 data.rec = { state: "idle", error: "The take wasn't saved: " + errText(err) };
@@ -298,6 +369,22 @@
                 t.p({ className: "m-b-0 txt-hint" }, "Heard: ", c.heard)));
         }
 
+        // compress and level a recording already saved (one recorded before this was built), in place: same id, so the
+        // narrator keeps pointing at it
+        async function levelClip(clip) {
+            data.levelling = { id: clip.id, busy: true };
+            try {
+                const done = await compressAndLevel(await (await fetch(clipURL(clip))).arrayBuffer());
+                const form = new FormData();
+                form.append("audio", new File([done.blob], "voice.wav", { type: "audio/wav" }));
+                await app.pb.collection("voices").update(clip.id, form, { requestKey: null });
+                await refreshClips();
+                data.levelling = { id: clip.id, text: `Compressed and levelled from ${dbText(done.before)} to ${dbText(done.after)}. Play it above; new stories use it.` };
+            } catch (err) {
+                data.levelling = { id: clip.id, error: errText(err) };
+            }
+        }
+
         async function deleteClip(id) {
             if (!confirm("Delete this recording? Stories already made keep their narration.")) return;
             await app.pb.collection("voices").delete(id, { requestKey: null });
@@ -319,12 +406,20 @@
                     t.div({ className: "col-md-6" }, clip
                         ? t.div({ className: "flex", style: "margin-top: 26px;" },
                             t.audio({ controls: true, src: clipURL(clip), style: "flex: 1;" }),
+                            t.button({ type: "button", className: () => `btn sm transparent secondary ${data.levelling?.busy ? "loading" : ""}`,
+                                disabled: () => !!data.levelling?.busy, onclick: () => levelClip(clip) },
+                                t.span({ className: "txt" }, "Compress and level")),
                             t.button({ type: "button", className: () => `btn sm transparent secondary ${data.check?.busy ? "loading" : ""}`,
                                 disabled: () => !!data.check?.busy, onclick: () => checkClip(clip.id) },
                                 t.span({ className: "txt" }, "Check")),
                             t.button({ type: "button", className: "btn sm transparent danger", onclick: () => deleteClip(clip.id) },
                                 t.span({ className: "txt" }, "Delete")))
                         : null),
+                    clip ? t.div({ className: "col-lg-12" }, () => {
+                        const l = data.levelling;
+                        if (!l || l.id !== clip.id || l.busy) return null;
+                        return t.div({ className: `alert ${l.error ? "danger" : "success"} m-t-sm m-b-0` }, t.div({ className: "content" }, l.error || l.text));
+                    }) : null,
                     clip ? t.div({ className: "col-lg-12" }, () => checkView(clip.id)) : null,
                     t.div({ className: "col-lg-12" },
                         t.p({ className: "m-b-xs" }, t.strong(null, "Record a new one. "),
@@ -345,7 +440,7 @@
                             r.state === "saving" ? t.span({ className: "txt-hint" }, `Saving ${r.seconds} s…`) : null),
                         r.state === "saved"
                             ? t.div({ className: `alert ${r.seconds < 8 ? "warning" : "success"} m-t-sm m-b-0` }, t.div({ className: "content" },
-                                `Saved "${r.name}" (${r.seconds} s) and picked it above: play it there. `,
+                                `Saved "${r.name}" (${r.seconds} s, ${r.levelled}) and picked it above: play it there. `,
                                 r.seconds < 8 ? "That's short for a clone; 15 to 30 seconds matches the voice better. " : "",
                                 "If it isn't right, Delete it and record another. Save changes to make it the narrator."))
                             : null,
@@ -372,6 +467,10 @@
                         t.div({ className: "col-md-4" }, field("Starts at, minutes", num("length.defaultMinutes", { min: "1", max: "30", step: "1" }), "Where the slider starts.")),
                         t.div({ className: "col-md-6" }, field("Pictures per minute", num("length.picturesPerMinute", { min: "0.1", max: "10", step: "0.5" }), "A 2-minute story at 1.5 gets 3 pictures.")),
                         t.div({ className: "col-md-6" }, field("Most pictures", num("length.maxPictures", { min: "1", max: "20", step: "1" }), "However long the story.")),
+                    ),
+                    block("Mix", "How every story sounds when it plays. The player measures each story's voice and music once and sets them to these, so old and new stories, generated and cloned voices, all sit at the same level.",
+                        t.div({ className: "col-md-6" }, field("Voice level, dBFS", num("mix.voiceDb", { min: "-40", max: "-6", step: "1" }), "Lower is quieter. -20 is a calm speaking level; -14 is as loud as the loudest videos online.")),
+                        t.div({ className: "col-md-6" }, field("Music under the voice, dB", num("mix.musicUnderDb", { min: "0", max: "40", step: "1" }), "How far the music sits below the voice. 18 is quiet underneath; 12 is easy to hear.")),
                     ),
                     block("Narrator", "The voice that reads every story in a language the speech model speaks. \"design\" makes a voice from the instructions; the same seed makes the same voice each time.",
                         // a plain <select>: the dashboard's own dropdown didn't keep the choice here
