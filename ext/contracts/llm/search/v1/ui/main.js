@@ -841,6 +841,22 @@
         // blank holds an icon's place on a row without it, so every row's icons line up
         const blank = () => t.span({ className: "btn xs circle transparent", style: "visibility: hidden", ariaHidden: true }, t.i({ className: "ri-refresh-line" }));
 
+        // where each open source's document list is scrolled to: the page redraws every 2 seconds while a bucket
+        // embeds, which builds the list anew, so the position is put back after each redraw
+        const scrolled = {};
+        function docsBox(source, ...children) {
+            const box = t.div({ style: "overflow-x: auto; max-height: 360px; overflow-y: auto",
+                onscroll: (e) => { scrolled[source] = e.target.scrollTop; } }, ...children);
+            // the dashboard attaches the new list a moment after it's built: wait for that, then scroll it back
+            const restore = (tries) => {
+                if (!scrolled[source]) return;
+                if (box.isConnected && box.scrollHeight > box.clientHeight) box.scrollTop = scrolled[source];
+                else if (tries > 0) setTimeout(() => restore(tries - 1), 20);
+            };
+            setTimeout(() => restore(25), 0); // a timer, not requestAnimationFrame, which a hidden tab never runs
+            return box;
+        }
+
         function sourceRows(src) {
             const open = data.open[src.name];
             const docs = data.docs[src.name];
@@ -862,7 +878,7 @@
             if (open) {
                 rows.push(t.tr(null, t.td({ colSpan: 5, style: "padding-left: 34px" },
                     !docs ? t.span({ className: "loader sm" }) : !docs.length ? t.span({ className: "txt-hint" }, "No documents.")
-                        : t.div({ style: "overflow-x: auto; max-height: 360px; overflow-y: auto" }, t.table({ className: "search-table" }, t.tbody(null,
+                        : docsBox(src.name, t.table({ className: "search-table" }, t.tbody(null,
                             ...docs.slice(0, 200).map((d) => t.tr(null,
                                 t.td(null, d.record ? t.a({ href: recordHref(d.record) }, d.name) : d.name, d.error ? t.div({ className: "txt-danger txt-sm" }, d.error) : null),
                                 t.td({ className: "search-num txt-hint" }, d.chunks + " chunks"),

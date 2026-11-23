@@ -6,6 +6,10 @@ renames the section to that version ([Changelogs](../../docs/extensions.md#chang
 
 ## Unreleased
 
+### Fixed
+
+- The Search screen keeps an open source's document list where you scrolled it while a bucket embeds (it was rebuilt every 2 seconds and jumped back to the top).
+
 ### Added
 
 - `$llm.search.sample({ buckets, count, prefix })` (`sample` in `llm.search/v1`): chunks picked at random from a bucket, with no query and nothing embedded, to draw material from (a story topic nobody has asked about, say).
