@@ -57,7 +57,7 @@ export async function post(ctx: any) {
     }
     throw ctx.httpError(400, 'what is voice, music, picture, story or idea')
   } catch (err: any) {
-    if (err && err.status) throw err
-    return ctx.res.json(502, { message: String(err && err.message ? err.message : err) })
+    if (err.status) throw err
+    return ctx.res.json(502, { message: err.message })
   }
 }

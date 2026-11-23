@@ -124,7 +124,7 @@ const making = ctx.app.findRecordsByFilter('stories', "status != 'done' && statu
     try {
       const filter = encodeURIComponent("status != 'done' && status != 'failed'")
       const r = await (await fetch(`/api/collections/stories/records?filter=${filter}&sort=-created&perPage=10&fields=id,title,prompt,progress,updated`)).json()
-      const items = (r.items || []).filter((s) => Date.now() - new Date(s.updated.replace(' ', 'T')).getTime() < <%- ctx.resolve('story').STALE_MS %>)
+      const items = r.items.filter((s) => Date.now() - new Date(s.updated.replace(' ', 'T')).getTime() < <%- ctx.resolve('story').STALE_MS %>)
       const ids = items.map((s) => s.id)
       if (shownIds.some((id) => !ids.includes(id))) return location.reload() // one finished
       shownIds = ids

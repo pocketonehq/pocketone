@@ -300,7 +300,7 @@ const madeLine = [
     let playing = false, dragging = false, lineShown = null, spans = []
     const bare = (x) => x.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
     const spokenLength = {}
-    for (const s of S.say || []) spokenLength[bare(s.term)] = bare(s.spoken).length
+    for (const s of S.say) spokenLength[bare(s.term)] = bare(s.spoken).length
 
     // the sentence being read, as written (the aligner's words have no punctuation), each piece timed by its word
     const showLine = (line) => {

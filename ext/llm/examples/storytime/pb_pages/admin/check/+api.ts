@@ -50,6 +50,6 @@ export async function post(ctx: any) {
     return ctx.res.json(200, { heard: t.text, match: Math.round(c.match * 100) / 100, missing: c.missing, cutOff: c.cutOff,
       model: t.model, costUSD: usd, seconds: Math.round((Date.now() - started) / 100) / 10 })
   } catch (err: any) {
-    return ctx.res.json(502, { message: String(err && err.message ? err.message : err) })
+    return ctx.res.json(502, { message: err.message })
   }
 }

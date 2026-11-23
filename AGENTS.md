@@ -184,6 +184,11 @@ waits for (not published on pocketone.dev). `site/extensions.json` holds
 - Environment variables are named for the layer that reads them: `PB_` is PocketBase core's (leave those alone),
   `P1_` is PocketOne's in every build (`extkit.EnvVar("TOKEN")` is `P1_TOKEN`), and a build on top uses its own
   prefix for its own variables. Never name a variable after the binary.
+- **Trust contracts; guard edges.** Be defensive only where data can really be wrong: request bodies, imported files,
+  settings a person typed, what a model writes back, the network. Trust what an API documents (a contract's result, a
+  core type, `ctx.auth` being a record or `null`): no `typeof` checks, no `|| []` around a result that's always a list,
+  no `try`/`catch` that turns an error into an empty answer. A guard that can't fire misleads the reader, and a
+  swallowed error hides a bug. Unsure what an API returns? Read its docs or types.
 - Build checks: `go build -o /dev/null ./...` (a plain `go build` in a single-main module writes a binary into the
   tree). Stage files by name; never commit built binaries.
 - **Changelog:** every commit to `main` with a user-visible change adds its line under `## Unreleased`, in the same

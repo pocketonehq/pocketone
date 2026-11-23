@@ -231,7 +231,7 @@ async function pronounce(t: Tuning, sentences: string[], say: Say[]): Promise<{ 
       `it right; a word read as written comes back unchanged. ${t.prompts.pronounce}`,
     prompt: ask_.join('\n'), schema: PRONOUNCE_SCHEMA, temperature: 0,
   })
-  return { say: sayList([...say, ...((result.data && result.data.words) || [])]), result }
+  return { say: sayList([...say, ...(result.data.words || [])]), result }
 }
 
 const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -276,11 +276,7 @@ export function cloneReference(app: any, clip: string): { reference: any; name: 
 
 /** A recording's name, for the story's splash (without reading the clip). */
 export function clipName(app: any, clip: string): string {
-  try {
-    return app.findRecordById('voices', clip).getString('name')
-  } catch (_) {
-    return 'a recording'
-  }
+  return app.findRecordById('voices', clip).getString('name')
 }
 
 /**
@@ -333,22 +329,15 @@ export type Story = {
 export const OUT_OF_TOKENS = 'Out of tokens for today; try again tomorrow. Please enjoy something from our archives.'
 export const RESTING = 'The storyteller can\'t reach its models right now. Please enjoy something from our archives.'
 
-/** What a call cost, in millionths of a dollar (usage.costMicroUSD, 0 when not known). */
-const micro = (u: any) => (u && typeof u.costMicroUSD === 'number' ? u.costMicroUSD : 0)
-
 /** Saves what a model call cost (a costs row) and returns it in dollars. */
 export function record(app: any, kind: string, result: any, story = ''): number {
-  const m = micro(result && result.usage)
-  try {
-    const r = new Record(app.findCollectionByNameOrId('costs'))
-    r.set('kind', kind)
-    r.set('model', String((result && result.model) || ''))
-    r.set('micro_usd', m)
-    r.set('story', story)
-    app.save(r)
-  } catch (err: any) {
-    console.log(`storytime: couldn't record a cost: ${err && err.message ? err.message : err}`)
-  }
+  const m = result.usage.costMicroUSD // in millionths of a dollar; always there
+  const r = new Record(app.findCollectionByNameOrId('costs'))
+  r.set('kind', kind)
+  r.set('model', result.model)
+  r.set('micro_usd', m)
+  r.set('story', story)
+  app.save(r)
   return m / 1e6
 }
 
@@ -371,23 +360,20 @@ export async function health(app: any): Promise<string | null> {
   const key = JSON.stringify(t.models)
   if (healthCache && healthCache.models === key && Date.now() - healthCache.at < 60_000) return healthCache.problem
   let problem: string | null = null
-  if (typeof $llm === 'undefined') {
-    problem = 'this PocketOne has no $llm (the llm extension)'
-  } else {
-    const needs: [string, string][] = [['text', t.models.text], ['speech', t.models.speech], ['align', t.models.align],
-      ['image', t.models.image], ['music', t.models.music]]
-    for (const [kind, model] of needs) {
-      try {
-        const provider = model.split('/')[0]
-        const list = await ($llm as any)[kind].modelsAsync({ provider })
-        if (!(list.models || []).some((m: any) => m.id === model)) {
-          problem = `${model} isn't offered: is a provider named "${provider}" in Settings → LLM, with a working key?`
-          break
-        }
-      } catch (err: any) {
-        problem = `${model}: ${err && err.message ? err.message : err}`
+  const needs: [string, string][] = [['text', t.models.text], ['speech', t.models.speech], ['align', t.models.align],
+    ['image', t.models.image], ['music', t.models.music]]
+  for (const [kind, model] of needs) {
+    // the provider is asked over the network, and the model names are settings: either can be wrong
+    try {
+      const provider = model.split('/')[0]
+      const list = await ($llm as any)[kind].modelsAsync({ provider })
+      if (!list.models.some((m: any) => m.id === model)) {
+        problem = `${model} isn't offered: is a provider named "${provider}" in Settings → LLM, with a working key?`
         break
       }
+    } catch (err: any) {
+      problem = `${model}: ${err.message}`
+      break
     }
   }
   healthCache = { at: Date.now(), models: key, problem }
@@ -424,7 +410,7 @@ export function canStart(app: any): string | null {
 async function ask(model: string, opts: any): Promise<any> {
   const once = () => $llm.text.completeAsync({ model, reasoning: 'off', maxTokens: 12000, ...opts })
   return once().catch((err: any) => {
-    if (!String(err && err.message).startsWith('bad_answer')) throw err
+    if (!err.message.startsWith('bad_answer')) throw err
     return once()
   })
 }
@@ -473,7 +459,7 @@ async function speakableSentences(t: Tuning, sentences: string[]): Promise<{ sen
     prompt: bad.map((i, n) => `${n + 1}. ${clean[i]}`).join('\n') + `\n\nAnswer with the ${bad.length} rewritten sentences, in order.`,
     schema: SPEAKABLE_SCHEMA, temperature: 0.3,
   })
-  const fixed: string[] = ((result.data && result.data.sentences) || []).map((x: any) => speakable(String(x)))
+  const fixed: string[] = (result.data.sentences || []).map((x: any) => speakable(String(x)))
   bad.forEach((i, n) => { if (fixed[n]) clean[i] = fixed[n] })
   return { sentences: clean, result }
 }
@@ -489,7 +475,7 @@ export async function research(t: Tuning, topic: string): Promise<{ text: string
   const piles: { [k: string]: string[] } = { docs: [], history: [], code: [] }
   const owners = new Map<string, Owner>()
   const look = lookups()
-  for (const r of found.results || []) {
+  for (const r of found.results) {
     if (skipped(t, r.document)) continue
     // commits are named "commit <sha>" (llm.search/v1); otherwise the document's kind, as the bucket split it
     const pile = /^commit /.test(r.document) ? 'history' : look.kind(r.bucket, r.document) === 'code' ? 'code' : 'docs'
@@ -531,11 +517,7 @@ function lookups() {
   const list = (bucket: string, prefix: string) => {
     const key = bucket + ':' + prefix
     if (!docs.has(key)) {
-      try {
-        docs.set(key, $llm.search.documents({ bucket, prefix }))
-      } catch (_) {
-        docs.set(key, [])
-      }
+      docs.set(key, $llm.search.documents({ bucket, prefix }))
     }
     return docs.get(key) as any[]
   }
@@ -565,11 +547,8 @@ function lookups() {
 
 /** A README's title (front matter title:, else its first # heading, else the folder's name) and its first 800 characters. */
 function ownerFrom(bucket: string, folder: string, name: string): Owner {
-  let opening = ''
-  try {
-    opening = $llm.search.sample({ bucket, prefix: name, count: 50 }).filter((c: any) => c.document === name)
-      .sort((a: any, b: any) => a.startLine - b.startLine).map((c: any) => c.text).join('\n').slice(0, 800)
-  } catch (_) {}
+  const opening = $llm.search.sample({ bucket, prefix: name, count: 50 }).filter((c: any) => c.document === name)
+    .sort((a: any, b: any) => a.startLine - b.startLine).map((c: any) => c.text).join('\n').slice(0, 800)
   const fm = opening.match(/^title:\s*["']?(.+?)["']?\s*$/m), h1 = opening.match(/^#\s+(.+?)\s*$/m)
   const title = ((fm && fm[1]) || (h1 && h1[1]) || folder.split('/').pop() || folder).trim()
   return { folder, title, opening }
@@ -583,7 +562,7 @@ export async function write(t: Tuning, prompt: string, minutes: number): Promise
     'sentence what it is and why someone would use it. Call it by its title (the README\'s title or first heading), not a tagline. An example, recipe or test is an example of that thing, never the ' +
     'thing itself: say what it is an example of.' : '')
   const result = await ask(t.models.text, { system: writePrompt(t, minutes), prompt: request, schema: WRITE_SCHEMA, temperature: 0.9 })
-  const written = result.data || {}
+  const written = result.data
   const story: Story = {
     title: String(written.title || 'A story'),
     language: String(written.language || 'en').toLowerCase().slice(0, 2),
@@ -677,7 +656,7 @@ export async function make(app: any, id: string): Promise<void> {
       schema: PLACE_SCHEMA,
     })
     spent += record(app, 'place', placedCall, id)
-    const placed = placedCall.data || {}
+    const placed = placedCall.data
     const startOf = new Map(story.lines.map((l) => [l.index, l.start]))
     const chosen = (placed.pictures || []).filter((p: any) => p && p.prompt).slice(0, n)
     if (!chosen.length) throw new Error('no pictures were chosen')
@@ -737,10 +716,10 @@ export async function make(app: any, id: string): Promise<void> {
       models: { writing: t.models.text, voice: call.model, timing: t.models.align, pictures: t.models.image, music: t.models.music },
       voice: voiceName,
     }
-    save({ story, status: 'done', progress: '', cost: spent })
     rememberStory(id, story)
+    save({ story, status: 'done', progress: '', cost: spent })
   } catch (err: any) {
-    const message = String(err && err.message ? err.message : err)
+    const message = err.message
     console.log(`storytime: story ${id} failed: ${message}`)
     try {
       save({ status: 'failed', error: message, cost: spent })
@@ -760,27 +739,17 @@ export function storiesBucket() {
     description: 'Every story Story Time has told (title, topic, transcript), so Inspire me can find topics not told yet. Kept by Story Time.' })
 }
 
-/** Adds (or replaces) a finished story in the stories bucket. Never throws: the story is told either way. */
+/** Adds (or replaces) a finished story in the stories bucket. */
 export function rememberStory(id: string, story: Story) {
-  try {
-    storiesBucket()
-    $llm.search.add({ bucket: STORIES_BUCKET, name: id, kind: 'text',
-      text: `${story.title}\nTopic: ${story.topic}\n\n${story.sentences.join(' ')}` })
-  } catch (err: any) {
-    console.log(`storytime: couldn't add story ${id} to ${STORIES_BUCKET}: ${err && err.message ? err.message : err}`)
-  }
-}
-
-export function forgetStory(id: string) {
-  try {
-    $llm.search.remove(STORIES_BUCKET, id)
-  } catch (_) {}
+  storiesBucket()
+  $llm.search.add({ bucket: STORIES_BUCKET, name: id, kind: 'text',
+    text: `${story.title}\nTopic: ${story.topic}\n\n${story.sentences.join(' ')}` })
 }
 
 /** Adds every finished story the bucket doesn't have yet (stories told before it existed); returns how many. */
 export function rememberAll(app: any): number {
   storiesBucket()
-  const have = new Set(($llm.search.documents(STORIES_BUCKET) || []).map((d: any) => d.name))
+  const have = new Set($llm.search.documents(STORIES_BUCKET).map((d: any) => d.name))
   let added = 0
   for (const r of app.findRecordsByFilter('stories', "status = 'done'", 'created', 0, 0)) {
     if (have.has(r.id)) continue
@@ -838,7 +807,7 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
       prompt: (list ? `Stories already told:\n${list}` : 'No stories have been told yet.') + avoiding,
       schema: { type: 'object', properties: { topic: { type: 'string' } }, required: ['topic'] }, reasoning: 'off', maxTokens: 4000, temperature: 1 })
     record(app, 'inspire', r)
-    return { topic: String((r.data && r.data.topic) || '').trim() }
+    return { topic: String(r.data.topic || '').trim() }
   }
 
   // 1. seeds: passages picked at random from what the stories know, at most one per thing they belong to, each with that
@@ -872,24 +841,18 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
   record(app, 'inspire', c)
   // the model may number what it lists ("3. Why..."): a prompt never starts with its place in a list
   const unnumbered = (x: any) => String(x || '').replace(/^\s*(?:\d{1,2}[.)]|[a-z]\))\s+/i, '').replace(/\s+/g, ' ').trim()
-  const ideas = ((c.data && c.data.candidates) || [])
+  const ideas = (c.data.candidates || [])
     .map((x: any) => ({ subject: unnumbered(x && x.subject), prompt: unnumbered(x && x.prompt) })).filter((x: any) => x.prompt)
   const candidates: string[] = ideas.map((x: any) => x.prompt)
   if (!candidates.length) throw new Error('no candidate topics came back')
 
   // 3. the told stories nearest each candidate, by meaning
   storiesBucket()
-  const titleOf = (id: string) => {
-    try {
-      return app.findRecordById('stories', id).getString('title')
-    } catch (_) {
-      return ''
-    }
-  }
   const near: { topic: string; nearest: string[] }[] = []
   for (const topic of candidates) { // by the whole request: it names the subject and the angle
     const found = await $llm.search.searchAsync({ bucket: STORIES_BUCKET, query: topic, limit: 3 })
-    const titles = [...new Set((found.results || []).map((r: any) => titleOf(r.document)).filter(Boolean))] as string[]
+    const told = app.findRecordsByIds('stories', found.results.map((r: any) => r.document))
+    const titles = [...new Set(told.map((r: any) => r.getString('title')))] as string[]
     near.push({ topic, nearest: titles })
   }
 
@@ -903,9 +866,9 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
     prompt: near.map((n, i) => `${i + 1}. ${n.topic}\n   closest told: ${n.nearest.length ? n.nearest.join('; ') : 'none'}`).join('\n'),
     schema: pickSchema(near.length) })
   record(app, 'inspire', pick)
-  const choice = Math.round(Number(pick.data && pick.data.choice))
+  const choice = Math.round(Number(pick.data.choice))
   const topic = candidates[choice >= 1 && choice <= candidates.length ? choice - 1 : 0]
-  return { topic, why: String((pick.data && pick.data.why) || '').trim(), material: passages.map((p: any) => p.document), candidates: near }
+  return { topic, why: String(pick.data.why || '').trim(), material: passages.map((p: any) => p.document), candidates: near }
 }
 
 /** Just the topic (Inspire me's button). */
