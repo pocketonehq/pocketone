@@ -1,5 +1,5 @@
 <%
-// The front page: ask for a story, or pick one already told. Its words and the story lengths come from the settings.
+// The front page: ask for a story (it picks the topic, or the visitor names one), or pick one already told. Its words and the story lengths come from the settings.
 const { refusal, tuning, storyLength } = ctx.resolve('story')
 const t = tuning(ctx.app)
 const L = t.length
@@ -52,7 +52,10 @@ const making = ctx.app.findRecordsByFilter('stories', "status != 'done' && statu
     ul.making small { color: var(--dim); font-size: 13px; flex-basis: 100%; padding-left: 30px; }
     .moonlet { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset -5px -2px 0 0 var(--glow); animation: bob 3s ease-in-out infinite; flex: none; }
     @keyframes bob { 50% { transform: rotate(-20deg); } }
-    button.ghost { background: transparent; color: var(--ink); border: 1px solid #3b4675; }
+    #custom { margin-bottom: 4px; }
+    .mode { margin: 14px 0 0; font-size: 15px; }
+    .mode a { color: var(--dim); text-decoration: underline; text-underline-offset: 3px; }
+    .mode a:hover { color: var(--ink); }
     ul.told small { display: block; color: var(--dim); font-size: 13px; margin-top: 2px; }
     .err { color: #ff9b8a; }
     h2 { font-weight: normal; font-size: 20px; margin: 56px 0 12px; color: var(--dim); }
@@ -70,7 +73,9 @@ const making = ctx.app.findRecordsByFilter('stories', "status != 'done' && statu
 
   <% if (closed) { %><p class="closed"><%= closed.message %></p><% } %>
   <form id="ask"<% if (closed) { %> class="off"<% } %>>
-    <textarea id="prompt" maxlength="500" placeholder="<%= t.site.placeholder %>"<% if (closed) { %> disabled<% } %>></textarea>
+    <div id="custom" hidden>
+      <textarea id="prompt" maxlength="500" placeholder="<%= t.site.placeholder %>"<% if (closed) { %> disabled<% } %>></textarea>
+    </div>
     <div class="row">
       <% if (L.maxMinutes > L.minMinutes) { %>
       <label class="length">Short
@@ -84,9 +89,9 @@ const making = ctx.app.findRecordsByFilter('stories', "status != 'done' && statu
     </div>
     <div class="row">
       <button id="go"<% if (closed) { %> disabled<% } %>>Tell me a story</button>
-      <button type="button" class="ghost" id="inspire"<% if (closed) { %> disabled<% } %>>Inspire me</button>
       <span class="note" id="msg"><%= t.site.note %></span>
     </div>
+    <% if (!closed) { %><p class="mode"><a href="#" id="mode">Or ask for a story about something</a></p><% } %>
   </form>
 
   <section id="making"<% if (!making.length) { %> hidden<% } %>>
@@ -136,26 +141,13 @@ const making = ctx.app.findRecordsByFilter('stories', "status != 'done' && statu
   }
   setTimeout(watch, 3000)
 
-  // Inspire me: the model suggests a topic no story has covered yet, dropped into the box to use or change
-  const inspire = document.getElementById('inspire'), suggested = []
-  inspire.addEventListener('click', async () => {
-    inspire.disabled = true
-    inspire.textContent = 'Thinking...'
-    msg.className = 'note'
-    try {
-      const res = await fetch('/inspire', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ avoid: suggested }) })
-      const body = await res.json()
-      if (!res.ok || !body.idea) throw new Error(body.message || 'no idea came back; try again')
-      prompt.value = body.idea
-      suggested.push(body.idea)
-      msg.textContent = 'Tell me a story to use this, or Inspire me again.'
-    } catch (err) {
-      msg.className = 'note err'
-      msg.textContent = err.message
-    }
-    inspire.disabled = false
-    inspire.textContent = 'Inspire me'
+  // the prompt box is shown only for a story about something; otherwise Tell me a story picks the topic itself
+  const custom = document.getElementById('custom'), mode = document.getElementById('mode')
+  if (mode) mode.addEventListener('click', (e) => {
+    e.preventDefault()
+    custom.hidden = !custom.hidden
+    mode.textContent = custom.hidden ? 'Or ask for a story about something' : 'Never mind, you pick'
+    if (!custom.hidden) prompt.focus()
   })
   // the slider says how long, and how many pictures that length gets
   const minutesInput = document.getElementById('minutes')
@@ -174,7 +166,7 @@ const making = ctx.app.findRecordsByFilter('stories', "status != 'done' && statu
     msg.textContent = 'Starting...'
     try {
       const res = await fetch('/story', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: prompt.value, minutes: document.getElementById('minutes').value }) })
+        body: JSON.stringify({ prompt: custom.hidden ? '' : prompt.value, minutes: document.getElementById('minutes').value }) })
       const body = await res.json()
       if (!res.ok) throw new Error(body.message || res.statusText)
       location.href = '/story/' + body.id

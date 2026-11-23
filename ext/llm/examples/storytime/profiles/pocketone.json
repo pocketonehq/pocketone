@@ -4,7 +4,7 @@
   "settings": {
     "site": {
       "title": "PocketOne Stories",
-      "caption": "Stories about PocketOne, told by the guy who built it, in his own voice. How a feature works, why I made a call, the day something broke. Name a topic, or leave it empty and I'll pick one.",
+      "caption": "Stories about PocketOne, told by the guy who built it, in his own voice. How a feature works, why I made a call, the day something broke. I'll pick a topic, or you can ask for one.",
       "placeholder": "How deploys work...",
       "note": "A few cents a minute in model costs."
     },

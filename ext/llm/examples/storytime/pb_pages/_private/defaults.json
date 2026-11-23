@@ -4,7 +4,7 @@
   "settings": {
     "site": {
       "title": "Bedtime Story",
-      "caption": "Something to fall asleep to: one topic, told slowly and in depth, with pictures and quiet music. The universe, the mind, a moment in history. Name one, or leave it empty and I'll pick.",
+      "caption": "Something to fall asleep to: one topic, told slowly and in depth, with pictures and quiet music. The universe, the mind, a moment in history. I'll pick one, or you can ask for something.",
       "placeholder": "The deep sea at night...",
       "note": "A few cents a minute in model costs."
     },

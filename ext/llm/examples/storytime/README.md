@@ -29,8 +29,10 @@ each step's progress and result on the record, and the page polls `GET /progress
 `viewRule` are open, so anyone with the link can watch and play). Every `$llm` call is awaited, so the models work
 off the app's JS VM and the app keeps serving pages meanwhile.
 
-**Inspire me** sends the titles and topics of every story told (and the page's earlier suggestions) to the text model,
-which suggests a topic none of them covers; the page drops it into the prompt box. **Listens:** once a listener has
+**Tell me a story** picks the topic itself: with knowledge buckets, **Inspire me** sends the titles and topics of every
+story told to the text model, which suggests a topic none of them covers, and the story is made from it; without them,
+the writer chooses. A link under the button opens a prompt
+box for a story about something in particular (`POST /inspire` still answers a topic on its own). **Listens:** once a listener has
 heard 10 seconds (time playing, not where the scrubber is), the player posts `/view`, which adds one in SQL
 (`views = views + 1`); the front page lists stories by it.
 
@@ -44,7 +46,7 @@ pb_migrations/1763800006_stories_log.js   log and attempts: each story's step-by
 pb_hooks/admin_plugins.pb.js            registers the dashboard screen (a superuser UI extension)
 pb_admin_ext/storytime/main.js          Settings → Story Time in the dashboard: the settings, with Sample buttons
 pb_pages/
-  index.ets            ask for a story (prompt, minutes, pictures, Inspire me); stories told, most listened to first
+  index.ets            ask for a story (one click and it picks the topic, or a prompt; minutes, pictures); stories told, most listened to first
   inspire.ts           POST /inspire {avoid?}: a topic no story has covered yet (the model sees every title)
   admin/+middleware.ts lets only superusers through to anything under /admin
   admin/tuning.ts      GET/POST /admin/tuning: the settings, for the dashboard screen (superusers only)
