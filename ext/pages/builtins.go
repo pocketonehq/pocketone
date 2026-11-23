@@ -121,7 +121,7 @@ func (r *request) realtimeSend(c js.Call) (any, error) {
 	}
 	msg := subscriptions.Message{Name: topic, Data: payload}
 	for _, client := range to {
-		routine.FireAndForget(func() { client.Send(msg) }) // Send blocks until the client reads; never stall the page
+		subscriptions.SendOrdered(client, msg) // queued per client, in order; never stalls the page
 	}
 	return nil, nil
 }

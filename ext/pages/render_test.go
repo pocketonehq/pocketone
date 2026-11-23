@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -275,6 +276,33 @@ func TestRealtimeSend(t *testing.T) {
 		case m := <-c.Channel():
 			t.Errorf("%s got %s", name, m.Data)
 		case <-time.After(200 * time.Millisecond):
+		}
+	}
+}
+
+// Messages a page sends reach each client in the order it sent them.
+func TestRealtimeSendKeepsOrder(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"+config.js": "module.exports = { plugins: ['realtime'] }",
+		"send.ts":    "module.exports = { post(ctx) { for (let i = 0; i < 300; i++) ctx.realtime.send('count', i); return ctx.res.json({ ok: true }) } }",
+	})
+	h, p := newServer(t, dir)
+	client := subscriptions.NewDefaultClient()
+	client.Subscribe("count")
+	p.app.SubscriptionsBroker().Register(client)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/send", nil))
+	if rec.Code != 200 {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	for i := 0; i < 300; i++ {
+		select {
+		case m := <-client.Channel():
+			if string(m.Data) != strconv.Itoa(i) {
+				t.Fatalf("message %d is %s, want the order the page sent them in", i, m.Data)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("got %d of 300 messages", i)
 		}
 	}
 }

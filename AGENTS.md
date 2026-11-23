@@ -102,6 +102,9 @@ Bug fixes to upstream behavior, each tested and meant for upstream; drop each on
   (`TestNotifyWatcher_StoppedBeforeClearBootstrap`, `TestNotifyWatcher_QueuedReloadAfterClearBootstrap`).
 - `tools/cron/cron.go` `Start`: the ticker goroutine keeps its own ticker, since `Stop` (buffered `tickerDone`
   since v0.42) no longer waits for it before setting `c.ticker` to nil (`TestCronStopDoesNotRaceTicker`).
+- `apis/realtime.go` record and dry-cache broadcasts: messages go through `subscriptions.SendOrdered`
+  (`tools/subscriptions/ordered.go`), one ordered queue per client, instead of a goroutine per message, which
+  delivered them in any order (`TestRealtimeBroadcastKeepsOrderPerClient`, `TestSendOrdered`).
 
 ## Writing an extension
 
