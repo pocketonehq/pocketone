@@ -40,8 +40,9 @@ export type Tuning = {
    * music sits under it; every story's files are levelled to these when it plays */
   mix: { voiceDb: number; musicUnderDb: number }
   /** what the stories know: LLM Search buckets ($llm.search) the writer is grounded in and Inspire me draws from; none
-   * means the models' own knowledge */
-  knowledge: { buckets: string[] }
+   * means the models' own knowledge. skip: globs for documents not worth a story (go.mod, *.lock, toc*.md); a pattern
+   * without / matches the base name */
+  knowledge: { buckets: string[]; skip: string[] }
   /** each as provider/model: a provider added in Settings → LLM, then its model */
   models: { text: string; idea: string; image: string; speech: string; speechOther: string; align: string; music: string }
   /** the narrator, for the speech model (not speechOther, which reads other languages with its own voice) */
@@ -56,9 +57,10 @@ export type Tuning = {
   /**
    * The system prompts. write: {minutes} ("3 minutes"), {minWords}, {maxWords}, {anyTopic}; place: {n}. The JSON shape
    * each must answer in is fixed (WRITE_SCHEMA, PLACE_SCHEMA, the inspire schema), so keep the field names the prompts
-   * mention.
+   * mention. ideas: how Inspire me turns knowledge passages into story requests ({count}). pronounce: how words in this
+   * field are said, with examples, for the writer's respellings and the pronunciation call.
    */
-  prompts: { write: string; place: string; inspire: string }
+  prompts: { write: string; place: string; inspire: string; ideas: string; pronounce: string }
   /** added after every picture's prompt */
   picture: string
   /** added after the music prompt the story gets; seconds of song (it loops) */
@@ -120,6 +122,8 @@ export function merge(base: any, over: any): any {
     L.picturesPerMinute = Math.max(0.1, Math.min(10, Number(L.picturesPerMinute) || D.picturesPerMinute))
     out.knowledge.buckets = (Array.isArray(out.knowledge.buckets) ? out.knowledge.buckets : [])
       .filter((b: any) => typeof b === 'string' && b.trim()).map((b: string) => b.trim()).slice(0, 10)
+    out.knowledge.skip = (Array.isArray(out.knowledge.skip) ? out.knowledge.skip : [])
+      .filter((b: any) => typeof b === 'string' && b.trim()).map((b: string) => b.trim()).slice(0, 50)
     const M = out.mix, DM = DEFAULT_TUNING.mix
     M.voiceDb = Math.max(-40, Math.min(-6, Number.isFinite(Number(M.voiceDb)) && M.voiceDb !== null ? Number(M.voiceDb) : DM.voiceDb))
     M.musicUnderDb = Math.max(0, Math.min(40, Number.isFinite(Number(M.musicUnderDb)) && M.musicUnderDb !== null ? Number(M.musicUnderDb) : DM.musicUnderDb))
@@ -159,7 +163,7 @@ const writePrompt = (t: Tuning, minutes: number) => fill(t.prompts.write, {
   minWords: Math.round(minutes * WORDS_PER_MINUTE * 0.9),
   maxWords: Math.round(minutes * WORDS_PER_MINUTE * 1.1),
   anyTopic: ANY_TOPIC,
-}) + SAY_NOTE
+}) + sayNote(t)
 
 const WRITE_SCHEMA = {
   type: 'object',
@@ -181,11 +185,10 @@ const WRITE_SCHEMA = {
 // the text it reads: the writer lists the words a narrator could get wrong with a respelling, the voice and the aligner
 // read the respelled sentences, and the captions keep the written words
 
-/** Told to the writer whatever the profile's prompt says. */
-const SAY_NOTE = '\n\nIn "say", list each word in the story a narrator could say wrong: acronyms read letter by letter ' +
-  '(SES as "S E S"), acronyms people say as a word spelled as said (WASM as "wazzum"), names with their own pronunciation (SQLite as "S Q Lite", nginx as "engine X"), jargon. One word ' +
-  'each, exactly as written in the sentences, with how to spell it so it is read right. Leave out ordinary words; an ' +
-  'empty list is fine.'
+/** Told to the writer after the profile's prompt: list the words to respell, as the settings say words are said. */
+const sayNote = (t: Tuning) => '\n\nIn "say", list each word in the story a narrator could say wrong, one word each, ' +
+  'exactly as written in the sentences, with how to spell it so a text-to-speech voice says it right. Leave out ordinary ' +
+  `words; an empty list is fine. How words are said: ${t.prompts.pronounce}`
 
 export type Say = { term: string; spoken: string }
 
@@ -225,9 +228,7 @@ async function pronounce(t: Tuning, sentences: string[], say: Say[]): Promise<{ 
   if (!ask_.length) return { say }
   const result = await ask(t.models.text, {
     system: 'You tell a narrator how to say words. For each word, answer how to spell it so a text-to-speech voice says ' +
-      'it the way people in the field do: acronyms said letter by letter as spaced capitals (SES: "S E S", HTTPS: "H T T P S"), ' +
-      'only when people in the field spell them out; acronyms said as a word (WASM: "wazzum") or with a known pronunciation spelled that way (JSON: "Jason", SQLite: "S Q Lite", nginx: ' +
-      '"engine X"), and a word read as written given back unchanged (PocketOne: "PocketOne").',
+      `it right; a word read as written comes back unchanged. ${t.prompts.pronounce}`,
     prompt: ask_.join('\n'), schema: PRONOUNCE_SCHEMA, temperature: 0,
   })
   return { say: sayList([...say, ...((result.data && result.data.words) || [])]), result }
@@ -449,7 +450,7 @@ export function looksLikeCode(sentence: string): boolean {
   return /https?:\/\/|www\./.test(sentence) || // a URL
     /(^|\s)--?[a-z][\w-]*/i.test(sentence) || // a flag
     /\b[\w.-]+\/[\w./-]+/.test(sentence) || // a path (a/b, ext/llm/README.md)
-    /\b\w+\.(go|ts|js|md|json|yaml|yml|toml|sql|ets|html|css)\b/.test(sentence) || // a file name
+    /\b[a-z][\w-]+\.[a-z]{1,4}\b/.test(sentence) || // a file or host name (story.ts, example.com)
     /\b[a-z]+_[a-z_]+\b/.test(sentence) || // snake_case
     /\b\w+\(\)|\s==?\s|\w=\w/.test(sentence) || // a call, an assignment
     /\b[a-z]+[A-Z]\w*\b/.test(sentence) // camelCase
@@ -486,53 +487,92 @@ export async function research(t: Tuning, topic: string): Promise<{ text: string
   if (!t.knowledge.buckets.length) return { text: '' }
   const found = await $llm.search.searchAsync({ buckets: t.knowledge.buckets, query: topic, limit: 20 })
   const piles: { [k: string]: string[] } = { docs: [], history: [], code: [] }
-  const owners = new Map<string, string>() // folder → the opening of its README
-  ownerCache.clear() // READMEs change when a bucket refreshes: look them up fresh for each story
+  const owners = new Map<string, Owner>()
+  const look = lookups()
   for (const r of found.results || []) {
-    const pile = /^commit /.test(r.document) ? 'history' : /\.(md|ets|html)$/i.test(r.document) ? 'docs' : 'code'
+    if (skipped(t, r.document)) continue
+    // commits are named "commit <sha>" (llm.search/v1); otherwise the document's kind, as the bucket split it
+    const pile = /^commit /.test(r.document) ? 'history' : look.kind(r.bucket, r.document) === 'code' ? 'code' : 'docs'
     const cap = pile === 'docs' ? 6 : 4
     if (piles[pile].length >= cap) continue
-    const owner = pile === 'history' ? null : ownerOf(r.bucket, r.document)
-    if (owner && !owners.has(owner.folder)) owners.set(owner.folder, owner.opening)
-    const label = `${r.document}${r.heading ? ` › ${r.heading}` : ''}${owner ? `, part of ${owner.folder}` : ''}`
+    const owner = pile === 'history' ? null : look.owner(r.bucket, r.document)
+    if (owner) owners.set(owner.folder, owner)
+    const label = `${r.document}${r.heading ? ` › ${r.heading}` : ''}${owner ? `, part of ${owner.title}` : ''}`
     piles[pile].push(`(${label})\n${String(r.text).slice(0, 1500)}`)
   }
   const part = (title: string, list: string[]) => (list.length ? `## ${title}\n\n${list.join('\n\n')}` : '')
   const text = [
-    part('What these belong to (each folder\'s README, opening)', [...owners].map(([folder, opening]) => `(${folder})\n${opening}`)),
+    part('What these belong to (each one\'s README, opening)', [...owners.values()].map((o) => `(${o.title}, ${o.folder})\n${o.opening}`)),
     part('What the docs say', piles.docs), part('How it came to be (commits)', piles.history), part('How it works (code)', piles.code),
   ].filter(Boolean).join('\n\n')
   return { text, found }
 }
 
-/**
- * What a passage belongs to, so the writer can name it: the nearest folder above the document with a README in the same
- * bucket (ext/wasm for ext/wasm/example/qrcode/src/main.rs), and that README's opening. Null at the top or when none.
- */
-function ownerOf(bucket: string, document: string): { folder: string; opening: string } | null {
-  const parts = document.split('/')
-  for (let n = parts.length - 1; n >= 1; n--) {
-    const folder = parts.slice(0, n).join('/')
-    if (!ownerCache.has(bucket + ':' + folder)) ownerCache.set(bucket + ':' + folder, readmeOpening(bucket, folder))
-    const opening = ownerCache.get(bucket + ':' + folder)
-    if (opening) return { folder, opening }
-  }
-  return null
+/** Whether a document is one the settings' knowledge.skip patterns leave out (dependency lists, tables of contents). */
+export function skipped(t: Tuning, document: string): boolean {
+  return t.knowledge.skip.some((p) => globRe(p).test(document))
 }
-const ownerCache = new Map<string, string>()
 
-/** The first 800 characters of folder/README.md in a bucket (front matter included: a title and summary help), or "". */
-function readmeOpening(bucket: string, folder: string): string {
-  try {
-    const docs = $llm.search.documents({ bucket, prefix: `${folder}/README` })
-    const readme = docs.find((d: any) => /^readme\.md$/i.test(d.name.slice(folder.length + 1)))
-    if (!readme) return ''
-    const chunks = $llm.search.sample({ bucket, prefix: readme.name, count: 50 })
-      .filter((c: any) => c.document === readme.name).sort((a: any, b: any) => a.startLine - b.startLine)
-    return chunks.map((c: any) => c.text).join('\n').slice(0, 800)
-  } catch (_) {
-    return ''
+/** A glob as a regexp on a document name: * is anything but /, ** anything; a pattern without / matches the base name. */
+export function globRe(pattern: string): RegExp {
+  const body = pattern.split('**').map((x) => x.split('*').map((y) => y.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*')).join('.*')
+  return new RegExp(pattern.includes('/') ? `^${body}$` : `(^|/)${body}$`, 'i')
+}
+
+/** What a passage is part of: the nearest folder above it with a README in the same bucket, that README's title and opening. */
+export type Owner = { folder: string; title: string; opening: string }
+
+/**
+ * Lookups in the knowledge buckets for one story or one Inspire me (fresh each time, since buckets refresh): each
+ * document's kind (markdown, code or text) and what it is part of. Both are local reads, no embedding.
+ */
+function lookups() {
+  const docs = new Map<string, any[]>(), readmes = new Map<string, Owner | null>()
+  const list = (bucket: string, prefix: string) => {
+    const key = bucket + ':' + prefix
+    if (!docs.has(key)) {
+      try {
+        docs.set(key, $llm.search.documents({ bucket, prefix }))
+      } catch (_) {
+        docs.set(key, [])
+      }
+    }
+    return docs.get(key) as any[]
   }
+  const readme = (bucket: string, folder: string): Owner | null => {
+    const key = bucket + ':' + folder
+    if (!readmes.has(key)) {
+      const doc = list(bucket, `${folder}/README`).find((d: any) => /^readme\.md$/i.test(d.name.slice(folder.length + 1)))
+      readmes.set(key, doc ? ownerFrom(bucket, folder, doc.name) : null)
+    }
+    return readmes.get(key) as Owner | null
+  }
+  return {
+    kind: (bucket: string, document: string): string => {
+      const d = list(bucket, document).find((x: any) => x.name === document)
+      return d ? d.kind : ''
+    },
+    owner: (bucket: string, document: string): Owner | null => {
+      const parts = document.split('/')
+      for (let n = parts.length - 1; n >= 1; n--) {
+        const o = readme(bucket, parts.slice(0, n).join('/'))
+        if (o) return o
+      }
+      return null
+    },
+  }
+}
+
+/** A README's title (front matter title:, else its first # heading, else the folder's name) and its first 800 characters. */
+function ownerFrom(bucket: string, folder: string, name: string): Owner {
+  let opening = ''
+  try {
+    opening = $llm.search.sample({ bucket, prefix: name, count: 50 }).filter((c: any) => c.document === name)
+      .sort((a: any, b: any) => a.startLine - b.startLine).map((c: any) => c.text).join('\n').slice(0, 800)
+  } catch (_) {}
+  const fm = opening.match(/^title:\s*["']?(.+?)["']?\s*$/m), h1 = opening.match(/^#\s+(.+?)\s*$/m)
+  const title = ((fm && fm[1]) || (h1 && h1[1]) || folder.split('/').pop() || folder).trim()
+  return { folder, title, opening }
 }
 
 export async function write(t: Tuning, prompt: string, minutes: number): Promise<{ story: Story; result: any; fixes?: any; said?: any; searched?: any }> {
@@ -765,7 +805,7 @@ const CANDIDATES_SCHEMA = {
 }
 
 /** Passages that make poor story seeds: dependency lists, lock files, navigation tables. */
-const NOT_A_SEED = /(^|\/)(go\.(mod|sum)|[^/]*\.lock|package(-lock)?\.json|toc[^/]*\.md|_private\/toc[^/]*)$/i
+
 /** The pick: which of n candidates (its number) and why. */
 const pickSchema = (n: number) => ({
   type: 'object',
@@ -805,12 +845,12 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
   // thing's README opening, so an idea starts from a subject and not from a stray fragment
   const drawn = $llm.search.sample({ buckets: t.knowledge.buckets, count: 24 })
   if (!drawn.length) throw new Error(`the knowledge buckets (${t.knowledge.buckets.join(', ')}) are empty: fill them on the dashboard's Search screen`)
-  ownerCache.clear()
+  const look = lookups()
   const seen = new Set<string>()
   const passages: any[] = []
   for (const p of drawn) {
-    if (NOT_A_SEED.test(p.document) || String(p.text).trim().length < 200) continue
-    const owner = /^commit /.test(p.document) ? null : ownerOf(p.bucket, p.document)
+    if (skipped(t, p.document) || String(p.text).trim().length < 200) continue
+    const owner = /^commit /.test(p.document) ? null : look.owner(p.bucket, p.document)
     const key = owner ? owner.folder : p.document
     if (seen.has(key)) continue
     seen.add(key)
@@ -819,28 +859,19 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
   }
   if (!passages.length) passages.push(...drawn.slice(0, 5))
   const material = passages.map((p: any, i: number) => [
-    `[${i + 1}] ${p.document}${p.heading ? ` › ${p.heading}` : ''}${p.owner ? `, part of ${p.owner.folder}` : ''}`,
-    p.owner ? `What ${p.owner.folder} is (its README):\n${p.owner.opening.slice(0, 500)}` : '',
+    `[${i + 1}] ${p.document}${p.heading ? ` › ${p.heading}` : ''}${p.owner ? `, part of ${p.owner.title}` : ''}`,
+    p.owner ? `What ${p.owner.title} is (${p.owner.folder}/README):\n${p.owner.opening.slice(0, 500)}` : '',
     `The passage:\n${String(p.text).slice(0, 1200)}`,
   ].filter(Boolean).join('\n'))
 
   // 2. one idea per seed, each a story request that stands on its own
   const c = await $llm.text.completeAsync({ model: t.models.idea, system: t.prompts.inspire, reasoning: 'off', maxTokens: 3000, temperature: 0.9,
     prompt: `Material to draw from (random passages, each with what it belongs to):\n\n${material.join('\n\n')}\n\n` +
-      `Propose one story idea per passage, ${passages.length} in all, each grounded in its passage. "subject" is what the ` +
-      'story is about, by its own name (the extension or feature the passage is part of, or what a commit changed). ' +
-      '"prompt" asks for the story in one or two plain sentences that someone who has never seen the passage understands: ' +
-      'name the subject, say what it is, then the question, decision or moment the story is about and why a listener ' +
-      'would care. Here the prompt is a full request, not a short phrase, at most 35 words. Write it the way a person ' +
-      'asks: call things by their names (the S3 redirect extension, the deploy command), never file paths, commit hashes, ' +
-      'function or field names; no "Tell the story of". When the passage is code, the idea is what that code does for ' +
-      'the people using it, not how the code reads.' + avoiding,
+      fill(t.prompts.ideas, { count: passages.length }) + avoiding,
     schema: CANDIDATES_SCHEMA })
   record(app, 'inspire', c)
   // the model may number what it lists ("3. Why..."): a prompt never starts with its place in a list
-  // and a folder that slips through is said as a name ("ext/desktop": "the desktop extension")
-  const unnumbered = (x: any) => String(x || '').replace(/^\s*(?:\d{1,2}[.)]|[a-z]\))\s+/i, '')
-    .replace(/(?:\b[Tt]he\s+)?\bext\/([\w-]+)(?:\s+extension\b)?/g, 'the $1 extension').replace(/\s+/g, ' ').trim()
+  const unnumbered = (x: any) => String(x || '').replace(/^\s*(?:\d{1,2}[.)]|[a-z]\))\s+/i, '').replace(/\s+/g, ' ').trim()
   const ideas = ((c.data && c.data.candidates) || [])
     .map((x: any) => ({ subject: unnumbered(x && x.subject), prompt: unnumbered(x && x.prompt) })).filter((x: any) => x.prompt)
   const candidates: string[] = ideas.map((x: any) => x.prompt)

@@ -77,7 +77,7 @@ with 5 pictures (`MAX`); the form and `POST /story` both hold to it.
 ## Tuning, in the dashboard
 
 Settings → Story Time in the PocketBase dashboard (`/_/`) holds what shapes the app: the front page's title and caption, the story lengths (the slider's shortest and longest, where it starts, pictures per minute, the most pictures), the narrator (voice,
-instructions, seed, speed), the writing, picture-choosing and Inspire me prompts, what's added to each picture and music
+instructions, seed, speed), the writing, picture-choosing and Inspire me prompts, how words are said (**Pronunciation**), what's added to each picture and music
 prompt, the models and the daily budget. Each part has a **Sample** button that tries it with what's on the screen,
 saved or not: the voice reads a paragraph, the music plays 20 seconds, a picture is painted, a 1-minute story is
 written, or an idea suggested. **Save changes** stores it as one JSON blob in PocketOne's key-value store (`$kv`); new stories use it, on top of
@@ -87,13 +87,17 @@ call, from the `voices` collection). A cloned voice is as loud as its recording,
 of the app as one JSON file.
 
 **Knowledge:** tick LLM Search buckets on the settings screen and the stories know them. The writer's call carries
-`enrich` (the best passages for the topic), and Inspire me draws a topic in four steps: random passages from the buckets
-(`$llm.search.sample`), five candidate topics grounded in them, the told stories nearest each candidate (each finished
+the best passages for the topic, each labelled with what it is part of (the nearest folder with a README in the bucket,
+by the README's title), so the story names its subject before the details. Inspire me draws a topic in four steps:
+random passages from the buckets (`$llm.search.sample`, at most one per README'd folder, none matching **Skip**), one
+story request per passage written with the **Ideas from knowledge** prompt, the told stories nearest each candidate (each finished
 story goes into the `storytime-stories` bucket; `pb_hooks/stories.pb.js` takes a deleted one out), and the candidate
 those stories cover least. A story asked for with no topic gets one from Inspire me first.
 
 `profiles/` holds settings files to Import: `pocketone.json` turns the app into PocketOne Stories, stories about
-PocketOne told by its creator (the front page, the prompts, the sample text). Import lays a file over the current
+PocketOne told by its creator (the front page, the prompts, how developers say words, the documents to skip, the sample
+text). Everything specific to a body of knowledge lives in settings, never in the code, so a profile is all it takes to
+point the app at other content. Import lays a file over the current
 settings, so a profile changes only what it has: the voice, models, budget and lengths stay.
 
 The screen is a superuser UI extension registered from `pb_hooks`, the way
