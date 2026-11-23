@@ -13,7 +13,7 @@ part of [PocketOne](https://github.com/pocketonehq/pocketone), a community fork 
 PocketHost maintains. Put a `pb_pages` folder next to `pb_data` and it's served.
 
 ```bash
-brew install pockethost/tap/pocketone
+brew install pocketonehq/tap/pocketone
 pocketone pages create myapp --starter daisyui-docs
 cd myapp
 pocketone serve --dir ./pb_data
