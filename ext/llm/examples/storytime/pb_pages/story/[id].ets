@@ -202,7 +202,8 @@ const madeLine = [
     const MUSIC = 0.16
     const VOICE_DB = S.mix.voiceDb, MUSIC_DB = S.mix.voiceDb - S.mix.musicUnderDb
     // Web Audio's compressor adds makeup gain of its own: for the voice's limiter (-3 dB, 20:1, no knee) 0.6 of the
-    // 2.85 dB it would take off a full-scale signal, about +1.7 dB on everything, so the voice's gain takes that back
+    // 2.85 dB it would take off a full-scale signal, about +1.7 dB on everything. A gain after the limiter takes it back,
+    // so the voice keeps its level and its loudest peaks stay near -3 dBFS.
     const LIMITER_MAKEUP = Math.pow(10, (0.6 * (3 - 3 / 20)) / 20)
     const $ = (id) => document.getElementById(id)
     const stage = $('stage'), cap = $('caption'), cover = $('cover'), scrub = $('scrub'), time = $('time'), btn = $('toggle')
@@ -276,7 +277,9 @@ const madeLine = [
         if (limit) {
           const lim = ac.createDynamicsCompressor()
           lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.003; lim.release.value = 0.1
-          node = node.connect(lim)
+          const back = ac.createGain()
+          back.gain.value = 1 / LIMITER_MAKEUP
+          node = node.connect(lim).connect(back)
         }
         node.connect(ac.destination)
         return gain
@@ -288,7 +291,7 @@ const madeLine = [
         gain.gain.value = Math.max(0.05, Math.min(16, Math.pow(10, (target - db) / 20) / under))
         document.body.dataset['mix' + which] = `${db.toFixed(1)} dBFS x${gain.gain.value.toFixed(2)}`
       }).catch(() => {})
-      set(route(voice, true), S.voice, VOICE_DB, LIMITER_MAKEUP, 'Voice')
+      set(route(voice, true), S.voice, VOICE_DB, 1, 'Voice')
       if (music) set(route(music, false), S.music, MUSIC_DB, MUSIC, 'Music')
     }
 
