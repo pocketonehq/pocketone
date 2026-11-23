@@ -6,6 +6,7 @@ package firewall
 
 import (
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/netip"
@@ -50,8 +51,8 @@ var DefaultClientIPHeaders = []string{"CF-Connecting-IP", "True-Client-IP", "X-F
 // InstanceConfig is an instance's firewall settings (`extensions.firewall`): its own rate limits over the defaults,
 // and client IPs/CIDRs that get the trusted limits on this instance (e.g. the owner's own list).
 type InstanceConfig struct {
-	RateLimits *RateLimits `yaml:"rate_limits,omitempty"`
-	TrustedIPs []string    `yaml:"trusted_ips,omitempty"`
+	RateLimits *RateLimits `json:"rate_limits,omitempty" yaml:"rate_limits,omitempty"`
+	TrustedIPs []string    `json:"trusted_ips,omitempty" yaml:"trusted_ips,omitempty"`
 }
 
 // Firewall checks the connecting peer, works out the client IP, and applies per-instance rate limits. It is a
@@ -76,6 +77,8 @@ type Firewall struct {
 	trusted   []netip.Prefix
 	prefix    string
 	exposeAll string
+
+	badConfig sync.Map // instance id -> true once its unreadable extensions.firewall was logged
 
 	mu         sync.Mutex
 	hourly     map[string]*hourlyBucket
@@ -224,6 +227,9 @@ func (f *Firewall) Admit(w http.ResponseWriter, r *http.Request, inst multisite.
 	}
 	var ic InstanceConfig
 	if err := multisite.DecodeExtensionConfig(inst.ExtensionConfig("firewall"), &ic); err != nil {
+		if _, logged := f.badConfig.LoadOrStore(inst.ID, true); !logged {
+			slog.Warn("firewall: instance settings ignored, using the defaults", "instance", inst.ID, "error", err)
+		}
 		ic = InstanceConfig{}
 	}
 	rl := RateLimits{}
@@ -426,23 +432,23 @@ func (f *Firewall) sweepLocked(now time.Time) {
 // RateLimits are request limits per client IP and per instance: an hourly budget and a concurrency cap, each with a
 // higher value for trusted clients. Requests to /api/files cost FileWeight of a request.
 type RateLimits struct {
-	IPHourly           int     `yaml:"ip_hourly,omitempty" doc:"Requests per hour from one client IP to one instance. Default 1000."`
-	InstanceHourly     int     `yaml:"instance_hourly,omitempty" doc:"Requests per hour to one instance from everyone. Default 10000."`
-	IPConcurrent       int     `yaml:"ip_concurrent,omitempty" doc:"Requests one client IP may have open on one instance at once. Default 15."`
-	InstanceConcurrent int     `yaml:"instance_concurrent,omitempty" doc:"Requests one instance may have open at once. Default 250."`
-	FileWeight         float64 `yaml:"file_weight,omitempty" doc:"What a /api/files request costs, as a share of a request. Default 0.1."`
+	IPHourly           int     `json:"ip_hourly,omitempty" yaml:"ip_hourly,omitempty" doc:"Requests per hour from one client IP to one instance. Default 1000."`
+	InstanceHourly     int     `json:"instance_hourly,omitempty" yaml:"instance_hourly,omitempty" doc:"Requests per hour to one instance from everyone. Default 10000."`
+	IPConcurrent       int     `json:"ip_concurrent,omitempty" yaml:"ip_concurrent,omitempty" doc:"Requests one client IP may have open on one instance at once. Default 15."`
+	InstanceConcurrent int     `json:"instance_concurrent,omitempty" yaml:"instance_concurrent,omitempty" doc:"Requests one instance may have open at once. Default 250."`
+	FileWeight         float64 `json:"file_weight,omitempty" yaml:"file_weight,omitempty" doc:"What a /api/files request costs, as a share of a request. Default 0.1."`
 	// Trusted are the limits for trusted clients; zero fields fall back to the defaults' trusted values.
-	Trusted *RateLimitSet `yaml:"trusted,omitempty" doc:"The limits for trusted clients. Defaults 5000, 20000, 50 and 250."`
+	Trusted *RateLimitSet `json:"trusted,omitempty" yaml:"trusted,omitempty" doc:"The limits for trusted clients. Defaults 5000, 20000, 50 and 250."`
 	// Off disables rate limiting for the instance.
-	Off bool `yaml:"off,omitempty" doc:"No rate limiting. The default in dev mode unless rate_limits is set."`
+	Off bool `json:"off,omitempty" yaml:"off,omitempty" doc:"No rate limiting. The default in dev mode unless rate_limits is set."`
 }
 
 // RateLimitSet is one set of the four limits.
 type RateLimitSet struct {
-	IPHourly           int `yaml:"ip_hourly,omitempty" doc:"Requests per hour from one trusted client IP to one instance."`
-	InstanceHourly     int `yaml:"instance_hourly,omitempty" doc:"Requests per hour to one instance."`
-	IPConcurrent       int `yaml:"ip_concurrent,omitempty" doc:"Requests one trusted client IP may have open on one instance at once."`
-	InstanceConcurrent int `yaml:"instance_concurrent,omitempty" doc:"Requests one instance may have open at once."`
+	IPHourly           int `json:"ip_hourly,omitempty" yaml:"ip_hourly,omitempty" doc:"Requests per hour from one trusted client IP to one instance."`
+	InstanceHourly     int `json:"instance_hourly,omitempty" yaml:"instance_hourly,omitempty" doc:"Requests per hour to one instance."`
+	IPConcurrent       int `json:"ip_concurrent,omitempty" yaml:"ip_concurrent,omitempty" doc:"Requests one trusted client IP may have open on one instance at once."`
+	InstanceConcurrent int `json:"instance_concurrent,omitempty" yaml:"instance_concurrent,omitempty" doc:"Requests one instance may have open at once."`
 }
 
 // DefaultRateLimits match the PocketHost edge firewall.
