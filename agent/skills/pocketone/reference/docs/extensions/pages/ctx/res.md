@@ -75,7 +75,7 @@ app serves other requests. When the client goes away, the handler stops at its n
 cleared:
 
 ```ts
-// pb_pages/ticks/+api.ts
+// pb_pages/ticks.ts
 module.exports = {
   async get(ctx) {
     const stream = ctx.res.sse()
