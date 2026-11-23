@@ -54,7 +54,7 @@ What `ctx.res.sse()` returns.
 | Member | Type | |
 |---|---|---|
 | `send()` | `(event: string, data: any, opts?: { id?: string \| number; retry?: number }): void` | Sends an event; non-string data is JSON-encoded. |
-| `comment()` | `(text: string): void` |  |
+| `comment()` | `(text: string): void` | Writes an SSE comment (`: text`), which browsers ignore. |
 | `close()` | `(): void` |  |
 
 ### pages.Response
@@ -76,7 +76,7 @@ What `ctx.res.sse()` returns.
 | `text()` | `(text: string): Response` |  |
 | `text()` | `(status: number, text: string): Response` |  |
 | `file()` | `(path: string): Response` | Sends a file from pb_pages (path relative to pb_pages). |
-| `sse()` | `(): EventStream` | Starts a `text/event-stream` response. |
+| `sse()` | `(opts?: { keepAlive?: number }): EventStream` | Starts a `text/event-stream` response. `keepAlive` (seconds) writes a comment that often while the handler runs, so proxies keep a quiet stream open. |
 | `layout()` | `(on: boolean): Response` | `layout(false)` renders this page without layouts (e.g. an htmx fragment). |
 | `readonly sent` | `boolean` | True once a response has been sent. |
 
@@ -145,6 +145,24 @@ What every sign-in method returns.
 |---|---|---|
 | `send()` | `(topic: string, data: any, opts?: { filter?: (client: subscriptions.Client) => boolean }): void` | Sends to every client subscribed to `topic` (`filter` only narrows that set). `data` is always JSON-encoded. |
 | `client()` | `(id: string): subscriptions.Client \| null` | One client by id, or `null`. |
+| `subscribe()` | `(topic: string, opts?: { filter?: string; expand?: string; fields?: string }): RealtimeSubscription<T>` | Listens to `topic` like a browser on `/api/realtime`, as this visitor: the collection's list/view rules apply, and `filter`, `expand` and `fields` work as in the JS SDK's subscribe options. Read it with `for await`. Record topics (`posts/*`, `posts/RECORD_ID`) give `{ action, record }`; other topics give the data sent to them. It ends when the request does, on `close()`, or (throwing) if the page falls 64 messages behind. |
+
+### pages.RealtimeRecordMessage
+
+A record change from `ctx.realtime.subscribe()`.
+
+| Member | Type | |
+|---|---|---|
+| `action` | `"create" \| "update" \| "delete"` |  |
+| `record` | `{ [field: string]: any }` |  |
+
+### pages.RealtimeSubscription
+
+What `ctx.realtime.subscribe()` returns.
+
+| Member | Type | |
+|---|---|---|
+| `close()` | `(): void` | Ends the subscription; a waiting `for await` finishes. |
 
 ### pages.Context
 

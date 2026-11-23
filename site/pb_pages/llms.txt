@@ -413,7 +413,7 @@ Every page below in one file: https://pocketone.dev/llms-full.txt
 - [Overview](https://pocketone.dev/docs/extensions/pages/plugins): Built-in plugins (auth, realtime) and custom plugins such as the Datastar add-on, turned on in +config.ts.
 - [Authentication](https://pocketone.dev/docs/extensions/pages/plugins/auth): The built-in auth plugin keeps PocketBase auth in a cookie and adds ctx.session sign-in methods.
 - [Datastar](https://pocketone.dev/docs/extensions/pages/plugins/datastar): The Datastar add-on adds ctx.datastar helpers for Datastar script tags, SSE patches and signals.
-- [Realtime](https://pocketone.dev/docs/extensions/pages/plugins/realtime): The built-in realtime plugin sends messages to PocketBase realtime subscribers with ctx.realtime.send().
+- [Realtime](https://pocketone.dev/docs/extensions/pages/plugins/realtime): The built-in realtime plugin sends PocketBase realtime messages with ctx.realtime.send() and listens to record changes with ctx.realtime.subscribe().
 - [Authoring](https://pocketone.dev/docs/extensions/pages/plugins/authoring): Write a custom plugin for Pages, a factory that returns onRequest, extendContext and transform hooks.
 
 ## Pages: ctx Reference
@@ -441,7 +441,7 @@ Every page below in one file: https://pocketone.dev/llms-full.txt
 ## Pages: Guides
 
 - [Authentication](https://pocketone.dev/docs/extensions/pages/authentication): Sign users in and out with the auth plugin - passwords, one-time passwords, OAuth2 and anonymous sessions.
-- [Realtime Events](https://pocketone.dev/docs/extensions/pages/realtime): Send realtime messages from pages with the realtime plugin, and receive them in the browser with the PocketBase JS SDK.
+- [Realtime Events](https://pocketone.dev/docs/extensions/pages/realtime): Send realtime messages from pages, stream record changes from a page with ctx.realtime.subscribe(), and receive them in the browser with the PocketBase JS SDK.
 - [Setting up a new email domain in Google Suite](https://pocketone.dev/docs/extensions/pages/speedruns/gs-gmail): Complete walkthrough for configuring email domains in Google Suite, including domain verification, Gmail activation, catch-all email setup, MX record configuration, and sender account integration.
 
 ## Starter kits: Kits

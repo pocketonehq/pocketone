@@ -407,7 +407,7 @@ Query values and cookies are strings unless you ask for JSON. Nothing is parsed 
 | `html(html)` / `html(status, html)` | Send HTML as-is (no layouts). |
 | `text(text)` / `text(status, text)` | Send plain text. |
 | `file(path)` | Send a file from `pb_pages` (path relative to `pb_pages`). |
-| `sse()` | Start a `text/event-stream` response; returns `{ send(event, data, { id, retry }?), comment(text), close() }`. |
+| `sse({ keepAlive }?)` | Start a `text/event-stream` response; returns `{ send(event, data, { id, retry }?), comment(text), close() }`. With `keepAlive` (seconds), a `: keep-alive` comment is written that often until the handler is done. |
 | `layout(false)` | Render this page without layouts (e.g. an HTML fragment for htmx). |
 | `sent` | `true` once a response has been sent. |
 
@@ -534,6 +534,12 @@ Turned on by name in `+config.js` when no module by that name is found (7).
 - `filter(client)` returns `true` to include a client. `client` is PocketBase's realtime client: `id()`,
   `get(key)`, `set(key, value)`, `hasSubscription(topic)`.
 - `ctx.realtime.client(id)` returns one client by id, or `null`.
+- `ctx.realtime.subscribe(topic, { filter, expand, fields }?)` registers a realtime client for the request, with the
+  visitor's auth, so PocketBase's realtime broadcast applies the collection's rules, filter, expand and fields as on
+  `/api/realtime`. It returns an async iterator (and `close()`): record topics give `{ action, record }`, others the
+  data sent. Each `next()` waits as an async Go call, off the VM's loop. The client is unregistered when the request
+  ends (client gone, handler returned, await time passed) or on `close()`/`break`. Up to 64 unread messages queue;
+  one more ends the subscription and the next `next()` throws.
 - Sending never waits for slow clients: each message is handed to the client's queue in the background.
 
 ### 9.2 Custom plugins
@@ -570,7 +576,8 @@ Plugins for third-party libraries ship as JS files in `ext/pages/addons/`, not b
 - `ctx.datastar.patchElements(html, { selector, mode }?)`, `ctx.datastar.patchSignals(signals, { onlyIfMissing }?)`
   (`signals` is an object), `ctx.datastar.executeScript(js)` send SSE events on the current response. The first one
   starts the stream (`ctx.res.sent` becomes `true`); later steps still run, but their output isn't sent and the
-  automatic patch below doesn't happen. The stream closes when the request ends.
+  automatic patch below doesn't happen. The stream closes when the request ends. It sends a keep-alive comment every
+  30 seconds. `ctx.datastar.open({ keepAlive }?)` starts it before any patch (`keepAlive` in seconds, `0` for none).
 - `ctx.datastar.signals()` returns the request's signals as an object (from the `datastar` query parameter on
   `GET`, the JSON body otherwise). `readSignals(target)` (or 0.x's `readSignals(request, target)`) merges them into
   `target` and returns it.

@@ -28,6 +28,7 @@ a colon between the attribute name and its key (`data-on:click`, `data-bind:name
 | Member | |
 |---|---|
 | `scripts({ spa, realtime }?)` | Returns the script tags. |
+| `open({ keepAlive }?)` | Starts the SSE response now instead of with the first patch, for a route that waits for changes. The stream sends a keep-alive comment every `keepAlive` seconds (30 by default; `0` turns it off), whether it was opened here or by the first patch. |
 | `patchElements(html, { selector, mode, useViewTransition, viewTransitionSelector, namespace }?)` | Sends a patch-elements SSE event on the current response. `mode` is `outer` (default), `inner`, `replace`, `prepend`, `append`, `before`, `after` or `remove`; `namespace` is `html` (default), `svg` or `mathml`. |
 | `patchSignals(signals, { onlyIfMissing }?)` | Sends a patch-signals SSE event (JSON Merge Patch: `null` removes a signal). |
 | `executeScript(js, { autoRemove, attributes }?)` | Sends a script to run in the browser. |
@@ -91,6 +92,12 @@ module.exports = {
   },
 }
 ```
+
+## Live updates
+
+To patch the page whenever records change, open a stream with `data-init="@get('/todos/live')"`, call
+`ctx.datastar.open()`, and turn each change from [`ctx.realtime.subscribe()`](https://pocketone.dev/docs/extensions/pages/plugins/realtime#with-datastar) into a patch. Only the visitor's own stream
+gets them, with the collection's rules applied for that visitor.
 
 ## Broadcasting
 

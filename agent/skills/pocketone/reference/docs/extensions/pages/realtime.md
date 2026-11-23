@@ -28,7 +28,24 @@ Limit recipients with a filter:
 ctx.realtime.send('alerts', 'Hi', { filter: (client) => !!client.get('auth') })
 ```
 
-Page code can't subscribe to realtime topics itself; it only sends.
+## Listening from a page
+
+`ctx.realtime.subscribe()` listens to a topic as the visitor, with the collection's rules applied, and gives each
+change to a `for await` loop. Stream them with `ctx.res.sse()`, or as Datastar patches:
+
+```ts
+// pb_pages/rooms/[id]/live.ts
+module.exports = {
+  async get(ctx) {
+    const stream = ctx.res.sse()
+    for await (const msg of ctx.realtime.subscribe(`rooms/${ctx.params.id}/delta`)) {
+      stream.send('delta', msg)
+    }
+  },
+}
+```
+
+See [`ctx.realtime.subscribe()`](https://pocketone.dev/docs/extensions/pages/plugins/realtime#listening-to-record-changes).
 
 ## Receiving in the browser
 
