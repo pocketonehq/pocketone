@@ -138,10 +138,19 @@ func startApp(opts appOptions, inst Instance) (r *runningApp, err error) {
 	if opts.Standard == nil {
 		return nil, errNoStandard
 	}
+	// the instance's own settings for an extension are what its owner typed: one that isn't a map stops the start,
+	// rather than running the extension on pocker's defaults without saying so
+	var settingsErr error
 	plan, err := opts.Standard.Prepare(app, func(name string) extkit.Config {
-		own, _ := extkit.Layer(inst.ExtensionConfig(name))
+		own, err := extkit.Layer(inst.ExtensionConfig(name))
+		if err != nil && settingsErr == nil {
+			settingsErr = fmt.Errorf("instance settings for %s: %w", name, err)
+		}
 		return extkit.Config{opts.IsolateConfig[name], own} // pocker's isolate_config, then the instance's own
 	})
+	if err == nil {
+		err = settingsErr
+	}
 	if err != nil {
 		return nil, fmt.Errorf("standard: %w", err)
 	}
