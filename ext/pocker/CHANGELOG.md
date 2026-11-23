@@ -7,6 +7,10 @@ Sections named after a PocketOne release are from before extensions had versions
 
 ## Unreleased
 
+### Added
+
+- `Provider.Env` / `Server.Env`: a host adds values to every instance's environment (`$os.getenv`, `process.env`), over the instance's own secrets, so a secret can't override them. PocketHost uses it for `PH_POCKETBASE_VERSION`.
+
 ## 0.1.3 (2026-11-22)
 
 ### Fixed

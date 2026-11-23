@@ -42,8 +42,10 @@ type Provider struct {
 	InstanceRoutes []func(http.Handler) http.Handler
 	Extensions     []Extension
 	SetupApp       func(inst Instance, app core.App) error
-	OnEvent        func(Event)
-	OnStart        func(m *Manager)
+	// Env adds host values to each instance's environment, over its secrets (see [Server.Env]).
+	Env     func(inst Instance) map[string]string
+	OnEvent func(Event)
+	OnStart func(m *Manager)
 	// Resolve makes relative paths in the section absolute (e.g. ext/config's Config.ResolvePath, relative to the
 	// config file); nil = as written (relative to the working directory).
 	Resolve func(string) string
@@ -76,6 +78,6 @@ func (p *Provider) RegisterHost(h *multisite.Host) error {
 	if h.Logger == nil {
 		h.Logger = slog.Default()
 	}
-	s := &Server{Config: cfg, Standard: p.Standard, Host: p.Host, InstanceRoutes: p.InstanceRoutes, Extensions: p.Extensions, SetupApp: p.SetupApp, OnEvent: p.OnEvent, OnStart: p.OnStart, Logger: h.Logger}
+	s := &Server{Config: cfg, Standard: p.Standard, Host: p.Host, InstanceRoutes: p.InstanceRoutes, Extensions: p.Extensions, SetupApp: p.SetupApp, Env: p.Env, OnEvent: p.OnEvent, OnStart: p.OnStart, Logger: h.Logger}
 	return s.RegisterHost(h)
 }
