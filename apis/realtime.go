@@ -758,9 +758,7 @@ func realtimeBroadcastRecord(app core.App, action string, record *core.Record, d
 							}
 							client.Set(dryCacheKey, messages)
 						} else {
-							routine.FireAndForget(func() {
-								client.Send(msg)
-							})
+							subscriptions.SendOrdered(client, msg)
 						}
 					}
 				}
@@ -792,13 +790,9 @@ func realtimeBroadcastDryCacheKey(app core.App, key string) error {
 
 				client.Unset(key)
 
-				client := client
-
-				routine.FireAndForget(func() {
-					for _, msg := range messages {
-						client.Send(msg)
-					}
-				})
+				for _, msg := range messages {
+					subscriptions.SendOrdered(client, msg)
+				}
 			}
 
 			return nil
@@ -884,7 +878,9 @@ func realtimeCanAccessRecord(
 		From(record.Collection().Name).
 		AndWhere(dbx.HashExp{record.Collection().Name + ".id": record.Id})
 
-	resolver := core.NewRecordFieldResolver(app, record.Collection(), requestInfo, false)
+	// PocketOne: superusers may filter on hidden fields and superuser-only collections here too, as in the list API
+	// (e.g. a back-relation into a collection with no list rule); before, such a filter failed and the event was dropped.
+	resolver := core.NewRecordFieldResolver(app, record.Collection(), requestInfo, requestInfo.HasSuperuserAuth())
 	expr, err := search.FilterData(filter).BuildExpr(resolver)
 	if err != nil {
 		return false

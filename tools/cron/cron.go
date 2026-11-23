@@ -167,7 +167,8 @@ func (c *Cron) Stop() {
 		return // already stopped
 	}
 
-	c.tickerDone <- struct{}{}
+	// PocketOne: ends only this start's loop; never blocks
+	close(c.tickerDone)
 	c.ticker.Stop()
 	c.ticker = nil
 }
@@ -184,16 +185,24 @@ func (c *Cron) Start() {
 	delay := next.Sub(now)
 
 	c.mux.Lock()
-	c.startTimer = time.AfterFunc(delay, func() {
+	var timer *time.Timer
+	timer = time.AfterFunc(delay, func() {
 		// init a ticker
 		c.mux.Lock()
-		if c.startTimer == nil {
+		// PocketOne: only this start's timer may init the ticker; a callback of an earlier start that was already
+		// waiting for the lock would otherwise see the newer timer and start a second loop nothing stops.
+		if c.startTimer != timer {
 			// rare race edge-case when Close is called AFTER the timer
 			// initialization but BEFORE the AfterFunc callback execution
 			c.mux.Unlock()
 			return
 		}
 		c.ticker = time.NewTicker(c.interval)
+		// PocketOne: each start's loop has its own ticker and done channel, so Stop (which doesn't wait for the
+		// loop) never races it on c.ticker, and a quick Stop/Start can't hand one loop's stop signal to another.
+		ticker := c.ticker
+		done := make(chan struct{})
+		c.tickerDone = done
 		c.mux.Unlock()
 
 		// run immediately at 00
@@ -203,14 +212,15 @@ func (c *Cron) Start() {
 		routine.FireAndForget(func() {
 			for {
 				select {
-				case <-c.tickerDone:
+				case <-done:
 					return
-				case t := <-c.ticker.C:
+				case t := <-ticker.C:
 					c.runDue(t)
 				}
 			}
 		})
 	})
+	c.startTimer = timer
 	c.mux.Unlock()
 }
 

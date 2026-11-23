@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"ganigeorgiev.com/pocketbase/pocketbase/tools/hook"
@@ -17,7 +18,9 @@ import (
 const systemHookIdNotifyWatcher = "__pbNotifyWatcherSystemHook__"
 
 func (app *BaseApp) registerNotifyWatcherHooks() {
-	var notifyWatcher *fsnotify.Watcher
+	// PocketOne: a stop func, not the *fsnotify.Watcher, so stopping also waits for the watcher goroutine (see
+	// createNotifyDirWatcher).
+	var stopNotifyWatcher func()
 
 	instanceId := "@" + security.PseudorandomString(10)
 
@@ -34,11 +37,11 @@ func (app *BaseApp) registerNotifyWatcherHooks() {
 				return err
 			}
 
-			if notifyWatcher != nil {
-				_ = notifyWatcher.Close()
+			if stopNotifyWatcher != nil {
+				stopNotifyWatcher()
 			}
 
-			notifyWatcher, err = createNotifyDirWatcher(e.App, instanceId, localNotifyDirPath)
+			stopNotifyWatcher, err = createNotifyDirWatcher(e.App, instanceId, localNotifyDirPath)
 			if err != nil {
 				e.App.Logger().Warn("Notify dir watcher failure.", "error", err)
 			}
@@ -48,12 +51,26 @@ func (app *BaseApp) registerNotifyWatcherHooks() {
 		Priority: -998,
 	})
 
+	// PocketOne: stop the watcher before the bootstrap state (the DB handles) is cleared; its goroutine reads it.
+	app.OnBootstrapClear().Bind(&hook.Handler[*BootstrapEvent]{
+		Id: systemHookIdNotifyWatcher,
+		Func: func(e *BootstrapEvent) error {
+			if stopNotifyWatcher != nil {
+				stopNotifyWatcher()
+				stopNotifyWatcher = nil
+			}
+			return e.Next()
+		},
+		Priority: -998,
+	})
+
 	// cleanup
 	app.OnTerminate().Bind(&hook.Handler[*TerminateEvent]{
 		Id: systemHookIdNotifyWatcher,
 		Func: func(e *TerminateEvent) error {
-			if notifyWatcher != nil {
-				_ = notifyWatcher.Close()
+			if stopNotifyWatcher != nil {
+				stopNotifyWatcher()
+				stopNotifyWatcher = nil
 			}
 
 			_ = os.Remove(settingsFile)
@@ -72,11 +89,14 @@ func (app *BaseApp) registerNotifyWatcherHooks() {
 			return err
 		}
 
-		if notifyWatcher != nil {
+		if stopNotifyWatcher != nil {
+			// PocketOne: remove the previous notify file first and leave the new one in place (cleaned up on terminate).
+			// Writing and removing it at once loses the event on macOS: kqueue only reports a directory change and
+			// fsnotify rescans, so a file already gone by then is never seen (inotify on Linux reports it anyway).
+			_ = os.Remove(settingsFile)
 			if err := os.WriteFile(settingsFile, nil, 0644); err != nil {
 				e.App.Logger().Warn("Failed to write watcher file", "error", err, "file", settingsFile)
 			}
-			_ = os.Remove(settingsFile)
 		}
 
 		return nil
@@ -99,11 +119,14 @@ func (app *BaseApp) registerNotifyWatcherHooks() {
 			return err
 		}
 
-		if notifyWatcher != nil {
+		if stopNotifyWatcher != nil {
+			// PocketOne: remove the previous notify file first and leave the new one in place (cleaned up on terminate).
+			// Writing and removing it at once loses the event on macOS: kqueue only reports a directory change and
+			// fsnotify rescans, so a file already gone by then is never seen (inotify on Linux reports it anyway).
+			_ = os.Remove(collectionsFile)
 			if err := os.WriteFile(collectionsFile, nil, 0644); err != nil {
 				e.App.Logger().Warn("Failed to write watcher file", "error", err, "file", collectionsFile)
 			}
-			_ = os.Remove(collectionsFile)
 		}
 
 		return nil
@@ -125,7 +148,11 @@ func (app *BaseApp) registerNotifyWatcherHooks() {
 	})
 }
 
-func createNotifyDirWatcher(app App, instanceId string, localNotifyDirPath string) (*fsnotify.Watcher, error) {
+// PocketOne: returns a stop func instead of the watcher. Stop closes the watcher and waits for its goroutine and any
+// reload already running, so nothing reads the app after it returns (closing the watcher alone left them running
+// while ClearBootstrap set the DB handles to nil). Don't call stop from inside a reload (an OnSettingsReload hook):
+// it waits for that reload and would deadlock.
+func createNotifyDirWatcher(app App, instanceId string, localNotifyDirPath string) (func(), error) {
 	// create the notify dir (if not already)
 	err := os.MkdirAll(localNotifyDirPath, os.ModePerm)
 	if err != nil {
@@ -145,6 +172,12 @@ func createNotifyDirWatcher(app App, instanceId string, localNotifyDirPath strin
 
 	var debounceTimer *time.Timer
 
+	// PocketOne: done closes when the goroutine returns; mu is held by a running reload, and stopped turns away a
+	// reload that starts after stop returns.
+	done := make(chan struct{})
+	var mu sync.Mutex
+	stopped := false
+
 	stopDebounceTimer := func() {
 		if debounceTimer != nil {
 			debounceTimer.Stop()
@@ -154,6 +187,7 @@ func createNotifyDirWatcher(app App, instanceId string, localNotifyDirPath strin
 
 	// watch
 	routine.FireAndForget(func() {
+		defer close(done)
 		defer stopDebounceTimer()
 
 		for {
@@ -171,6 +205,12 @@ func createNotifyDirWatcher(app App, instanceId string, localNotifyDirPath strin
 				stopDebounceTimer()
 
 				debounceTimer = time.AfterFunc(50*time.Millisecond, func() {
+					mu.Lock()
+					defer mu.Unlock()
+					if stopped {
+						return
+					}
+
 					filename := filepath.Base(event.Name)
 
 					// settings changed
@@ -207,5 +247,13 @@ func createNotifyDirWatcher(app App, instanceId string, localNotifyDirPath strin
 		}
 	})
 
-	return watcher, err
+	stop := func() {
+		_ = watcher.Close()
+		<-done
+		mu.Lock()
+		stopped = true
+		mu.Unlock()
+	}
+
+	return stop, err
 }

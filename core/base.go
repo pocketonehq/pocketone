@@ -70,6 +70,16 @@ type BaseAppConfig struct {
 	AuxMaxOpenConns  int
 	AuxMaxIdleConns  int
 	IsDev            bool
+
+	// PocketOne: per-app settings so several apps can share one process.
+
+	// AppMigrations, when set, is used instead of the global [AppMigrations] list by RunAppMigrations,
+	// RunAllMigrations, the jsvm plugin and the migrate command (see [AppMigrationsOf]).
+	AppMigrations *MigrationsList
+
+	// OnLog, when set, is called with every log entry the app's logger accepts (before the logs settings decide
+	// whether it is stored), e.g. to copy them to a host's per-app log. It must not block or log.
+	OnLog func(log *logger.Log)
 }
 
 // ensures that the BaseApp implements the App interface.
@@ -161,6 +171,7 @@ type BaseApp struct {
 	// @todo 2: if exposed consider registering the same for the backup filesystem
 	_onFilesystemNewWriter *hook.Hook[*FilesystemNewWriterEvent]
 	_onFilesystemDelete    *hook.Hook[*FilesystemDeleteEvent]
+	onFilesystemCreate     *hook.Hook[*FilesystemCreateEvent] // PocketOne
 
 	// realtime api event hooks
 	onRealtimeConnectRequest   *hook.Hook[*RealtimeConnectRequestEvent]
@@ -314,6 +325,7 @@ func (app *BaseApp) initHooks() {
 	// filesystem event hooks
 	app._onFilesystemNewWriter = &hook.Hook[*FilesystemNewWriterEvent]{}
 	app._onFilesystemDelete = &hook.Hook[*FilesystemDeleteEvent]{}
+	app.onFilesystemCreate = &hook.Hook[*FilesystemCreateEvent]{} // PocketOne
 
 	// realtime API event hooks
 	app.onRealtimeConnectRequest = &hook.Hook[*RealtimeConnectRequestEvent]{}
@@ -617,6 +629,29 @@ func (app *BaseApp) DataDir() string {
 	return app.config.DataDir
 }
 
+// PocketOne: AppMigrationsOf returns the app's own migrations list ([BaseAppConfig.AppMigrations]) when it has one,
+// otherwise the global [AppMigrations]. Register and run app migrations through it so each app in a shared process
+// keeps its own.
+func AppMigrationsOf(app App) *MigrationsList {
+	type withList interface{ appMigrations() *MigrationsList }
+	if a, ok := app.(withList); ok {
+		return a.appMigrations()
+	}
+	// a wrapper embedding the App interface (e.g. *pocketbase.PocketBase): its hookless copy is the *BaseApp
+	if a, ok := app.UnsafeWithoutHooks().(withList); ok {
+		return a.appMigrations()
+	}
+	return &AppMigrations
+}
+
+// PocketOne: unexported, so it isn't on the App API (nor reachable from JS); embedding *BaseApp keeps it.
+func (app *BaseApp) appMigrations() *MigrationsList {
+	if app.config.AppMigrations != nil {
+		return app.config.AppMigrations
+	}
+	return &AppMigrations
+}
+
 // EncryptionEnv returns the name of the app secret env key
 // (currently used primarily for optional settings encryption but this may change in the future).
 func (app *BaseApp) EncryptionEnv() string {
@@ -748,6 +783,47 @@ func (app *BaseApp) NewMailClient() mailer.Mailer {
 // NB! Make sure to call Close() on the returned result
 // after you are done working with it.
 func (app *BaseApp) NewFilesystem() (fsys *filesystem.System, err error) {
+	// PocketOne: OnFilesystemCreate handlers may supply it (createFilesystem); the rest is upstream's NewFilesystem split
+	// into defaultFilesystem and attachFilesystemHooks.
+	fsys, err = app.createFilesystem(FilesystemKindStorage, app.defaultFilesystem)
+	if err != nil {
+		return nil, err
+	}
+
+	return app.attachFilesystemHooks(fsys), nil
+}
+
+// PocketOne: createFilesystem lets OnFilesystemCreate handlers supply the filesystem, else creates the default one.
+func (app *BaseApp) createFilesystem(kind string, def func() (*filesystem.System, error)) (*filesystem.System, error) {
+	if app.onFilesystemCreate == nil || app.onFilesystemCreate.Length() == 0 {
+		return def()
+	}
+
+	event := &FilesystemCreateEvent{App: app, Kind: kind}
+	err := app.onFilesystemCreate.Trigger(event, func(e *FilesystemCreateEvent) error {
+		if e.Filesystem == nil {
+			fsys, err := def()
+			if err != nil {
+				return err
+			}
+			e.Filesystem = fsys
+		}
+		return e.Next()
+	})
+	if err != nil {
+		if event.Filesystem != nil {
+			event.Filesystem.Close()
+		}
+		return nil, err
+	}
+	if event.Filesystem == nil { // a handler stopped the chain without supplying one
+		return def()
+	}
+
+	return event.Filesystem, nil
+}
+
+func (app *BaseApp) defaultFilesystem() (fsys *filesystem.System, err error) {
 	if app.settings != nil && app.settings.S3.Enabled {
 		// S3
 		fsys, err = filesystem.NewS3(
@@ -762,10 +838,11 @@ func (app *BaseApp) NewFilesystem() (fsys *filesystem.System, err error) {
 		// local filesystem
 		fsys, err = filesystem.NewLocal(filepath.Join(app.DataDir(), LocalStorageDirName))
 	}
-	if err != nil {
-		return nil, err
-	}
 
+	return fsys, err
+}
+
+func (app *BaseApp) attachFilesystemHooks(fsys *filesystem.System) *filesystem.System {
 	// attach delete hook
 	if app._onFilesystemDelete.Length() > 0 {
 		fsys.OnDelete().BindFunc(func(originalEvent *filesystem.DeleteEvent) error {
@@ -792,7 +869,7 @@ func (app *BaseApp) NewFilesystem() (fsys *filesystem.System, err error) {
 		})
 	}
 
-	return fsys, nil
+	return fsys
 }
 
 // NewBackupsFilesystem creates a new local or S3 filesystem instance
@@ -801,6 +878,10 @@ func (app *BaseApp) NewFilesystem() (fsys *filesystem.System, err error) {
 // NB! Make sure to call Close() on the returned result
 // after you are done working with it.
 func (app *BaseApp) NewBackupsFilesystem() (*filesystem.System, error) {
+	return app.createFilesystem(FilesystemKindBackups, app.defaultBackupsFilesystem) // PocketOne: OnFilesystemCreate
+}
+
+func (app *BaseApp) defaultBackupsFilesystem() (*filesystem.System, error) {
 	if app.settings != nil && app.settings.Backups.S3.Enabled {
 		return filesystem.NewS3(
 			app.settings.Backups.S3.Bucket,
@@ -853,18 +934,19 @@ func (app *BaseApp) RunSystemMigrations() error {
 	return err
 }
 
-// RunAppMigrations applies all new migrations registered in the [core.AppMigrations] list.
+// RunAppMigrations applies all new migrations registered in the [core.AppMigrations] list
+// (PocketOne: or the app's own list, see [AppMigrationsOf]).
 func (app *BaseApp) RunAppMigrations() error {
-	_, err := NewMigrationsRunner(app, AppMigrations).Up()
+	_, err := NewMigrationsRunner(app, *app.appMigrations()).Up() // PocketOne: per-app list
 	return err
 }
 
 // RunAllMigrations applies all system and app migrations
-// (aka. from both [core.SystemMigrations] and [core.AppMigrations]).
+// (aka. from both [core.SystemMigrations] and [core.AppMigrations]; PocketOne: or the app's own list, see [AppMigrationsOf]).
 func (app *BaseApp) RunAllMigrations() error {
 	list := MigrationsList{}
 	list.Copy(SystemMigrations)
-	list.Copy(AppMigrations)
+	list.Copy(*app.appMigrations()) // PocketOne: per-app list
 	_, err := NewMigrationsRunner(app, list).Up()
 	return err
 }
@@ -1090,6 +1172,11 @@ func (app *BaseApp) OnMailerRecordAuthAlertSend(tags ...string) *hook.TaggedHook
 // -------------------------------------------------------------------
 // Filesystem event hooks
 // -------------------------------------------------------------------
+
+// PocketOne: see [App.OnFilesystemCreate].
+func (app *BaseApp) OnFilesystemCreate() *hook.Hook[*FilesystemCreateEvent] {
+	return app.onFilesystemCreate
+}
 
 func (app *BaseApp) onFilesystemNewWriter() *hook.Hook[*FilesystemNewWriterEvent] {
 	return app._onFilesystemNewWriter
@@ -1539,6 +1626,10 @@ func (app *BaseApp) initLogger() error {
 		Level:     getLoggerMinLevel(app),
 		BatchSize: 200,
 		BeforeAddFunc: func(ctx context.Context, log *logger.Log) bool {
+			if app.config.OnLog != nil { // PocketOne
+				app.config.OnLog(log)
+			}
+
 			if app.IsDev() {
 				printLog(log)
 
