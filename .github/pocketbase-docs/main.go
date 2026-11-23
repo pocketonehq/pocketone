@@ -68,10 +68,11 @@ func run(update bool, siteDir string) error {
 	if err := os.Chdir(root); err != nil {
 		return err
 	}
-	if _, err := os.Stat(pinFile); err != nil {
+	pinRaw, err := os.ReadFile(pinFile)
+	if err != nil {
 		return fmt.Errorf("%s: %v", pinFile, err)
 	}
-	pin := strings.TrimSpace(readString(pinFile))
+	pin := strings.TrimSpace(string(pinRaw))
 	if siteDir == "" {
 		tmp, err := os.MkdirTemp("", "pocketbase-site-")
 		if err != nil {
@@ -111,8 +112,14 @@ func run(update bool, siteDir string) error {
 			return err
 		}
 	}
-	commit, _ := output(siteDir, "git", "rev-parse", "HEAD")
-	date, _ := output(siteDir, "git", "log", "-1", "--format=%cs")
+	commit, err := output(siteDir, "git", "rev-parse", "HEAD")
+	if err != nil {
+		return err
+	}
+	date, err := output(siteDir, "git", "log", "-1", "--format=%cs")
+	if err != nil {
+		return err
+	}
 	docs := filepath.Join(siteDir, "build", "docs")
 	pages, version, err := convertAll(docs)
 	if err != nil {
@@ -226,7 +233,10 @@ func write(pages []page, commit, date, version string) error {
 		return err
 	}
 	// drop pages the site no longer has
-	entries, _ := os.ReadDir(outDir)
+	entries, err := os.ReadDir(outDir)
+	if err != nil {
+		return err
+	}
 	for _, e := range entries {
 		if !e.IsDir() && !want[e.Name()] {
 			logf("removing %s", e.Name())
@@ -274,11 +284,6 @@ func writeIfChanged(path, content string) error {
 		return nil
 	}
 	return os.WriteFile(path, []byte(content), 0o644)
-}
-
-func readString(path string) string {
-	b, _ := os.ReadFile(path)
-	return string(b)
 }
 
 func short(sha string) string {
