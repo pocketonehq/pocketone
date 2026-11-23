@@ -183,7 +183,7 @@ const WRITE_SCHEMA = {
 
 /** Told to the writer whatever the profile's prompt says. */
 const SAY_NOTE = '\n\nIn "say", list each word in the story a narrator could say wrong: acronyms read letter by letter ' +
-  '(SES as "S E S"), names with their own pronunciation (SQLite as "S Q Lite", nginx as "engine X"), jargon. One word ' +
+  '(SES as "S E S"), acronyms people say as a word spelled as said (WASM as "wazzum"), names with their own pronunciation (SQLite as "S Q Lite", nginx as "engine X"), jargon. One word ' +
   'each, exactly as written in the sentences, with how to spell it so it is read right. Leave out ordinary words; an ' +
   'empty list is fine.'
 
@@ -226,7 +226,7 @@ async function pronounce(t: Tuning, sentences: string[], say: Say[]): Promise<{ 
   const result = await ask(t.models.text, {
     system: 'You tell a narrator how to say words. For each word, answer how to spell it so a text-to-speech voice says ' +
       'it the way people in the field do: acronyms said letter by letter as spaced capitals (SES: "S E S", HTTPS: "H T T P S"), ' +
-      'acronyms said as a word or with a known pronunciation spelled that way (JSON: "Jason", SQLite: "S Q Lite", nginx: ' +
+      'only when people in the field spell them out; acronyms said as a word (WASM: "wazzum") or with a known pronunciation spelled that way (JSON: "Jason", SQLite: "S Q Lite", nginx: ' +
       '"engine X"), and a word read as written given back unchanged (PocketOne: "PocketOne").',
     prompt: ask_.join('\n'), schema: PRONOUNCE_SCHEMA, temperature: 0,
   })
@@ -486,21 +486,62 @@ export async function research(t: Tuning, topic: string): Promise<{ text: string
   if (!t.knowledge.buckets.length) return { text: '' }
   const found = await $llm.search.searchAsync({ buckets: t.knowledge.buckets, query: topic, limit: 20 })
   const piles: { [k: string]: string[] } = { docs: [], history: [], code: [] }
+  const owners = new Map<string, string>() // folder → the opening of its README
+  ownerCache.clear() // READMEs change when a bucket refreshes: look them up fresh for each story
   for (const r of found.results || []) {
     const pile = /^commit /.test(r.document) ? 'history' : /\.(md|ets|html)$/i.test(r.document) ? 'docs' : 'code'
     const cap = pile === 'docs' ? 6 : 4
-    if (piles[pile].length < cap) piles[pile].push(`(${r.document}${r.heading ? ` › ${r.heading}` : ''})\n${String(r.text).slice(0, 1500)}`)
+    if (piles[pile].length >= cap) continue
+    const owner = pile === 'history' ? null : ownerOf(r.bucket, r.document)
+    if (owner && !owners.has(owner.folder)) owners.set(owner.folder, owner.opening)
+    const label = `${r.document}${r.heading ? ` › ${r.heading}` : ''}${owner ? `, part of ${owner.folder}` : ''}`
+    piles[pile].push(`(${label})\n${String(r.text).slice(0, 1500)}`)
   }
   const part = (title: string, list: string[]) => (list.length ? `## ${title}\n\n${list.join('\n\n')}` : '')
-  const text = [part('What the docs say', piles.docs), part('How it came to be (commits)', piles.history), part('How it works (code)', piles.code)]
-    .filter(Boolean).join('\n\n')
+  const text = [
+    part('What these belong to (each folder\'s README, opening)', [...owners].map(([folder, opening]) => `(${folder})\n${opening}`)),
+    part('What the docs say', piles.docs), part('How it came to be (commits)', piles.history), part('How it works (code)', piles.code),
+  ].filter(Boolean).join('\n\n')
   return { text, found }
+}
+
+/**
+ * What a passage belongs to, so the writer can name it: the nearest folder above the document with a README in the same
+ * bucket (ext/wasm for ext/wasm/example/qrcode/src/main.rs), and that README's opening. Null at the top or when none.
+ */
+function ownerOf(bucket: string, document: string): { folder: string; opening: string } | null {
+  const parts = document.split('/')
+  for (let n = parts.length - 1; n >= 1; n--) {
+    const folder = parts.slice(0, n).join('/')
+    if (!ownerCache.has(bucket + ':' + folder)) ownerCache.set(bucket + ':' + folder, readmeOpening(bucket, folder))
+    const opening = ownerCache.get(bucket + ':' + folder)
+    if (opening) return { folder, opening }
+  }
+  return null
+}
+const ownerCache = new Map<string, string>()
+
+/** The first 800 characters of folder/README.md in a bucket (front matter included: a title and summary help), or "". */
+function readmeOpening(bucket: string, folder: string): string {
+  try {
+    const docs = $llm.search.documents({ bucket, prefix: `${folder}/README` })
+    const readme = docs.find((d: any) => /^readme\.md$/i.test(d.name.slice(folder.length + 1)))
+    if (!readme) return ''
+    const chunks = $llm.search.sample({ bucket, prefix: readme.name, count: 50 })
+      .filter((c: any) => c.document === readme.name).sort((a: any, b: any) => a.startLine - b.startLine)
+    return chunks.map((c: any) => c.text).join('\n').slice(0, 800)
+  } catch (_) {
+    return ''
+  }
 }
 
 export async function write(t: Tuning, prompt: string, minutes: number): Promise<{ story: Story; result: any; fixes?: any; said?: any; searched?: any }> {
   // grounded in the knowledge buckets: what they hold about the topic follows the request, docs first
   const known = await research(t, prompt)
-  const request = `Tonight's story: ${prompt}` + (known.text ? `\n\nWhat the knowledge base holds about it:\n\n${known.text}` : '')
+  const request = `Tonight's story: ${prompt}` + (known.text ? `\n\nWhat the knowledge base holds about it:\n\n${known.text}` +
+    '\n\nBefore any detail, name what the story is about by its own name (from what the passages belong to) and say in a ' +
+    'sentence what it is and why someone would use it. Call it by its title (the README\'s title or first heading), not a tagline. An example, recipe or test is an example of that thing, never the ' +
+    'thing itself: say what it is an example of.' : '')
   const result = await ask(t.models.text, { system: writePrompt(t, minutes), prompt: request, schema: WRITE_SCHEMA, temperature: 0.9 })
   const written = result.data || {}
   const story: Story = {
