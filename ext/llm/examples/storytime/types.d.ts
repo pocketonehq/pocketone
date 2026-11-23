@@ -27107,6 +27107,7 @@ declare namespace pages {
   interface EventStream {
     /** Sends an event; non-string data is JSON-encoded. */
     send(event: string, data: any, opts?: { id?: string | number; retry?: number }): void;
+    /** Writes an SSE comment (`: text`), which browsers ignore. */
     comment(text: string): void;
     close(): void;
   }
@@ -27134,8 +27135,11 @@ declare namespace pages {
     text(status: number, text: string): Response;
     /** Sends a file from pb_pages (path relative to pb_pages). */
     file(path: string): Response;
-    /** Starts a `text/event-stream` response. */
-    sse(): EventStream;
+    /**
+     * Starts a `text/event-stream` response. `keepAlive` (seconds) writes a comment that often while the handler runs,
+     * so proxies keep a quiet stream open.
+     */
+    sse(opts?: { keepAlive?: number }): EventStream;
     /** `layout(false)` renders this page without layouts (e.g. an htmx fragment). */
     layout(on: boolean): Response;
     /** True once a response has been sent. */
@@ -27212,6 +27216,28 @@ declare namespace pages {
     send(topic: string, data: any, opts?: { filter?: (client: subscriptions.Client) => boolean }): void;
     /** One client by id, or `null`. */
     client(id: string): subscriptions.Client | null;
+    /**
+     * Listens to `topic` like a browser on `/api/realtime`, as this visitor: the collection's list/view rules apply,
+     * and `filter`, `expand` and `fields` work as in the JS SDK's subscribe options. Read it with `for await`. Record
+     * topics (`posts/*`, `posts/RECORD_ID`) give `{ action, record }`; other topics give the data sent to them. It
+     * ends when the request does, on `close()`, or (throwing) if the page falls 64 messages behind.
+     */
+    subscribe<T = RealtimeRecordMessage>(
+      topic: string,
+      opts?: { filter?: string; expand?: string; fields?: string },
+    ): RealtimeSubscription<T>;
+  }
+
+  /** A record change from `ctx.realtime.subscribe()`. */
+  interface RealtimeRecordMessage {
+    action: "create" | "update" | "delete";
+    record: { [field: string]: any };
+  }
+
+  /** What `ctx.realtime.subscribe()` returns. */
+  interface RealtimeSubscription<T> extends AsyncIterableIterator<T> {
+    /** Ends the subscription; a waiting `for await` finishes. */
+    close(): void;
   }
 
   /** The request context, passed to middleware, handlers, templates, components and plugins. */
