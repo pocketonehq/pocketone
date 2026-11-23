@@ -372,7 +372,11 @@ func (w *watchServer) written(rec *core.Record) {
 	if idle {
 		return
 	}
-	touched, _ := w.resolver().Touches(context.Background(), rec)
+	// a failed Touches still refreshes the record's own deps; the hosts it would have named wait for their next write
+	touched, err := w.resolver().Touches(context.Background(), rec)
+	if err != nil {
+		w.log.Warn("mothership: touches failed", "collection", rec.Collection().Name, "record", rec.Id, "error", err)
+	}
 	deps := resolvev1.RecordDeps(rec, touched...)
 	var targets []target
 	w.mu.Lock()
