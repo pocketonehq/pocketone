@@ -14,9 +14,6 @@
 // off the app's JS VM: the app keeps serving pages (and this story's own progress polls) while the models work. The
 // request that starts a story doesn't wait for it; see story.ts.
 
-/** About how many words a narrator reads in a minute at a bedtime pace. */
-const WORDS_PER_MINUTE = 140
-
 /** How many stories may be in the making at once, and how many may start in an hour. */
 export const LIMITS = {
   making: Number(process.env.STORY_MAX_MAKING || 3),
@@ -35,7 +32,9 @@ export type Tuning = {
   site: { title: string; caption: string; placeholder: string; note: string }
   /** how long a story may be: the front page's slider runs from minMinutes (short) to maxMinutes (long), starting at
    * defaultMinutes; a story gets picturesPerMinute pictures a minute, at most maxPictures */
-  length: { minMinutes: number; maxMinutes: number; defaultMinutes: number; picturesPerMinute: number; maxPictures: number }
+  length: { minMinutes: number; maxMinutes: number; defaultMinutes: number; picturesPerMinute: number; maxPictures: number
+    /** how many words the narrator reads in a minute: sets how many words a story of N minutes gets */
+    wordsPerMinute: number }
   /** the player's final mix: the narration's loudness (dBFS, measured over its sounding parts) and how many dB the
    * music sits under it; every story's files are levelled to these when it plays */
   mix: { voiceDb: number; musicUnderDb: number }
@@ -120,6 +119,7 @@ export function merge(base: any, over: any): any {
     L.defaultMinutes = whole(L.defaultMinutes, D.defaultMinutes, L.minMinutes, L.maxMinutes)
     L.maxPictures = whole(L.maxPictures, D.maxPictures, 1, 20)
     L.picturesPerMinute = Math.max(0.1, Math.min(10, Number(L.picturesPerMinute) || D.picturesPerMinute))
+    L.wordsPerMinute = whole(L.wordsPerMinute, D.wordsPerMinute, 60, 250)
     out.knowledge.buckets = (Array.isArray(out.knowledge.buckets) ? out.knowledge.buckets : [])
       .filter((b: any) => typeof b === 'string' && b.trim()).map((b: string) => b.trim()).slice(0, 10)
     out.knowledge.skip = (Array.isArray(out.knowledge.skip) ? out.knowledge.skip : [])
@@ -160,8 +160,8 @@ const fill = (template: string, vars: { [k: string]: string | number }) =>
 
 const writePrompt = (t: Tuning, minutes: number) => fill(t.prompts.write, {
   minutes: `${minutes} minute${minutes === 1 ? '' : 's'}`,
-  minWords: Math.round(minutes * WORDS_PER_MINUTE * 0.9),
-  maxWords: Math.round(minutes * WORDS_PER_MINUTE * 1.1),
+  minWords: Math.round(minutes * t.length.wordsPerMinute * 0.9),
+  maxWords: Math.round(minutes * t.length.wordsPerMinute * 1.1),
   anyTopic: ANY_TOPIC,
 }) + sayNote(t)
 

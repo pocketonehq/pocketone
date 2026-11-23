@@ -13,7 +13,8 @@
       "maxMinutes": 5,
       "defaultMinutes": 1,
       "picturesPerMinute": 3,
-      "maxPictures": 5
+      "maxPictures": 5,
+      "wordsPerMinute": 140
     },
     "budget": 1,
     "models": {

@@ -78,7 +78,7 @@ with 5 pictures (`MAX`); the form and `POST /story` both hold to it.
 
 ## Tuning, in the dashboard
 
-Settings → Story Time in the PocketBase dashboard (`/_/`) holds what shapes the app: the front page's title and caption, the story lengths (the slider's shortest and longest, where it starts, pictures per minute, the most pictures), the narrator (voice,
+Settings → Story Time in the PocketBase dashboard (`/_/`) holds what shapes the app: the front page's title and caption, the story lengths (the slider's shortest and longest, where it starts, the narrator's words per minute, pictures per minute, the most pictures), the narrator (voice,
 instructions, seed, speed), the writing, picture-choosing and Inspire me prompts, how words are said (**Pronunciation**), what's added to each picture and music
 prompt, the models and the daily budget. Each part has a **Sample** button that tries it with what's on the screen,
 saved or not: the voice reads a paragraph, the music plays 20 seconds, a picture is painted, a 1-minute story is
