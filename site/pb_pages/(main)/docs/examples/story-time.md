@@ -35,7 +35,7 @@ pb_pages/
   admin/sample.ts      POST /admin/sample: tries a piece with unsaved settings (superusers only)
   admin/export.ts      GET /admin/export, POST /admin/import: the settings and recordings as JSON (superusers only)
   admin/check.ts       POST /admin/check: transcribes a recording and compares it with its passage (superusers only)
-  admin/stories.ts      POST /admin/stories: adds told stories missing from the stories bucket (superusers only)
+  admin/stories.ts     POST /admin/stories: adds told stories missing from the stories bucket (superusers only)
 pb_hooks/stories.pb.js  a deleted story leaves the stories bucket
   _private/defaults.json the defaults, in the export format
   _private/story.ts    the settings, the limits and the six steps

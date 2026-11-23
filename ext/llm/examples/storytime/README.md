@@ -51,8 +51,9 @@ pb_pages/
   admin/export.ts      GET /admin/export: the saved settings and every recording as one JSON file, the format of _private/defaults.json (superusers only)
   admin/import.ts      POST /admin/import: loads that file, keeping recordings already here (superusers only)
   admin/check.ts       POST /admin/check {clip}: transcribes a recording and compares it with its passage (superusers only)
+  admin/stories.ts     POST /admin/stories: adds told stories missing from the stories bucket (superusers only)
   view.ts              POST /view {id}: counts a listen (the player sends it after 10 seconds heard)
-  story.ts             POST /story {prompt?, minutes?, pictures?}: saves the record, starts making it (no prompt: it picks the topic)
+  story.ts             POST /story {prompt?, minutes?}: saves the record, starts making it (no prompt: it picks the topic)
   story/[id].ets       progress while it's made, then the player (scrubber, space to pause, arrows to skip 10 s)
   _private/story.ts    the models, the limits and the six steps
 ```
