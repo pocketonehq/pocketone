@@ -1,9 +1,8 @@
 <%
-// The front page: ask for a story (it picks the topic, or the visitor names one), or pick one already told. Its words and the story lengths come from the settings.
-const { refusal, tuning, storyLength } = ctx.resolve('story')
+// The front page: one button that tells a new story (the app picks the topic; the settings' default length), or pick one
+// already told. Its words come from the settings.
+const { refusal, tuning } = ctx.resolve('story')
 const t = tuning(ctx.app)
-const L = t.length
-const start = storyLength(t)
 // the title's last word is highlighted
 const titleWords = t.site.title.trim().split(/\s+/)
 const titleLast = titleWords.length > 1 ? titleWords.pop() : ''
@@ -30,20 +29,10 @@ const making = ctx.app.findRecordsByFilter('stories', "status != 'done' && statu
     h1 { font-weight: normal; font-size: 40px; margin: 0 0 6px; letter-spacing: .01em; }
     h1 span { color: var(--glow); }
     .sub { color: var(--dim); margin: 0 0 32px; }
-    textarea { width: 100%; min-height: 96px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line);
-      background: #0f1530; color: var(--ink); font: inherit; resize: vertical; }
-    textarea:focus { outline: 2px solid #3b4675; }
-    label { color: var(--dim); font-size: 15px; }
-    .length { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 260px; }
-    .length input[type=range] { flex: 1; accent-color: var(--glow); }
-    .length b { color: var(--ink); font-weight: normal; min-width: 130px; }
-    label input { width: 64px; margin-left: 6px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: #0f1530;
-      color: var(--ink); font: inherit; }
-    .row { display: flex; gap: 12px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
-    button { padding: 12px 22px; border: 0; border-radius: 999px; background: var(--glow); color: #1b1606; font: inherit;
-      cursor: pointer; }
+    button { padding: 14px 30px; border: 0; border-radius: 999px; background: var(--glow); color: #1b1606; font: inherit;
+      font-size: 19px; cursor: pointer; }
     button:disabled { opacity: .5; cursor: default; }
-    .note { color: var(--dim); font-size: 14px; }
+    .note { color: var(--dim); font-size: 14px; margin: 12px 0 0; }
     .closed { padding: 14px 16px; border-radius: 12px; border: 1px solid #3b4675; background: #121a3a; margin: 0 0 16px; }
     form.off { opacity: .5; }
     ul.making { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
@@ -52,10 +41,6 @@ const making = ctx.app.findRecordsByFilter('stories', "status != 'done' && statu
     ul.making small { color: var(--dim); font-size: 13px; flex-basis: 100%; padding-left: 30px; }
     .moonlet { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset -5px -2px 0 0 var(--glow); animation: bob 3s ease-in-out infinite; flex: none; }
     @keyframes bob { 50% { transform: rotate(-20deg); } }
-    #custom { margin-bottom: 4px; }
-    .mode { margin: 14px 0 0; font-size: 15px; }
-    .mode a { color: var(--dim); text-decoration: underline; text-underline-offset: 3px; }
-    .mode a:hover { color: var(--ink); }
     ul.told small { display: block; color: var(--dim); font-size: 13px; margin-top: 2px; }
     .err { color: #ff9b8a; }
     h2 { font-weight: normal; font-size: 20px; margin: 56px 0 12px; color: var(--dim); }
@@ -73,25 +58,8 @@ const making = ctx.app.findRecordsByFilter('stories', "status != 'done' && statu
 
   <% if (closed) { %><p class="closed"><%= closed.message %></p><% } %>
   <form id="ask"<% if (closed) { %> class="off"<% } %>>
-    <div id="custom" hidden>
-      <textarea id="prompt" maxlength="500" placeholder="<%= t.site.placeholder %>"<% if (closed) { %> disabled<% } %>></textarea>
-    </div>
-    <div class="row">
-      <% if (L.maxMinutes > L.minMinutes) { %>
-      <label class="length">Short
-        <input id="minutes" type="range" min="<%= L.minMinutes %>" max="<%= L.maxMinutes %>" step="1" value="<%= start.minutes %>"
-          data-per-minute="<%= L.picturesPerMinute %>" data-max-pictures="<%= L.maxPictures %>" aria-label="Story length">
-        Long</label>
-      <% } else { %>
-      <input id="minutes" type="hidden" value="<%= start.minutes %>" data-per-minute="<%= L.picturesPerMinute %>" data-max-pictures="<%= L.maxPictures %>">
-      <% } %>
-      <span class="note"><b id="length-label"><%= start.minutes %> min · <%= start.pictures %> <%= start.pictures === 1 ? 'picture' : 'pictures' %></b></span>
-    </div>
-    <div class="row">
-      <button id="go"<% if (closed) { %> disabled<% } %>>Tell me a story</button>
-      <span class="note" id="msg"><%= t.site.note %></span>
-    </div>
-    <% if (!closed) { %><p class="mode"><a href="#" id="mode">Or ask for a story about something</a></p><% } %>
+    <button id="go"<% if (closed) { %> disabled<% } %>>Tell me a story</button>
+    <p class="note err" id="msg" hidden></p>
   </form>
 
   <section id="making"<% if (!making.length) { %> hidden<% } %>>
@@ -119,8 +87,7 @@ const making = ctx.app.findRecordsByFilter('stories', "status != 'done' && statu
   <% } %>
 </main>
 <script>
-  const form = document.getElementById('ask'), prompt = document.getElementById('prompt'),
-    go = document.getElementById('go'), msg = document.getElementById('msg')
+  const form = document.getElementById('ask'), go = document.getElementById('go'), msg = document.getElementById('msg')
   // stories being made: refresh their progress every few seconds; when one finishes, reload to show it with the others
   const makingList = document.getElementById('making-list'), makingBox = document.getElementById('making')
   let shownIds = <%- JSON.stringify(making.map((s) => s.id)) %>
@@ -141,39 +108,22 @@ const making = ctx.app.findRecordsByFilter('stories', "status != 'done' && statu
   }
   setTimeout(watch, 3000)
 
-  // the prompt box is shown only for a story about something; otherwise Tell me a story picks the topic itself
-  const custom = document.getElementById('custom'), mode = document.getElementById('mode')
-  if (mode) mode.addEventListener('click', (e) => {
-    e.preventDefault()
-    custom.hidden = !custom.hidden
-    mode.textContent = custom.hidden ? 'Or ask for a story about something' : 'Never mind, you pick'
-    if (!custom.hidden) prompt.focus()
-  })
-  // the slider says how long, and how many pictures that length gets
-  const minutesInput = document.getElementById('minutes')
-  const lengthLabel = document.getElementById('length-label')
-  const showLength = () => {
-    const m = Number(minutesInput.value)
-    const p = Math.max(1, Math.min(Number(minutesInput.dataset.maxPictures), Math.round(m * Number(minutesInput.dataset.perMinute))))
-    lengthLabel.textContent = `${m} min · ${p} ${p === 1 ? 'picture' : 'pictures'}`
-  }
-  minutesInput.addEventListener('input', showLength)
-
+  // one click: the app picks the story and goes straight to making it
   form.addEventListener('submit', async (e) => {
     e.preventDefault()
     go.disabled = true
-    msg.className = 'note'
-    msg.textContent = 'Starting...'
+    go.textContent = 'Starting...'
+    msg.hidden = true
     try {
-      const res = await fetch('/story', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: custom.hidden ? '' : prompt.value, minutes: document.getElementById('minutes').value }) })
+      const res = await fetch('/story', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
       const body = await res.json()
       if (!res.ok) throw new Error(body.message || res.statusText)
       location.href = '/story/' + body.id
     } catch (err) {
-      msg.className = 'note err'
+      msg.hidden = false
       msg.textContent = err.message
       go.disabled = false
+      go.textContent = 'Tell me a story'
     }
   })
 </script>

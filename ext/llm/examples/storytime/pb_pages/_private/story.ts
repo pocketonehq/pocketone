@@ -730,7 +730,7 @@ export async function make(app: any, id: string): Promise<void> {
     } else {
       let topic = prompt
       if (prompt === ANY_TOPIC && t.knowledge.buckets.length) {
-        save({ status: 'writing', progress: 'Choosing a topic' })
+        save({ status: 'writing', progress: 'Picking the story' })
         topic = (await step('topic', () => inspire(app, [], t))) || prompt
       }
       save({ status: 'writing', progress: 'Writing the story' })

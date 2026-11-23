@@ -12,6 +12,8 @@ const making = ['queued', 'writing', 'making'].includes(status)
 const stale = making && Date.now() - new Date(rec.getString('updated').replace(' ', 'T')).getTime() > STALE_MS
 const files = (name: string) => `/api/files/stories/${rec.id}/${name}`
 const story = JSON.parse(rec.getString('story') || 'null') // a json field reads back as raw JSON
+// the app picks the topic (no prompt given): the first step reads "Picking the story" until writing starts
+const picking = rec.getString('prompt') === ctx.resolve('story').ANY_TOPIC && !story
 // what the player needs: the voiceover with its timings, the pictures with their start times, and the song
 const data = status === 'done' ? {
   id: rec.id,
@@ -122,7 +124,7 @@ const madeLine = [
       <div class="moon"></div>
       <h1 id="title"><%= rec.getString('title') || 'Making your story' %></h1>
       <ol class="steps" id="steps">
-        <li>Writing the story</li><li>Reading it aloud</li><li>Timing each word</li><li>Choosing the pictures</li>
+        <li><%= picking ? 'Picking the story' : 'Writing the story' %></li><li>Reading it aloud</li><li>Timing each word</li><li>Choosing the pictures</li>
         <li>Painting the pictures</li><li>Composing the music</li>
       </ol>
       <p id="progress"><%= rec.getString('progress') %></p>
@@ -136,13 +138,17 @@ const madeLine = [
     const started = new Date(<%- JSON.stringify(rec.getString('created').replace(' ', 'T')) %>).getTime()
     // which steps are done and which is running, read from the progress line the story saves
     const steps = [...document.querySelectorAll('#steps li')]
+    // the first step is picking the story (when the app picks the topic), then writing it: one step whose name changes
+    let now = 0
     const show = (progress) => {
       const p = progress || ''
-      let now = 0
-      if (/^Reading/.test(p)) now = 1
+      if (/^Picking/.test(p)) steps[0].textContent = 'Picking the story'
+      if (/^Writing/.test(p)) { now = 0; steps[0].textContent = 'Writing the story' }
+      else if (/^Reading/.test(p)) now = 1
       else if (/^Listening/.test(p)) now = 2
-      else if (/^Choosing/.test(p)) now = 3
+      else if (/^Choosing the pictures/.test(p)) now = 3
       else if (/^Painting/.test(p)) now = 4
+      // other lines ("Getting ready", "Trying again") leave the steps as they were
       const painted = /Painting pictures (\d+)\/(\d+)/.exec(p), song = /Song ready/.test(p)
       steps.forEach((li, i) => {
         let state = i < now ? 'done' : i === now ? 'now' : ''

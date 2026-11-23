@@ -5,7 +5,7 @@ prompt or a topic it picks itself. What kind of story is set, not coded: its tit
 narrator and the prompts are all on its settings screen, and the shipped defaults (`pb_pages/_private/defaults.json`)
 make it a bedtime story app for adults: one topic (the universe, the mind, a moment in history) told slowly and in
 depth. It's read aloud by one narrator, with pictures that slowly pan and zoom, the words lit up as they're said, and
-a quiet song underneath. A slider picks a short or a long story, within the lengths the admin allows; the pictures follow from the length. Each story is saved, so it can
+a quiet song underneath. Each story is the settings' default length; the pictures follow from the length. Each story is saved, so it can
 be replayed and shared. It runs live at [sleep.pocketone.dev](https://sleep.pocketone.dev), set up as Bedtime Story.
 
 Every sentence is read aloud and shown as a caption lined up with the voice, so the sentences themselves must be speakable: the app strips Markdown and symbols, and has the writer rewrite any sentence that still looks like code (a path, a command, a flag) in plain words before it's narrated.
@@ -29,10 +29,11 @@ each step's progress and result on the record, and the page polls `GET /progress
 `viewRule` are open, so anyone with the link can watch and play). Every `$llm` call is awaited, so the models work
 off the app's JS VM and the app keeps serving pages meanwhile.
 
-**Tell me a story** picks the topic itself: with knowledge buckets, **Inspire me** sends the titles and topics of every
-story told to the text model, which suggests a topic none of them covers, and the story is made from it; without them,
-the writer chooses. A link under the button opens a prompt
-box for a story about something in particular (`POST /inspire` still answers a topic on its own). **Listens:** once a listener has
+The front page is one button, **Tell me a story**: no prompt and no length (the settings' default). The app picks the
+topic: with knowledge buckets, **Inspire me** sends the titles and topics of every story told to the text model, which
+suggests a topic none of them covers, and the story is made from it; without them, the writer chooses. The story's page
+shows that as its first step, "Picking the story", then "Writing the story". `POST /story` still takes a prompt and
+minutes, and `POST /inspire` answers a topic on its own. **Listens:** once a listener has
 heard 10 seconds (time playing, not where the scrubber is), the player posts `/view`, which adds one in SQL
 (`views = views + 1`); the front page lists stories by it.
 
@@ -46,7 +47,7 @@ pb_migrations/1763800006_stories_log.js   log and attempts: each story's step-by
 pb_hooks/admin_plugins.pb.js            registers the dashboard screen (a superuser UI extension)
 pb_admin_ext/storytime/main.js          Settings → Story Time in the dashboard: the settings, with Sample buttons
 pb_pages/
-  index.ets            ask for a story (one click and it picks the topic, or a prompt; minutes, pictures); stories told, most listened to first
+  index.ets            Tell me a story (one click: it picks the topic, at the default length); stories told, most listened to first
   inspire.ts           POST /inspire {avoid?}: a topic no story has covered yet (the model sees every title)
   admin/+middleware.ts lets only superusers through to anything under /admin
   admin/tuning.ts      GET/POST /admin/tuning: the settings, for the dashboard screen (superusers only)
@@ -82,7 +83,7 @@ with 5 pictures (`MAX`); the form and `POST /story` both hold to it.
 
 ## Tuning, in the dashboard
 
-Settings → Story Time in the PocketBase dashboard (`/_/`) holds what shapes the app: the front page's title and caption, the story lengths (the slider's shortest and longest, where it starts, the narrator's words per minute, pictures per minute, the most pictures), the narrator (voice,
+Settings → Story Time in the PocketBase dashboard (`/_/`) holds what shapes the app: the front page's title and caption, the story lengths (shortest and longest, the default, the narrator's words per minute, pictures per minute, the most pictures), the narrator (voice,
 instructions, seed, speed), the writing, picture-choosing and Inspire me prompts, how words are said (**Pronunciation**), what's added to each picture and music
 prompt, the models and the daily budget. Each part has a **Sample** button that tries it with what's on the screen,
 saved or not: the voice reads a paragraph, the music plays 20 seconds, a picture is painted, a 1-minute story is
