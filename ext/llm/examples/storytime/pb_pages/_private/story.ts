@@ -357,7 +357,55 @@ async function ask(model: string, opts: any): Promise<any> {
 }
 
 /** Step 1: the story's text for prompt, as long as minutes. Returns the story and the call (for its cost). */
-export async function write(t: Tuning, prompt: string, minutes: number): Promise<{ story: Story; result: any }> {
+// ---- every sentence is read aloud, and the captions are the same words (lined up with the voice word by word), so
+// the sentences themselves must be speakable: no code, paths or symbols a narrator can't say
+
+/** A sentence with Markdown and symbols turned into words: backticks and emphasis gone, a link's text kept, arrows said. */
+export function speakable(sentence: string): string {
+  return sentence
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // [text](url): the text
+    .replace(/`+/g, '') // backticks
+    .replace(/\*\*|__/g, '').replace(/(^|\s)[*_](\S[^*_]*\S)[*_](?=\s|[.,;:!?]|$)/g, '$1$2') // **bold**, *em*
+    .replace(/\s*(?:→|->|=>|⟶)\s*/g, ' to ').replace(/\s*(?:←|<-)\s*/g, ' from ').replace(/\s*›\s*/g, ', ')
+    .replace(/\s+&\s+/g, ' and ').replace(/(\d)\s*%/g, '$1 percent')
+    .replace(/[#~^|\\{}<>]/g, ' ')
+    .replace(/\s+([.,;:!?])/g, '$1').replace(/\s{2,}/g, ' ').trim()
+}
+
+/** Whether a sentence still has something a narrator can't read: a path, a flag, a file name, a URL, snake_case, code. */
+export function looksLikeCode(sentence: string): boolean {
+  return /https?:\/\/|www\./.test(sentence) || // a URL
+    /(^|\s)--?[a-z][\w-]*/i.test(sentence) || // a flag
+    /\b[\w.-]+\/[\w./-]+/.test(sentence) || // a path (a/b, ext/llm/README.md)
+    /\b\w+\.(go|ts|js|md|json|yaml|yml|toml|sql|ets|html|css)\b/.test(sentence) || // a file name
+    /\b[a-z]+_[a-z_]+\b/.test(sentence) || // snake_case
+    /\b\w+\(\)|\s==?\s|\w=\w/.test(sentence) || // a call, an assignment
+    /\b[a-z]+[A-Z]\w*\b/.test(sentence) // camelCase
+}
+
+const SPEAKABLE_SCHEMA = { type: 'object', properties: { sentences: { type: 'array', items: { type: 'string' } } }, required: ['sentences'] }
+
+/** Speakable sentences: cleaned, then any that still look like code rewritten in plain words (one call for all of them). */
+async function speakableSentences(t: Tuning, sentences: string[]): Promise<{ sentences: string[]; result?: any }> {
+  const clean = sentences.map(speakable)
+  // rewritten: what still looks like code, and what the writer marked as code or wrote with arrows (a command or a
+  // menu path reads badly even with the marks gone: "Settings → LLM")
+  const marked = (s: string) => /`|→|->|=>|⟶|›/.test(s)
+  const bad = clean.map((s, i) => (looksLikeCode(s) || marked(sentences[i]) ? i : -1)).filter((i) => i >= 0)
+  if (!bad.length) return { sentences: clean }
+  const result = await ask(t.models.text, {
+    system: 'You rewrite sentences of a story so a narrator can read them aloud. Replace file paths, commands, flags, code, ' +
+      'config keys, URLs and symbols with plain words that say what they are ("a setting in the key-value store", "the ' +
+      'command to switch models"). Keep the meaning, the tone and the language; keep each to one sentence; never add facts.',
+    prompt: bad.map((i, n) => `${n + 1}. ${clean[i]}`).join('\n') + `\n\nAnswer with the ${bad.length} rewritten sentences, in order.`,
+    schema: SPEAKABLE_SCHEMA, temperature: 0.3,
+  })
+  const fixed: string[] = ((result.data && result.data.sentences) || []).map((x: any) => speakable(String(x)))
+  bad.forEach((i, n) => { if (fixed[n]) clean[i] = fixed[n] })
+  return { sentences: clean, result }
+}
+
+export async function write(t: Tuning, prompt: string, minutes: number): Promise<{ story: Story; result: any; fixes?: any }> {
   // grounded in the knowledge buckets: their best passages for the topic go into the prompt after the request
   const enrich = t.knowledge.buckets.length ? { enrich: { buckets: t.knowledge.buckets, query: prompt, limit: 8 } } : {}
   const result = await ask(t.models.text, { system: writePrompt(t, minutes), prompt: `Tonight's story: ${prompt}`, schema: WRITE_SCHEMA,
@@ -371,7 +419,9 @@ export async function write(t: Tuning, prompt: string, minutes: number): Promise
     sentences: (written.sentences || []).map((s: any) => String(s).replace(/\s+/g, ' ').trim()).filter(Boolean),
   }
   if (story.sentences.length < 5) throw new Error(`the story came back too short: ${story.sentences.length} sentences, ${JSON.stringify(written).slice(0, 300)}`)
-  return { story, result }
+  const spoken = await speakableSentences(t, story.sentences)
+  story.sentences = spoken.sentences
+  return { story, result, fixes: spoken.result }
 }
 
 /** The music call for a story's music prompt, as tuned. */
@@ -416,6 +466,7 @@ export async function make(app: any, id: string): Promise<void> {
     save({ status: 'writing', progress: 'Writing the story' })
     const w = await write(t, topic, minutes)
     spent += record(app, 'write', w.result, id)
+    if (w.fixes) spent += record(app, 'write', w.fixes, id)
     const story = w.story
     save({ status: 'making', title: story.title, story, progress: 'Reading it aloud', cost: spent })
 

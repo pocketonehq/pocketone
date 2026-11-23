@@ -8,6 +8,8 @@ depth. It's read aloud by one narrator, with pictures that slowly pan and zoom, 
 a quiet song underneath. A slider picks a short or a long story, within the lengths the admin allows; the pictures follow from the length. Each story is saved, so it can
 be replayed and shared. It runs live at [sleep.pocketone.dev](https://sleep.pocketone.dev), set up as Bedtime Story.
 
+Every sentence is read aloud and shown as a caption lined up with the voice, so the sentences themselves must be speakable: the app strips Markdown and symbols, and has the writer rewrite any sentence that still looks like code (a path, a command, a flag) in plain words before it's narrated.
+
 It shows `$llm` doing a job longer than one request:
 
 1. **write** (`$llm.text.completeAsync` with a schema): a title, the topic, what recurs in the pictures (a place, a
