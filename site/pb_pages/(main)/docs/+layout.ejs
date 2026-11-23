@@ -4,20 +4,10 @@
     <div>
       <nav class="docs-nav-scroll" aria-label="Documentation navigation">
         <%
-  // the nav this page shows (_private/docs-nav.js); any failure falls back to the main nav
-  let nav = '', navs = [], tocHtml = '', navErr = ''
-  try {
-    const docsNav = ctx.resolve('docs-nav')(ctx)
-    nav = docsNav.name
-    navs = docsNav.names
-    tocHtml = include(docsNav.toc)
-  } catch (e) {
-    navErr = String(e)
-    nav = ''
-    tocHtml = include('toc')
-  }
+  // the nav this page shows (_private/docs-nav.js)
+  const docsNav = ctx.resolve('docs-nav')(ctx)
 %>
-        <div class="docs-toc-navigation" id="toc" data-nav="<%= nav %>" data-navs="<%= navs.join(',') %>"><%- tocHtml %></div><% if (navErr) { %><!-- docs nav: <%= navErr %> --><% } %>
+        <div class="docs-toc-navigation" id="toc" data-nav="<%= docsNav.name %>" data-navs="<%= docsNav.names.join(',') %>"><%- include(docsNav.toc) %></div>
       </nav>
     </div>
   </aside>

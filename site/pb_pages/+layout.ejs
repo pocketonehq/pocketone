@@ -52,7 +52,7 @@
         <span class="brand-name">PocketOne</span>
       </a>
       <%# The current release, written by site/sync from CHANGELOG.md (_private/version.js) %>
-      <% let version = ''; try { version = ctx.resolve('version') } catch (e) {} %>
+      <% const version = ctx.resolve('version') %>
       <% if (version) { %>
       <a class="version" href="https://github.com/pocketonehq/pocketone/releases/tag/<%=version%>" target="_blank" title="Release notes"><%=version%></a>
       <% } %>

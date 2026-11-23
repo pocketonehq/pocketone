@@ -16,11 +16,7 @@
 //   docsNav.toc   // the partial to include: 'toc' or 'toc-<name>'
 //   docsNav.names // every extension with docs of its own
 module.exports = (ctx) => {
-  let names = []
-  try {
-    const v = ctx.resolve('site-navs')
-    if (Array.isArray(v)) names = v
-  } catch (e) {}
+  const names = ctx.resolve('site-navs')
   const path = ctx.req.url.pathname
   const m = path.match(/^\/docs\/extensions\/([^/]+)/)
   let name = ''

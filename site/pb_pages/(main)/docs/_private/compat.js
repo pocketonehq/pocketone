@@ -55,7 +55,7 @@ module.exports = (ctx) => {
     ctx.store(KEY, { at: now, data })
     return { ...data, at: now }
   } catch (e) {
-    ctx.log?.warn?.('compatibility: ' + e)
+    ctx.log.warn('compatibility: ' + e)
     if (cached) return { ...cached.data, at: cached.at, stale: true }
     return { runs: [], latest: null, jobs: [], at: now, error: String(e) }
   }

@@ -23,7 +23,7 @@
     </button>
   </header>
   <nav aria-label="Documentation navigation">
-    <div class="docs-toc-navigation"><% let drawerToc; try { drawerToc = include(ctx.resolve('docs-nav')(ctx).toc) } catch (e) { drawerToc = include('toc') } %><%- drawerToc %></div>
+    <div class="docs-toc-navigation"><%- include(ctx.resolve('docs-nav')(ctx).toc) %></div>
   </nav>
 </aside>
 <% } %>
