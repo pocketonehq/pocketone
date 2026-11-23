@@ -65,7 +65,7 @@
     // embedModels is llm.embed/v1's list: [{ id: "provider/model", name, prices }]
     async function embedModels() {
         try {
-            return (await app.pb.send("/api/_c/llm.embed/v1/models", { requestKey: null })).models || [];
+            return (await app.pb.send("/api/_c/llm.embed/v1/models", { requestKey: null })).models;
         } catch (_) {
             return [];
         }
@@ -78,9 +78,7 @@
     // nav is the sidebar's bucket list, shared by every Search page
     const nav = store({ buckets: [] });
     async function refreshNav() {
-        try {
-            nav.buckets = (await send("/buckets")).buckets || [];
-        } catch (_) {}
+        nav.buckets = (await send("/buckets")).buckets;
     }
     const bucketDot = (b) => b.errors ? "var(--dangerColor)" : b.pending ? "var(--warningColor)" : b.documents ? "var(--successColor)" : "var(--txtDisabledColor)";
     const bucketHref = (n) => "#/search/b/" + encodeURIComponent(n);
@@ -176,7 +174,7 @@
         async function load() {
             try {
                 const [b, st] = await Promise.all([send("/buckets"), send("/status")]);
-                data.buckets = b.buckets || [];
+                data.buckets = b.buckets;
                 data.status = st;
             } catch (err) {
                 app.checkApiError(err);
@@ -289,7 +287,7 @@
     // textModels is llm.text/v1's list
     async function textModels() {
         try {
-            return (await app.pb.send("/api/_c/llm.text/v1/models", { requestKey: null })).models || [];
+            return (await app.pb.send("/api/_c/llm.text/v1/models", { requestKey: null })).models;
         } catch (_) {
             return [];
         }
@@ -580,7 +578,7 @@
                 const [b, l, st] = await Promise.all([send("/bucket?name=" + encodeURIComponent(name)),
                     send("/sources?bucket=" + encodeURIComponent(name)), send("/status")]);
                 data.bucket = b;
-                data.sources = l.sources || [];
+                data.sources = l.sources;
                 data.status = st;
                 for (const src of data.sources) if (data.open[src.name]) loadDocs(src.name);
                 refreshNav();
@@ -595,10 +593,8 @@
         }
 
         async function loadDocs(source) {
-            try {
-                const d = await send("/documents?bucket=" + encodeURIComponent(name) + "&source=" + encodeURIComponent(source));
-                data.docs = { ...data.docs, [source]: d.documents || [] };
-            } catch (_) {}
+            const d = await send("/documents?bucket=" + encodeURIComponent(name) + "&source=" + encodeURIComponent(source));
+            data.docs = { ...data.docs, [source]: d.documents };
         }
 
         function toggle(source) {
@@ -745,11 +741,7 @@
                 data.edit = { title: b.title, description: b.description, maxDocuments: b.maxDocuments, maxMB: Math.round(b.maxBytes / (1 << 20)) };
             }
             if (form === "follow") {
-                try {
-                    data.collections = (await app.pb.collections.getFullList({ requestKey: null })).filter((c) => !c.system && !c.name.startsWith("_"));
-                } catch (_) {
-                    data.collections = [];
-                }
+                data.collections = (await app.pb.collections.getFullList({ requestKey: null })).filter((c) => !c.system && !c.name.startsWith("_"));
             }
         }
 
@@ -992,7 +984,7 @@
                     () => {
                         const col = data.collections.find((c) => c.name === data.follow.collection);
                         if (!col) return null;
-                        const fields = (col.fields || []).filter((f) => !f.hidden && !f.primaryKey && searchable.has(f.type));
+                        const fields = col.fields.filter((f) => !f.hidden && !f.primaryKey && searchable.has(f.type));
                         const on = (n) => data.follow.fields.includes(n);
                         const flip = (n) => (data.follow.fields = on(n) ? data.follow.fields.filter((x) => x !== n)
                             : fields.map((f) => f.name).filter((x) => x === n || on(x))); // keep the collection's order

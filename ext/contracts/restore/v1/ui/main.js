@@ -50,7 +50,7 @@
         try {
             await app.pb.send(api + "/restore", { method: "POST", body: { at: new Date(at).toISOString() }, requestKey: null });
         } catch (err) {
-            app.checkApiError?.(err);
+            app.checkApiError(err);
             render(section);
             return;
         }

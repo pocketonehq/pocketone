@@ -4,7 +4,7 @@
 (() => {
     const SYSTEM = "System";
     app.store.settingsNavGroups[SYSTEM] = [
-        ...(app.store.settingsNavGroups[SYSTEM] || []),
+        ...app.store.settingsNavGroups[SYSTEM],
         { href: "#/settings/llm", icon: "ri-sparkling-2-line", label: "LLM" },
     ];
 
@@ -74,11 +74,11 @@
 
         function fill(v) {
             data.view = v;
-            data.providers = (v.providers || []).map((p) => ({
+            data.providers = v.providers.map((p) => ({
                 uid: nextUID++, name: p.name, type: p.type, endpoint: p.endpoint || "", account: p.account || "", key: "",
                 keySet: p.keySet, keyHint: p.keyHint || "",
             }));
-            data.limits = (v.limits || []).map((l) => ({ uid: nextUID++, ...l, kind: l.kind || "", model: l.model || "" }));
+            data.limits = v.limits.map((l) => ({ uid: nextUID++, ...l, kind: l.kind || "", model: l.model || "" }));
             data.saved = JSON.stringify(values());
         }
 
@@ -97,7 +97,7 @@
             data.message = null;
             try {
                 fill((await settingsAPI("/save", { extension: "llm", values: values() })).values);
-                app.toasts?.success ? app.toasts.success("Saved.") : (data.message = { kind: "success", text: "Saved." });
+                app.toasts.success("Saved.");
             } catch (err) {
                 data.message = { kind: "danger", text: errText(err) };
             }
