@@ -614,7 +614,12 @@ export function rememberAll(app: any): number {
 }
 
 const CANDIDATES_SCHEMA = { type: 'object', properties: { candidates: { type: 'array', items: { type: 'string' }, minItems: 3, maxItems: 6 } }, required: ['candidates'] }
-const PICK_SCHEMA = { type: 'object', properties: { topic: { type: 'string' }, why: { type: 'string' } }, required: ['topic', 'why'] }
+/** The pick: which of n candidates (its number) and why. */
+const pickSchema = (n: number) => ({
+  type: 'object',
+  properties: { choice: { type: 'integer', minimum: 1, maximum: n }, why: { type: 'string' } },
+  required: ['choice', 'why'],
+})
 
 export type Inspiration = {
   topic: string
@@ -675,15 +680,17 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
     near.push({ topic, nearest: titles })
   }
 
-  // 4. the candidate the told stories cover least
+  // 4. the candidate the told stories cover least. The model answers with the candidate's number (a schema holds it to
+  // 1..n), never the topic retyped, so the topic is exactly the candidate's words
   const pick = await $llm.text.completeAsync({ model: t.models.idea, reasoning: 'off', maxTokens: 1000, temperature: 0.3,
-    system: 'You choose the next story topic. You get candidate topics, each with the stories already told that are closest to it. ' +
-      'Pick the candidate those stories cover least, so the next story is about something new. Keep its wording. ' +
-      '"why" says in one short sentence what makes it new.',
+    system: 'You choose the next story topic. You get numbered candidate topics, each with the stories already told that are ' +
+      'closest to it. Pick the candidate those stories cover least, so the next story is about something new. "choice" is ' +
+      'its number; "why" says in one short sentence what makes it new.',
     prompt: near.map((n, i) => `${i + 1}. ${n.topic}\n   closest told: ${n.nearest.length ? n.nearest.join('; ') : 'none'}`).join('\n'),
-    schema: PICK_SCHEMA })
+    schema: pickSchema(near.length) })
   record(app, 'inspire', pick)
-  const topic = unnumbered((pick.data && pick.data.topic) || candidates[0])
+  const choice = Math.round(Number(pick.data && pick.data.choice))
+  const topic = candidates[choice >= 1 && choice <= candidates.length ? choice - 1 : 0]
   return { topic, why: String((pick.data && pick.data.why) || '').trim(), material: passages.map((p: any) => p.document), candidates: near }
 }
 
