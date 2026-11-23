@@ -654,7 +654,9 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
     prompt: `Material to draw from (random passages):\n\n${material.join('\n\n')}\n\nPropose 5 different story topics, each grounded in this material, as short specific phrases.` + avoiding,
     schema: CANDIDATES_SCHEMA })
   record(app, 'inspire', c)
-  const candidates: string[] = ((c.data && c.data.candidates) || []).map((x: any) => String(x).trim()).filter(Boolean)
+  // the model may number what it lists ("3. Why..."): a topic never starts with its place in a list
+  const unnumbered = (x: any) => speakable(String(x).replace(/^\s*(?:\d+|[a-z])[.):]\s+/i, ''))
+  const candidates: string[] = ((c.data && c.data.candidates) || []).map(unnumbered).filter(Boolean)
   if (!candidates.length) throw new Error('no candidate topics came back')
 
   // 3. the told stories nearest each candidate, by meaning
@@ -681,7 +683,7 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
     prompt: near.map((n, i) => `${i + 1}. ${n.topic}\n   closest told: ${n.nearest.length ? n.nearest.join('; ') : 'none'}`).join('\n'),
     schema: PICK_SCHEMA })
   record(app, 'inspire', pick)
-  const topic = String((pick.data && pick.data.topic) || candidates[0]).trim()
+  const topic = unnumbered((pick.data && pick.data.topic) || candidates[0])
   return { topic, why: String((pick.data && pick.data.why) || '').trim(), material: passages.map((p: any) => p.document), candidates: near }
 }
 
