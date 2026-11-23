@@ -202,7 +202,10 @@
                         return t.div({ className: "m-t-sm" },
                             t.p({ className: "m-b-xs" }, t.strong(null, s.story.title), " · ", s.story.topic),
                             ...s.story.sentences.map((x) => t.p({ className: "m-b-xs" }, x)),
-                            t.p({ className: "txt-hint m-b-0" }, "Pictures: ", s.story.look));
+                            t.p({ className: "txt-hint m-b-0" }, "Pictures: ", s.story.look),
+                            s.story.say && s.story.say.length
+                                ? t.p({ className: "txt-hint m-b-0" }, "Said as: ", s.story.say.map((x) => `${x.term} → "${x.spoken}"`).join(", "))
+                                : null);
                     }
                     return null;
                 },
@@ -561,7 +564,7 @@
                         t.div({ className: "col-lg-12" }, field("Sample text", area("voice.sample", 3))),
                         sampleRow("voice", "Sample the voice"),
                     ),
-                    block("Writing the story", "Placeholders: {minutes}, {minWords}, {maxWords}, {anyTopic}. Keep the field names it mentions (title, language, topic, look, sentences): the answer's shape is fixed.",
+                    block("Writing the story", "Placeholders: {minutes}, {minWords}, {maxWords}, {anyTopic}. Keep the field names it mentions (title, language, topic, look, sentences): the answer's shape is fixed. A note asking for the words the narrator could say wrong (say) is added after it.",
                         t.div({ className: "col-lg-12" }, field("Instructions", area("prompts.write", 16))),
                         t.div({ className: "col-lg-12" }, field("Topic for the sample",
                             t.input({ type: "text", placeholder: "Empty: it picks", value: extra.storyTopic, onchange: (e) => (extra.storyTopic = e.target.value) }))),

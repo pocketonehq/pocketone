@@ -159,7 +159,7 @@ const writePrompt = (t: Tuning, minutes: number) => fill(t.prompts.write, {
   minWords: Math.round(minutes * WORDS_PER_MINUTE * 0.9),
   maxWords: Math.round(minutes * WORDS_PER_MINUTE * 1.1),
   anyTopic: ANY_TOPIC,
-})
+}) + SAY_NOTE
 
 const WRITE_SCHEMA = {
   type: 'object',
@@ -169,8 +169,79 @@ const WRITE_SCHEMA = {
     topic: { type: 'string' },
     look: { type: 'string' },
     sentences: { type: 'array', items: { type: 'string' } },
+    say: {
+      type: 'array',
+      items: { type: 'object', properties: { term: { type: 'string' }, spoken: { type: 'string' } }, required: ['term', 'spoken'] },
+    },
   },
-  required: ['title', 'language', 'topic', 'look', 'sentences'],
+  required: ['title', 'language', 'topic', 'look', 'sentences', 'say'],
+}
+
+// ---- a cloned voice takes no instructions (its delivery comes from the recording), so how a word is said has to be in
+// the text it reads: the writer lists the words a narrator could get wrong with a respelling, the voice and the aligner
+// read the respelled sentences, and the captions keep the written words
+
+/** Told to the writer whatever the profile's prompt says. */
+const SAY_NOTE = '\n\nIn "say", list each word in the story a narrator could say wrong: acronyms read letter by letter ' +
+  '(SES as "S E S"), names with their own pronunciation (SQLite as "S Q Lite", nginx as "engine X"), jargon. One word ' +
+  'each, exactly as written in the sentences, with how to spell it so it is read right. Leave out ordinary words; an ' +
+  'empty list is fine.'
+
+export type Say = { term: string; spoken: string }
+
+/** The writer's respellings worth using: one written word each, said differently from how it is written. */
+export function sayList(list: any): Say[] {
+  const out: Say[] = []
+  for (const x of Array.isArray(list) ? list : []) {
+    const term = String((x && x.term) || '').trim(), spoken = String((x && x.spoken) || '').replace(/\s+/g, ' ').trim()
+    if (!term || !spoken || /\s/.test(term) || term === spoken || out.some((o) => o.term === term)) continue
+    out.push({ term, spoken })
+  }
+  return out.slice(0, 40)
+}
+
+/** Words a narrator may say wrong, found by their shape: acronyms (SES, HTTPS) and names with capitals inside (SQLite). */
+export function oddWords(sentences: string[]): string[] {
+  const out = new Set<string>()
+  for (const s of sentences) for (const w of s.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*[\p{L}\p{N}]/gu) || []) {
+    const word = w.replace(/['’]s$/, '')
+    if (/^\p{Lu}{2,}\d*s?$/u.test(word) || /^\p{L}+\p{Lu}/u.test(word) && /\p{Ll}/u.test(word)) out.add(word)
+  }
+  return [...out].slice(0, 40)
+}
+
+const PRONOUNCE_SCHEMA = {
+  type: 'object',
+  properties: { words: { type: 'array', items: { type: 'object', properties: { term: { type: 'string' }, spoken: { type: 'string' } }, required: ['term', 'spoken'] } } },
+  required: ['words'],
+}
+
+/**
+ * The respellings for a story: the writer's list, plus how the odd-looking words it left out are said (one small call;
+ * a word read as written comes back unchanged and is dropped).
+ */
+async function pronounce(t: Tuning, sentences: string[], say: Say[]): Promise<{ say: Say[]; result?: any }> {
+  const ask_ = oddWords(sentences).filter((w) => !say.some((x) => x.term === w))
+  if (!ask_.length) return { say }
+  const result = await ask(t.models.text, {
+    system: 'You tell a narrator how to say words. For each word, answer how to spell it so a text-to-speech voice says ' +
+      'it the way people in the field do: acronyms said letter by letter as spaced capitals (SES: "S E S", HTTPS: "H T T P S"), ' +
+      'acronyms said as a word or with a known pronunciation spelled that way (JSON: "Jason", SQLite: "S Q Lite", nginx: ' +
+      '"engine X"), and a word read as written given back unchanged (PocketOne: "PocketOne").',
+    prompt: ask_.join('\n'), schema: PRONOUNCE_SCHEMA, temperature: 0,
+  })
+  return { say: sayList([...say, ...((result.data && result.data.words) || [])]), result }
+}
+
+const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** A sentence as the narrator reads it: each listed word (whole words only, as written) replaced by its respelling. */
+export function respell(sentence: string, say: Say[] = []): string {
+  let out = sentence
+  for (const { term, spoken } of [...say].sort((a, b) => b.term.length - a.term.length)) {
+    out = out.replace(new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRe(term)}(?![\\p{L}\\p{N}])`, 'gu'), `$1${spoken}`)
+  }
+  return out
 }
 
 const PLACE_SCHEMA = {
@@ -246,6 +317,7 @@ export type Story = {
   topic: string
   look: string
   sentences: string[]
+  say?: Say[] // words the narrator reads respelled (the captions keep the written word)
   // from here on, filled in as the story is made
   duration?: number // seconds of narration
   lines?: Line[] // when each sentence is said
@@ -425,7 +497,7 @@ export async function research(t: Tuning, topic: string): Promise<{ text: string
   return { text, found }
 }
 
-export async function write(t: Tuning, prompt: string, minutes: number): Promise<{ story: Story; result: any; fixes?: any; searched?: any }> {
+export async function write(t: Tuning, prompt: string, minutes: number): Promise<{ story: Story; result: any; fixes?: any; said?: any; searched?: any }> {
   // grounded in the knowledge buckets: what they hold about the topic follows the request, docs first
   const known = await research(t, prompt)
   const request = `Tonight's story: ${prompt}` + (known.text ? `\n\nWhat the knowledge base holds about it:\n\n${known.text}` : '')
@@ -437,11 +509,14 @@ export async function write(t: Tuning, prompt: string, minutes: number): Promise
     topic: String(written.topic || ''),
     look: String(written.look || ''),
     sentences: (written.sentences || []).map((s: any) => String(s).replace(/\s+/g, ' ').trim()).filter(Boolean),
+    say: sayList(written.say),
   }
   if (story.sentences.length < 5) throw new Error(`the story came back too short: ${story.sentences.length} sentences, ${JSON.stringify(written).slice(0, 300)}`)
   const spoken = await speakableSentences(t, story.sentences)
   story.sentences = spoken.sentences
-  return { story, result, fixes: spoken.result, searched: known.found }
+  const said = await pronounce(t, story.sentences, story.say || [])
+  story.say = said.say.filter((x) => story.sentences.some((s) => respell(s, [x]) !== s))
+  return { story, result, fixes: spoken.result, said: said.result, searched: known.found }
 }
 
 /** The music call for a story's music prompt, as tuned. */
@@ -487,23 +562,26 @@ export async function make(app: any, id: string): Promise<void> {
     const w = await write(t, topic, minutes)
     spent += record(app, 'write', w.result, id)
     if (w.fixes) spent += record(app, 'write', w.fixes, id)
+    if (w.said) spent += record(app, 'write', w.said, id)
     if (w.searched) spent += record(app, 'search', w.searched, id)
     const story = w.story
     save({ status: 'making', title: story.title, story, progress: 'Reading it aloud', cost: spent })
 
     // 2. one voiceover of the whole story, in the tuned voice (or the other model, told the language, for a language
     // the main one doesn't speak)
-    const call = speechCall(t, story.sentences.join(' '), story.language, app)
+    // read respelled; the captions (story.sentences, and each line's text below) keep the written words
+    const spoken = story.sentences.map((x) => respell(x, story.say))
+    const call = speechCall(t, spoken.join(' '), story.language, app)
     const voice = await $llm.speech.speakAsync(call)
     spent += record(app, 'speech', voice, id)
     save({ progress: 'Listening for when each word is said', cost: spent })
 
     // 3. align: one line per sentence
-    const a = await $llm.align.alignAsync({ model: t.models.align, audio: voice.file, text: story.sentences.join('\n'), mode: 'speech',
+    const a = await $llm.align.alignAsync({ model: t.models.align, audio: voice.file, text: spoken.join('\n'), mode: 'speech',
       language: story.language })
     spent += record(app, 'align', a, id)
     story.duration = a.duration
-    story.lines = a.lines.map((l: any) => ({ index: l.index, text: l.text, start: l.start, end: l.end }))
+    story.lines = a.lines.map((l: any) => ({ index: l.index, text: story.sentences[l.index] || l.text, start: l.start, end: l.end }))
     story.words = a.words.map((x: any) => ({ line: x.line, text: x.text, start: x.start, end: x.end }))
     if (!story.lines.length) throw new Error('the voiceover could not be lined up with the story')
     save({ story, progress: 'Choosing the pictures', cost: spent })

@@ -21,6 +21,7 @@ const data = status === 'done' ? {
   duration: story.duration,
   lines: story.lines,
   words: story.words,
+  say: story.say || [],
   pictures: story.pictures.map((p: any) => ({ start: p.start, image: files(p.image) })),
   mix: ctx.resolve('story').tuning(ctx.app).mix,
 } : null
@@ -298,6 +299,8 @@ const madeLine = [
     const clock = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0')
     let playing = false, dragging = false, lineShown = null, spans = []
     const bare = (x) => x.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
+    const spokenLength = {}
+    for (const s of S.say || []) spokenLength[bare(s.term)] = bare(s.spoken).length
 
     // the sentence being read, as written (the aligner's words have no punctuation), each piece timed by its word
     const showLine = (line) => {
@@ -307,7 +310,8 @@ const madeLine = [
       const words = S.words.filter((w) => w.line === line.index)
       let j = 0, last = { start: line.start, end: line.start }
       for (const piece of line.text.split(/\s+/).filter(Boolean)) {
-        const need = bare(piece).length
+        // a respelled word ("SES", said "S E S") covers as many spoken letters as its respelling
+        const need = spokenLength[bare(piece)] || bare(piece).length
         if (need && j < words.length) {
           // one written word may be several spoken ones ("good-night"): take words until their letters cover it
           const first = words[j]

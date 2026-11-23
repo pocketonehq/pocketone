@@ -49,7 +49,8 @@ export async function post(ctx: any) {
     if (what === 'story') {
       const w = await story.write(t, prompt || story.ANY_TOPIC, 1)
       if (w.fixes) story.record(ctx.app, 'sample-story', w.fixes)
-      return done(w.result, { story: { title: w.story.title, topic: w.story.topic, look: w.story.look, sentences: w.story.sentences } })
+      if (w.said) story.record(ctx.app, 'sample-story', w.said)
+      return done(w.result, { story: { title: w.story.title, topic: w.story.topic, look: w.story.look, sentences: w.story.sentences, say: w.story.say } })
     }
     if (what === 'idea') {
       const ins = await story.inspiration(ctx.app, [], t)
