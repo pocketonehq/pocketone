@@ -1360,3 +1360,70 @@ func TestRealtimeSuperuserFilterOnHiddenField(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 	}
 }
+
+func TestRealtimeBroadcastKeepsOrderPerClient(t *testing.T) {
+	t.Parallel()
+
+	testApp, _ := tests.NewTestApp()
+	defer testApp.Cleanup()
+
+	if _, err := apis.NewRouter(testApp); err != nil {
+		t.Fatal(err)
+	}
+
+	testCollection := core.NewBaseCollection("test_realtime_order")
+	testCollection.ListRule = types.Pointer("")
+	testCollection.Fields.Add(&core.NumberField{Name: "n"})
+	if err := testApp.Save(testCollection); err != nil {
+		t.Fatal(err)
+	}
+
+	client := subscriptions.NewDefaultClient()
+	client.Subscribe(testCollection.Name + "/*")
+	testApp.SubscriptionsBroker().Register(client)
+
+	const total = 300
+
+	// a slow reader: messages pile up while the changes are saved one after another
+	got := make(chan []int, 1)
+	go func() {
+		var ns []int
+		for len(ns) < total+1 {
+			select {
+			case msg := <-client.Channel():
+				var data struct {
+					Record struct {
+						N int `json:"n"`
+					} `json:"record"`
+				}
+				if err := json.Unmarshal(msg.Data, &data); err != nil {
+					t.Error(err)
+				}
+				ns = append(ns, data.Record.N)
+				time.Sleep(50 * time.Microsecond)
+			case <-time.After(5 * time.Second):
+				got <- ns
+				return
+			}
+		}
+		got <- ns
+	}()
+
+	record := core.NewRecord(testCollection)
+	for i := 0; i <= total; i++ {
+		record.Set("n", i)
+		if err := testApp.Save(record); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ns := <-got
+	if len(ns) != total+1 {
+		t.Fatalf("got %d of %d messages", len(ns), total+1)
+	}
+	for i, n := range ns {
+		if n != i {
+			t.Fatalf("message %d carries n=%d, want the changes in the order they were saved: %v", i, n, ns[max(0, i-5):min(len(ns), i+5)])
+		}
+	}
+}

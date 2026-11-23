@@ -38,6 +38,10 @@ Sections named after a PocketOne release are from before extensions had versions
 
 - An `async` page or route keeps the app free while it waits: other requests are served meanwhile, it may wait up to the app's await time (15 minutes by default) instead of 30 seconds, and it stops when its client goes away. So a `ctx.res.sse()` stream can stay open, fed by a timer or an `.async` call ([Server-sent events](docs/ctx/res.md#server-sent-events)).
 
+### Fixed
+
+- `ctx.realtime.send()` messages reach each subscriber in the order the page sent them.
+
 ## 0.1.2 (2026-11-20)
 
 ### Fixed

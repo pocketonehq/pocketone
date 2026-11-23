@@ -43,6 +43,11 @@ every extension that got a new version, with a link to its changes. Upstream Poc
 
 ## Unreleased
 
+### Fixed
+
+- Realtime messages reach each subscriber in the order they were sent: two quick changes to the same record could arrive swapped, so a client could end on the stale one.
+- A realtime client that disconnects no longer races the messages still being sent to it.
+
 ## v0.0.1-alpha.13 (2026-11-22)
 
 ### Highlights

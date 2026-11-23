@@ -12,6 +12,18 @@ import subscriptions "ganigeorgiev.com/pocketbase/pocketbase/tools/subscriptions
 
 Source: [`tools/subscriptions`](https://github.com/pocketonehq/pocketone/tree/main/tools/subscriptions).
 
+## Functions
+
+### SendOrdered
+
+```go
+func SendOrdered(client Client, m Message)
+```
+
+SendOrdered queues m for the client and returns without waiting for the client to read it.
+
+The queued messages of a client are delivered with client.Send one at a time, in the order they were queued, by a single goroutine that exits once the queue is empty. Use it instead of \`go client.Send(m)\`, which delivers concurrent sends in any order.
+
 ## Types
 
 ### Broker
@@ -178,6 +190,8 @@ func (c *DefaultClient) Discard()
 
 Discard implements the [Client.Discard](#client) interface method.
 
+Pending sends return without delivering their message and the channel is closed once they have.
+
 ### DefaultClient.Get
 
 ```go
@@ -217,6 +231,8 @@ func (c *DefaultClient) Send(m Message)
 ```
 
 Send sends the specified message to the client's channel (if not discarded).
+
+It waits until the message is read or the client is discarded.
 
 ### DefaultClient.Set
 

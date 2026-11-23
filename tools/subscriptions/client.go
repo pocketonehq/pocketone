@@ -83,6 +83,8 @@ type DefaultClient struct {
 	store         map[string]any
 	subscriptions map[string]SubscriptionOptions
 	channel       chan Message
+	done          chan struct{}  // closed by Discard, ends pending sends
+	sending       sync.WaitGroup // sends in progress, waited for before the channel is closed
 	id            string
 	mu            sync.RWMutex
 	isDiscarded   bool
@@ -94,6 +96,7 @@ func NewDefaultClient() *DefaultClient {
 		id:            security.RandomString(40),
 		store:         map[string]any{},
 		channel:       make(chan Message),
+		done:          make(chan struct{}),
 		subscriptions: map[string]SubscriptionOptions{},
 	}
 }
@@ -249,17 +252,22 @@ func (c *DefaultClient) Unset(key string) {
 }
 
 // Discard implements the [Client.Discard] interface method.
+//
+// Pending sends return without delivering their message
+// and the channel is closed once they have.
 func (c *DefaultClient) Discard() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if c.isDiscarded {
+		c.mu.Unlock()
 		return
 	}
+	c.isDiscarded = true
+	close(c.done)
+	c.mu.Unlock()
+
+	c.sending.Wait()
 
 	close(c.channel)
-
-	c.isDiscarded = true
 }
 
 // IsDiscarded implements the [Client.IsDiscarded] interface method.
@@ -271,15 +279,21 @@ func (c *DefaultClient) IsDiscarded() bool {
 }
 
 // Send sends the specified message to the client's channel (if not discarded).
+//
+// It waits until the message is read or the client is discarded.
 func (c *DefaultClient) Send(m Message) {
-	if c.IsDiscarded() {
+	c.mu.RLock()
+	if c.isDiscarded {
+		c.mu.RUnlock()
 		return
 	}
+	c.sending.Add(1)
+	c.mu.RUnlock()
 
-	// "gracefully" handle panics since channel close is not blocking and could cause races
-	defer func() {
-		recover()
-	}()
+	defer c.sending.Done()
 
-	c.channel <- m
+	select {
+	case c.channel <- m:
+	case <-c.done:
+	}
 }

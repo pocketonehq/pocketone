@@ -758,9 +758,7 @@ func realtimeBroadcastRecord(app core.App, action string, record *core.Record, d
 							}
 							client.Set(dryCacheKey, messages)
 						} else {
-							routine.FireAndForget(func() {
-								client.Send(msg)
-							})
+							subscriptions.SendOrdered(client, msg)
 						}
 					}
 				}
@@ -792,13 +790,9 @@ func realtimeBroadcastDryCacheKey(app core.App, key string) error {
 
 				client.Unset(key)
 
-				client := client
-
-				routine.FireAndForget(func() {
-					for _, msg := range messages {
-						client.Send(msg)
-					}
-				})
+				for _, msg := range messages {
+					subscriptions.SendOrdered(client, msg)
+				}
 			}
 
 			return nil
