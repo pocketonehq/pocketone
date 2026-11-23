@@ -2,7 +2,6 @@
 // POST /admin/tuning {values}: saves it (known keys only, on top of the defaults); {reset: true} puts the defaults back.
 // Superusers only.
 export async function get(ctx: any) {
-  ctx.resolve('admin').superuserOnly(ctx)
   const story = ctx.resolve('story')
   const values = story.tuning(ctx.app)
   let voices: any[] = []
@@ -29,7 +28,6 @@ export async function get(ctx: any) {
 }
 
 export async function post(ctx: any) {
-  ctx.resolve('admin').superuserOnly(ctx)
   const story = ctx.resolve('story')
   const body = ctx.req.body() || {}
   const values = story.saveTuning(ctx.app, body.reset ? null : body.values || {})

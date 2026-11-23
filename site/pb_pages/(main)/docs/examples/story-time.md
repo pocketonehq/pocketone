@@ -1,7 +1,7 @@
 ---
 title: Story Time
 description: A story told on any topic, read aloud with pictures and music - the six steps, the player, the guards, and the settings screen where its title, lengths, voice and prompts are set.
-discussion: pocketone.dev/docs/examples/bedtime-story
+discussion: pocketone.dev/docs/examples/story-time
 ---
 
 # Story Time
@@ -30,6 +30,7 @@ pb_pages/
   view.ts              POST /view: counts a listen
   story.ts             POST /story: saves the record, starts making the story
   story/[id].ets       progress while it's made, then the player
+  admin/+middleware.ts lets only superusers through to anything under /admin
   admin/tuning.ts      GET/POST /admin/tuning: the settings (superusers only)
   admin/sample.ts      POST /admin/sample: tries a piece with unsaved settings (superusers only)
   admin/export.ts      GET /admin/export, POST /admin/import: the settings and recordings as JSON (superusers only)
@@ -121,15 +122,15 @@ models and voice that made it. The story's splash shows them with its date and c
   ```js
   // pb_hooks/admin_plugins.pb.js
   $app.onServe().bindFunc((e) => {
-    e.uiExtensions.push({ name: "bedtime", fs: $os.dirFS(`${__hooks}/../pb_admin_ext/bedtime`) })
+    e.uiExtensions.push({ name: "storytime", fs: $os.dirFS(`${__hooks}/../pb_admin_ext/storytime`) })
     e.next()
   })
   ```
 
-  PocketBase serves the folder at `/_/extensions/bedtime/` and loads its `main.js` into the dashboard. `main.js` adds
+  PocketBase serves the folder at `/_/extensions/storytime/` and loads its `main.js` into the dashboard. `main.js` adds
   the Settings entry (`app.store.settingsNavGroups`) and the page (`app.routes.superuserOnly("#/settings/storytime", ...)`),
-  built from the dashboard's own pieces, and calls `/admin/tuning` and `/admin/sample` with `app.pb.send`, which carries
-  the signed-in superuser's token. Those two endpoints answer only superusers.
+  built from the dashboard's own pieces, and calls the `/admin/...` endpoints with `app.pb.send`, which carries
+  the signed-in superuser's token. `pb_pages/admin/+middleware.ts` lets only superusers through to any of them.
 - **Audio samples are saved, then played.** The dashboard plays media only from its own address (its
   Content-Security-Policy blocks `data:` audio), so each audio sample is saved in a `samples` collection, viewable by
   its random id only and trimmed to the last 20, and played from `/api/files/...`. Picture samples come back inline.

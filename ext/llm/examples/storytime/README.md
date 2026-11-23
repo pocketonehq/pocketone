@@ -45,6 +45,7 @@ pb_admin_ext/storytime/main.js          Settings → Story Time in the dashboard
 pb_pages/
   index.ets            ask for a story (prompt, minutes, pictures, Inspire me); stories told, most listened to first
   inspire.ts           POST /inspire {avoid?}: a topic no story has covered yet (the model sees every title)
+  admin/+middleware.ts lets only superusers through to anything under /admin
   admin/tuning.ts      GET/POST /admin/tuning: the settings, for the dashboard screen (superusers only)
   admin/sample.ts      POST /admin/sample: tries a voice, music, a picture, a story's text or an idea with unsaved settings
   admin/export.ts      GET /admin/export: the saved settings and every recording as one JSON file, the format of _private/defaults.json (superusers only)

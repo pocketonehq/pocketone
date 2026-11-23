@@ -3,7 +3,6 @@
 // Then the file's settings are laid over the current ones and saved: a partial file (a profile with only the front
 // page and prompts, say) changes just what it has. Superusers only.
 export function post(ctx: any) {
-  ctx.resolve('admin').superuserOnly(ctx)
   const story = ctx.resolve('story')
   const body = ctx.req.body() || {}
   if (body.app !== 'storytime' || body.version !== 1) throw ctx.httpError(400, 'not a Story Time export (app "storytime", version 1)')

@@ -17,7 +17,6 @@ async function audioURL(app: any, what: string, f: any): Promise<string> {
 }
 
 export async function post(ctx: any) {
-  ctx.resolve('admin').superuserOnly(ctx)
   const story = ctx.resolve('story')
   const { what, values, prompt } = ctx.req.body() || {}
   const t = story.tuning(ctx.app, values || {})

@@ -34,7 +34,6 @@ function compare(passage: string[], heard: string[]) {
 }
 
 export async function post(ctx: any) {
-  ctx.resolve('admin').superuserOnly(ctx)
   const story = ctx.resolve('story')
   const { clip } = ctx.req.body() || {}
   let r: any

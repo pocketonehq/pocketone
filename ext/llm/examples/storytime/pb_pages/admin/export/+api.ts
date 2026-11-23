@@ -1,7 +1,6 @@
 // GET /admin/export: the saved settings and every recording (its audio included, base64), as one JSON file to import on
 // another copy of the app (dev to prod, or back). The same format as _private/defaults.json. Superusers only.
 export function get(ctx: any) {
-  ctx.resolve('admin').superuserOnly(ctx)
   const story = ctx.resolve('story')
   const voices = ctx.app.findRecordsByFilter('voices', '', 'created', 0, 0).map((r: any) => ({
     id: r.id,
