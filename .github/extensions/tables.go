@@ -20,7 +20,10 @@ var quotedTable = regexp.MustCompile("[\"`](_[a-z0-9_]+)[\"`]")
 // sits under llm-chat's prefix. When one extension's prefix starts with another's (llm's `_llm_` and
 // llm-chat's `_llm_chat_`), the shorter one may not name a table under the longer one's prefix.
 func checkTablePrefixes() []string {
-	entries, _ := os.ReadDir("ext")
+	entries, err := os.ReadDir("ext")
+	if err != nil {
+		return []string{err.Error()}
+	}
 	var names []string
 	for _, e := range entries {
 		if _, err := os.Stat("ext/" + e.Name() + "/go.mod"); e.IsDir() && err == nil {

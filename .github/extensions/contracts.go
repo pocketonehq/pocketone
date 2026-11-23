@@ -434,7 +434,11 @@ func checkContracts() []string {
 			if strings.HasSuffix(gf, "_test.go") {
 				continue
 			}
-			code, _ := os.ReadFile(gf)
+			code, err := os.ReadFile(gf)
+			if err != nil {
+				problems = append(problems, err.Error())
+				continue
+			}
 			for _, m := range contractIDInCode.FindAllStringSubmatch(string(code), -1) {
 				if m[1] != c.ID {
 					problems = append(problems, fmt.Sprintf("%s: declares contract %q but lives in the folder for %q", gf, m[1], c.ID))
