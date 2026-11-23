@@ -513,12 +513,15 @@ func (m *brokenModifier) Modify(val any) (any, error) {
 	return nil, errors.New("test_error")
 }
 
-func TestEventJSONIgnoredError(t *testing.T) {
-	t.Parallel()
-
+// registered once, before any test runs: picker.Modifiers is a plain map that parallel tests read
+func init() {
 	picker.Modifiers["broken_ignore"] = func(args ...string) (picker.Modifier, error) {
 		return &brokenModifier{}, nil
 	}
+}
+
+func TestEventJSONIgnoredError(t *testing.T) {
+	t.Parallel()
 
 	req, err := http.NewRequest(http.MethodGet, "/?fields=a:broken_ignore", nil)
 	if err != nil {
