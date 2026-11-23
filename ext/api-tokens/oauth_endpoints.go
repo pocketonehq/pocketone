@@ -757,20 +757,35 @@ func (s *OAuthServer) revoke(e *core.RequestEvent) error {
 		return oauthError(e, http.StatusUnauthorized, "invalid_client", err.Error())
 	}
 	tok := e.Request.PostFormValue("token")
+	// an unknown or someone else's token answers 200 (RFC 7009 2.2); a revoke that fails answers server_error, so the
+	// client never thinks a token is dead while it still works
+	failed := func(err error) error {
+		s.app.Logger().Error("api-tokens: oauth: revoke failed", "client", c.Id, "error", err)
+		return oauthError(e, http.StatusInternalServerError, "server_error", "the token couldn't be revoked; try again")
+	}
 	switch {
 	case s.tokens().prefixOf(tok) != "":
 		if info, err := s.tokens().Verify(tok); err == nil && info.Token.GetString("client_id") == c.Id {
-			_ = s.tokens().Revoke(info.Token.Id)
+			if err := s.tokens().Revoke(info.Token.Id); err != nil {
+				return failed(err)
+			}
 			if r, err := s.app.FindFirstRecordByData(CodesCollectionId, "token_id", info.Token.Id); err == nil {
-				_ = s.app.Delete(r)
+				if err := s.app.Delete(r); err != nil {
+					return failed(err)
+				}
 			}
 		}
 	default:
 		if r, err := s.findCode(KindRefresh, tok); err == nil && r.GetString("client_id") == c.Id {
 			if id := r.GetString("token_id"); id != "" {
-				_ = s.tokens().Revoke(id)
+				// the access token may be gone already (revoked on its own, or expired and cleaned up)
+				if err := s.tokens().Revoke(id); err != nil && !errors.Is(err, sql.ErrNoRows) {
+					return failed(err)
+				}
 			}
-			_ = s.app.Delete(r)
+			if err := s.app.Delete(r); err != nil {
+				return failed(err)
+			}
 		}
 	}
 	return e.NoContent(http.StatusOK)

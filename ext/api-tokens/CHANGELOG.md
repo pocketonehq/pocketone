@@ -16,6 +16,11 @@ Sections named after a PocketOne release are from before extensions had versions
 - `Collections()` and `GET /api/_c/api-tokens/v1/scopes` report a failure to read the auth collections instead of
   answering with an empty list.
 
+### Fixed
+
+- The OAuth revoke endpoint answers `server_error` (and logs) when deleting the token or its refresh code fails,
+  instead of 200 with the token still working.
+
 - The OAuth server's signing key is kept in the app's key-value store (kv/v1) under the private name
   `_api-tokens/oauth-server`; the old `_params` row `oauth_server` moves there by itself on first use, so signed-in
   clients stay signed in.
