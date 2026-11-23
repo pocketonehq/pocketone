@@ -70,6 +70,13 @@
         const text = (path, attrs = {}) => t.input({ type: "text", value: get(path) ?? "", onchange: (e) => put(path, e.target.value), ...attrs });
         const num = (path, attrs = {}) => t.input({ type: "number", value: get(path) ?? "",
             onchange: (e) => put(path, e.target.value === "" ? null : Number(e.target.value)), ...attrs });
+        const slider = (path, min, max, step, show) => {
+            const label = t.span({ className: "txt-hint", style: "min-width: 7em; text-align: right;" }, show(get(path)));
+            return t.div({ className: "flex", style: "align-items: center; gap: 10px; padding: 6px 0;" },
+                t.input({ type: "range", min, max, step, value: get(path), style: "flex: 1;",
+                    oninput: (e) => { put(path, Number(e.target.value)); label.textContent = show(Number(e.target.value)); } }),
+                label);
+        };
         const area = (path, rows = 4) => t.textarea({ rows, value: get(path) ?? "", onchange: (e) => put(path, e.target.value),
             style: "font-family: var(--monospaceFontFamily, monospace); font-size: 12px; line-height: 1.5;" });
 
@@ -468,9 +475,13 @@
                         t.div({ className: "col-md-6" }, field("Pictures per minute", num("length.picturesPerMinute", { min: "0.1", max: "10", step: "0.5" }), "A 2-minute story at 1.5 gets 3 pictures.")),
                         t.div({ className: "col-md-6" }, field("Most pictures", num("length.maxPictures", { min: "1", max: "20", step: "1" }), "However long the story.")),
                     ),
-                    block("Mix", "How every story sounds when it plays. The player measures each story's voice and music once and sets them to these, so old and new stories, generated and cloned voices, all sit at the same level.",
-                        t.div({ className: "col-md-6" }, field("Voice level, dBFS", num("mix.voiceDb", { min: "-40", max: "-6", step: "1" }), "Lower is quieter. -20 is a calm speaking level; -14 is as loud as the loudest videos online.")),
-                        t.div({ className: "col-md-6" }, field("Music under the voice, dB", num("mix.musicUnderDb", { min: "0", max: "40", step: "1" }), "How far the music sits below the voice. 18 is quiet underneath; 12 is easy to hear.")),
+                    block("Mix", "How every story sounds when it plays. The player measures each story's voice and music once and sets them to these, so old and new stories, generated and cloned voices, all sound the same. Sample a story after saving to hear it.",
+                        t.div({ className: "col-lg-12" }, field("Loudness: quieter to louder",
+                            slider("mix.voiceDb", "-36", "-12", "1", (v) => `voice ${v} dBFS`),
+                            "The voice's level. -24 is close to broadcast loudness; online videos are often around -14, much louder.")),
+                        t.div({ className: "col-lg-12" }, field("Music to voice",
+                            slider("mix.musicUnderDb", "0", "30", "1", (v) => (v === 0 ? "music as loud" : `music ${v} dB under`)),
+                            "Left brings the music up to the voice; right tucks it further under. 18 dB is quiet underneath.")),
                     ),
                     block("Narrator", "The voice that reads every story in a language the speech model speaks. \"design\" makes a voice from the instructions; the same seed makes the same voice each time.",
                         // a plain <select>: the dashboard's own dropdown didn't keep the choice here
