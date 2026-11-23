@@ -105,12 +105,12 @@ func sniffImage(b []byte, format string) string {
 
 // SpeechRequest is POST /audio/speech. Voice is usually a name; Extra holds provider fields.
 type SpeechRequest struct {
-	Model          string         `json:"model"`
-	Input          string         `json:"input"`
-	Voice          any            `json:"voice,omitempty"`
-	Instructions   string         `json:"instructions,omitempty"`
-	ResponseFormat string         `json:"response_format,omitempty"` // mp3, opus, flac, wav, pcm
-	Speed          float64        `json:"speed,omitempty"`
+	Model          string  `json:"model"`
+	Input          string  `json:"input"`
+	Voice          any     `json:"voice,omitempty"`
+	Instructions   string  `json:"instructions,omitempty"`
+	ResponseFormat string  `json:"response_format,omitempty"` // mp3, opus, flac, wav, pcm
+	Speed          float64 `json:"speed,omitempty"`
 	// InputReferences clone a voice (OpenRouter's shape, which Vultr takes too): one input_audio part with the clip
 	// and, optionally, a text part with what it says.
 	InputReferences []SpeechReference `json:"input_references,omitempty"`
