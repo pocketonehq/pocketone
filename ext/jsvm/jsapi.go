@@ -1,6 +1,7 @@
 package jsvm
 
 import (
+	"context"
 	"reflect"
 	"regexp"
 	"runtime"
@@ -207,11 +208,16 @@ type jsFunc struct {
 
 // Call runs the function on its VM (from any goroutine), awaiting a returned promise; the result is exported.
 func (f *jsFunc) Call(args ...any) (any, error) {
+	return f.CallContext(nil, args...)
+}
+
+// CallContext is Call for a caller serving ctx (see extkit/js.CallContext).
+func (f *jsFunc) CallContext(ctx context.Context, args ...any) (any, error) {
 	in := make([]reflect.Value, len(args))
 	for i, a := range args {
 		in[i] = reflect.ValueOf(a)
 	}
-	res, err := f.vm.CallRef(f.ref, in, reflect.TypeOf(func() any { return nil }))
+	res, err := f.vm.callRef(ctx, f.ref, in, reflect.TypeOf(func() any { return nil }))
 	if err != nil {
 		return nil, err
 	}

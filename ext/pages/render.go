@@ -142,7 +142,7 @@ type request struct {
 	httpErr  *httpError // a ctx.httpError() that failed the request
 }
 
-// render runs a page or API route in one call into the app's JS VM.
+// render runs a page or API route in the app's JS VM.
 func (p *Pages) render(e *core.RequestEvent, root *os.Root, route *Route, params map[string]string) error {
 	return p.renderStatus(e, root, route, params, 0)
 }
@@ -155,21 +155,34 @@ func (p *Pages) renderStatus(e *core.RequestEvent, root *os.Root, route *Route, 
 		e.Response.Header().Set("Content-Type", ct)
 	}
 
+	// The request is set up on the VM's loop, then the driver is called from this goroutine: while the page code
+	// awaits (an async Go call, a timer), the VM serves other requests, and when the client goes away the call is
+	// given up (the code after its next await never runs).
+	var r *request
+	var setupErr error
 	err := js.Run(p.app, func(rt js.Runtime) error {
-		r := &request{
+		r = &request{
 			p: p, e: e, root: root, route: route, params: params, rt: rt,
 			status: status, layouts: true, slots: map[string]string{}, meta: map[string]any{}, dev: dev,
 		}
-		if err := r.run(t); err != nil {
-			r.fail(err)
-		}
-		r.release()
+		setupErr = r.setup(t)
 		return nil
 	})
 	if errors.Is(err, js.ErrNoEngine) {
 		return e.String(http.StatusInternalServerError, "ext/pages: the jsvm extension must be registered on this app\n")
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	// release on the loop: the VM may be closing meanwhile, and a closed VM has freed them anyway
+	defer func() { _ = js.Run(p.app, func(js.Runtime) error { r.release(); return nil }) }()
+	if setupErr == nil {
+		_, setupErr = r.callJS(r.cache, "driver", js.NativeFunc(func(js.Call) (any, error) { return r.obj, nil }))
+	}
+	if setupErr != nil && e.Request.Context().Err() == nil { // a client that went away gets no answer
+		r.fail(setupErr)
+	}
+	return nil
 }
 
 // release drops the request's Go references to its JS objects. The rt object's methods are Go closures over r, and
@@ -269,22 +282,22 @@ func (r *request) context() context.Context {
 	return r.e.Request.Context()
 }
 
-// callJS calls the method name of the JS object o with Go args, and returns its result exported.
+// callJS calls the method name of the JS object o with Go args, and returns its result exported. Called off the
+// loop, for the request: a returned promise is awaited while the VM serves other work, up to the request's end.
 func (r *request) callJS(o js.Object, name string, args ...any) (any, error) {
 	get := js.NativeFunc(func(js.Call) (any, error) { return o, nil })
-	return r.st.call.Call(append([]any{get, name}, args...)...)
+	return js.CallContext(r.e.Request.Context(), r.st.call, append([]any{get, name}, args...)...)
 }
 
-// run calls the driver.
-func (r *request) run(t *Table) error {
+// setup makes the VM's cache and the rt object the driver receives (on the loop).
+func (r *request) setup(t *Table) error {
 	cache, st, err := r.vmCache()
 	if err != nil {
 		return err
 	}
 	r.cache, r.st = cache, st
 	r.obj = r.rtObject(t)
-	_, err = r.callJS(r.cache, "driver", js.NativeFunc(func(js.Call) (any, error) { return r.obj, nil }))
-	return err
+	return nil
 }
 
 // program returns the function src evaluates to on this VM, evaluating it once per VM (cached under key).
@@ -775,7 +788,12 @@ func (r *request) jsonErrors() bool {
 // renderErrorPage renders +error.ejs inside the root layout (the driver's rt.renderError). It returns false if that
 // fails too, or if the driver failed before it could render templates.
 func (r *request) renderErrorPage(t *Table, status int, message string) (string, bool) {
-	if r.obj == nil || r.obj.Get("renderError").Nullish() {
+	if r.obj == nil {
+		return "", false
+	}
+	var ready bool
+	_ = js.Run(r.p.app, func(js.Runtime) error { ready = !r.obj.Get("renderError").Nullish(); return nil })
+	if !ready {
 		return "", false
 	}
 	r.slots = map[string]string{}

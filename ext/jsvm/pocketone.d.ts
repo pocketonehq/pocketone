@@ -20,6 +20,36 @@ interface Function {
   async<A extends any[], R>(this: (...args: A) => R, ...args: A): Promise<Awaited<R>>;
 }
 
+/**
+ * Runs `callback(...args)` once after `ms` milliseconds (at least 1), as its own task. A timer set while a request is
+ * served is cleared once the request is answered or its client goes away; one set at the top of a file runs until
+ * cleared. Returns the id for `clearTimeout`.
+ *
+ * ```js
+ * const word = await new Promise((resolve) => setTimeout(resolve, 500, "later"))
+ * ```
+ *
+ * @group PocketOne
+ */
+declare function setTimeout<A extends any[]>(callback: (...args: A) => void, ms?: number, ...args: A): number;
+
+/**
+ * Runs `callback(...args)` every `ms` milliseconds (at least 1); the next run is timed from the end of the last one.
+ * Cleared like `setTimeout`. Returns the id for `clearInterval`.
+ *
+ * @group PocketOne
+ */
+declare function setInterval<A extends any[]>(callback: (...args: A) => void, ms?: number, ...args: A): number;
+
+/** Cancels a `setTimeout` (an unknown id does nothing). @group PocketOne */
+declare function clearTimeout(id: number | undefined | null): void;
+
+/** Cancels a `setInterval` (an unknown id does nothing). @group PocketOne */
+declare function clearInterval(id: number | undefined | null): void;
+
+/** Runs `callback` after the current task, before any timer. @group PocketOne */
+declare function queueMicrotask(callback: () => void): void;
+
 /** @group PocketOne */
 interface ImportMeta {
   /** The module's file URL, `file:///.../pb_hooks/main.pb.mts`. */

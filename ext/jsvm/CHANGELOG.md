@@ -7,6 +7,10 @@ Sections named after a PocketOne release are from before extensions had versions
 
 ## Unreleased
 
+### Added
+
+- Timers: `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval` and `queueMicrotask`, as in browsers and Node.js. Each callback runs as its own task with its own time limits; a thrown error is logged. A timer set while serving a request is cleared once the request is answered or its client goes away; one set at the top of a hook file runs until cleared. At most 1024 are pending at once (`VMConfig.MaxTimers`).
+
 ## 0.1.3 (2026-11-22)
 
 ### Changed

@@ -66,6 +66,8 @@ func (vm *VM) runHandler(h *jsRef, app core.App, args ...any) error {
 	o := &owner{}
 	if vm.onLoop() {
 		o = vm.cur // a hook fired by a sync Go call from JS belongs to the call that made it
+	} else if requestContext(args) != nil {
+		defer vm.endRequest(o)
 	}
 	derr := vm.Do(func() {
 		vm.cur = o

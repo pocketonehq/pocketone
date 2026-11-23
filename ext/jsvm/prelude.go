@@ -26,6 +26,10 @@ const preludeJS = `
 	Object.defineProperty(fn, "async", { value: function (...args) { return __goAsync(this, args) } })
 	hide("console", { log: __log, error: __log, warn: __log, info: __log, debug: __log, trace: __log })
 	hide("__protos", [obj, fn, arr])
+	hide("queueMicrotask", function queueMicrotask(cb) {
+		if (typeof cb !== "function") throw new TypeError("queueMicrotask: the callback must be a function")
+		Promise.resolve().then(cb).catch((e) => __log("queueMicrotask callback failed: " + ((e && e.stack) || e)))
+	})
 	// goja has no performance global; keep QuickJS's but out of the global's keys
 	if ("performance" in globalThis) Object.defineProperty(globalThis, "performance", { enumerable: false })
 	// Go slices count as arrays, as in goja
@@ -181,6 +185,7 @@ func (vm *VM) installPrelude() error {
 	vm.free_(arr)
 	vm.objProto = C.avm_dup(vm.ctx, objP) // kept for setCtor: each constructor's prototype inherits it
 	C.avm_set_protos(vm.a, objP, fnP)     // takes ownership
+	vm.installTimers()
 	return nil
 }
 

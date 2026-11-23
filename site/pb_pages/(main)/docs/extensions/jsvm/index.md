@@ -21,6 +21,8 @@ PocketOne's JS engine for `pb_hooks` and `pb_migrations`. It runs the same JS AP
   linked into the binary), with error positions in your `.ts` source.
 - **Async.** Handlers can be `async`. Every Go function has an `.async(...)` twin that runs off the VM and returns a
   promise, so one app serves other requests while it waits: `await $app.findRecordById.async("posts", id)`.
+- **Timers.** `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval` and `queueMicrotask`, as in browsers and
+  Node.js. A timer set while serving a request is cleared once the request is answered or its client goes away.
 - **Hard limits per app.** A memory cap (JS heap plus Go objects JS holds), a CPU and a wall-clock budget per task, and
   caps on queued tasks and async calls. A runaway script stops with an error; other apps in the process keep running.
 - **Real error positions.** Stack traces name `pb_hooks/<file>:<line>`.
@@ -52,10 +54,13 @@ The module is `pocketone.dev/ext/jsvm`.
 - `VM`: the limits. `MemoryLimit` (JS heap plus the Go objects JS holds, default 64 MiB), `TaskBudget` (JS time per
   stretch, default 5 s), `TaskWall` (wall time per stretch, sync Go calls included, default 30 s), `AwaitLimit` (a
   whole async handler, awaits included, default 15 min), `WaitTimeout` (a handler's synchronous part, queue wait
-  included, default 30 s), `QueueSize`, `MaxAsync`, `MaxPumpDepth`. A stretch is the JS between two `await`s, so
+  included, default 30 s), `QueueSize`, `MaxAsync`, `MaxTimers` (timers pending at once, default 1024), `MaxPumpDepth`. A stretch is the JS between two `await`s, so
   time spent awaiting an `.async` call counts only toward `AwaitLimit`. Past `AwaitLimit`, or when the HTTP request a
   handler serves ends (the client went away), the call fails and the handler stops at its next `await`: async calls it
-  started are dropped when they finish and new ones throw. A detached promise outlives its handler. The `pocketone`
+  started are dropped when they finish and new ones throw. A detached promise outlives its handler. A timer belongs to
+  the call that set it: each run is a task of its own (its own `TaskBudget` and `TaskWall`), it's cleared when that
+  call is given up, and for a request also when the request is answered. Timers set at the top of a file run until
+  cleared. The `pocketone`
   binary sets `memory`, `task_time`, `task_wall` and `await_time` in `pocketone.yaml`'s `app: js_limits:`
   ([QuickJS hooks](/docs/quickjs#6-memory-and-time-limits)).
   Array methods that walk every index (`join`, `indexOf`, `slice`, `forEach`, `concat`, `flat`, ...) and arrays passed

@@ -2070,6 +2070,81 @@ _Note that this method is available only in pb_migrations context._
 | `up` | <code>(txApp: <a href="/docs/reference/javascript/pocketbase#coreapp">CoreApp</a>) =&gt; void</code> |
 | `down` | <code>(txApp: <a href="/docs/reference/javascript/pocketbase#coreapp">CoreApp</a>) =&gt; void</code> (optional) |
 
+### setTimeout()
+
+```ts
+setTimeout(callback: (...args: A) => void, ms?: number, ...args: A): number
+```
+
+Runs `callback(...args)` once after `ms` milliseconds (at least 1), as its own task. A timer set while a request is
+served is cleared once the request is answered or its client goes away; one set at the top of a file runs until
+cleared. Returns the id for `clearTimeout`.
+
+```js
+const word = await new Promise((resolve) => setTimeout(resolve, 500, "later"))
+```
+
+| Parameter | Type |
+|---|---|
+| `callback` | <code>(...args: A) =&gt; void</code> |
+| `ms` | <code>number</code> (optional) |
+| `...args` | <code>A</code> (optional) |
+
+Returns <code>number</code>.
+
+### setInterval()
+
+```ts
+setInterval(callback: (...args: A) => void, ms?: number, ...args: A): number
+```
+
+Runs `callback(...args)` every `ms` milliseconds (at least 1); the next run is timed from the end of the last one.
+Cleared like `setTimeout`. Returns the id for `clearInterval`.
+
+| Parameter | Type |
+|---|---|
+| `callback` | <code>(...args: A) =&gt; void</code> |
+| `ms` | <code>number</code> (optional) |
+| `...args` | <code>A</code> (optional) |
+
+Returns <code>number</code>.
+
+### clearTimeout()
+
+```ts
+clearTimeout(id: number | undefined | null): void
+```
+
+Cancels a `setTimeout` (an unknown id does nothing). @group PocketOne
+
+| Parameter | Type |
+|---|---|
+| `id` | <code>number &#124; undefined &#124; null</code> |
+
+### clearInterval()
+
+```ts
+clearInterval(id: number | undefined | null): void
+```
+
+Cancels a `setInterval` (an unknown id does nothing). @group PocketOne
+
+| Parameter | Type |
+|---|---|
+| `id` | <code>number &#124; undefined &#124; null</code> |
+
+### queueMicrotask()
+
+```ts
+queueMicrotask(callback: () => void): void
+```
+
+Runs `callback` after the current task, before any timer. @group PocketOne
+
+| Parameter | Type |
+|---|---|
+| `callback` | <code>() =&gt; void</code> |
+
 ### require()
 
 ```ts

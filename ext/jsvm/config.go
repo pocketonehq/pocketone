@@ -70,6 +70,8 @@ type VMConfig struct {
 	MaxConcurrent int
 	// MaxSleep caps sleep() (default 10 s).
 	MaxSleep time.Duration
+	// MaxTimers caps the timers (setTimeout, setInterval) pending per VM (default 1024).
+	MaxTimers int
 	// MaxAsync caps async Go calls in flight per VM.
 	MaxAsync      int
 	PumpSyncCalls bool
@@ -101,6 +103,9 @@ func (c *VMConfig) defaults() {
 	}
 	if c.MaxSleep == 0 {
 		c.MaxSleep = 10 * time.Second
+	}
+	if c.MaxTimers == 0 {
+		c.MaxTimers = 1024
 	}
 	if c.MaxAsync == 0 {
 		c.MaxAsync = 256
