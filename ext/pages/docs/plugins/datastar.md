@@ -96,6 +96,12 @@ module.exports = {
 }
 ```
 
+## Live updates
+
+To patch the page whenever records change, open a stream with `data-init="@get('/todos/live')"` and turn each
+change from [`ctx.realtime.subscribe()`](realtime.md#with-datastar) into a patch. Only the visitor's own stream
+gets them, with the collection's rules applied for that visitor.
+
 ## Broadcasting
 
 With the `realtime` plugin on, `ctx.datastar.realtime.*` sends patches to every realtime subscriber instead of the current response:

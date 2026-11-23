@@ -7,6 +7,13 @@ Sections named after a PocketOne release are from before extensions had versions
 
 ## Unreleased
 
+### Added
+
+- `ctx.realtime.subscribe(topic, { filter, expand, fields }?)` in the `realtime` plugin: an `async` route listens to
+  record changes with `for await` and streams them over `ctx.res.sse()` or as Datastar patches, with no polling. It
+  listens as the visitor, so the collection's rules apply as on `/api/realtime`, and ends with the request
+  ([Realtime plugin](docs/plugins/realtime.md#listening-to-record-changes)).
+
 ### Changed
 
 - Routes go by file extension, like PHP: a `.ts` file on a route path runs. `about.ts` beside `about.ets` is that

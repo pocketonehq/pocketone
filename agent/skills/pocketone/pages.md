@@ -289,7 +289,10 @@ module.exports = {
   `authMethods`, and the email flows (`requestVerification`, `confirmVerification`, `requestPasswordReset`,
   `confirmPasswordReset`, `requestEmailChange`, `confirmEmailChange`). Accounts that need MFA are refused.
 - **`realtime`** (built in): `ctx.realtime.send(topic, data, { filter }?)`. `data` is JSON-encoded, so an HTML
-  string arrives quoted: `JSON.parse` it on the client.
+  string arrives quoted: `JSON.parse` it on the client. `for await (const { action, record } of
+  ctx.realtime.subscribe('posts/*', { filter, expand }))` in an `async` handler streams record changes (with
+  `ctx.res.sse()` or `ctx.datastar.patchElements`), with the collection's rules applied for the visitor; never poll
+  with `sleep`.
 - **Datastar is an add-on, not built in.** Copy `ext/pages/addons/datastar.js` into `pb_pages/_private/` (the
   `datastar` starter has it) and list `'datastar'`. It adds `ctx.datastar` (`scripts()`, `patchElements`,
   `patchSignals`, `signals()`, ...). Datastar 1.0 attributes use a colon: `data-on:click`.
@@ -405,7 +408,7 @@ The `ctx` object
 Plugins
 - [plugins/index](reference/docs/extensions/pages/plugins/index.md): built-ins, custom plugins, add-ons, lookup order.
 - [plugins/auth](reference/docs/extensions/pages/plugins/auth.md), [authentication](reference/docs/extensions/pages/authentication.md): `ctx.session`; full sign-in flows (password, OTP, OAuth2, anonymous).
-- [plugins/realtime](reference/docs/extensions/pages/plugins/realtime.md), [realtime](reference/docs/extensions/pages/realtime.md): `ctx.realtime.send()`; receiving in the browser.
+- [plugins/realtime](reference/docs/extensions/pages/plugins/realtime.md), [realtime](reference/docs/extensions/pages/realtime.md): `ctx.realtime.send()`, `ctx.realtime.subscribe()` (streaming record changes from a page); receiving in the browser.
 - [plugins/datastar](reference/docs/extensions/pages/plugins/datastar.md): the Datastar add-on and `ctx.datastar`.
 - [htmx](reference/docs/extensions/pages/htmx.md): using htmx: fragments without layouts, forms, realtime.
 - [plugins/authoring](reference/docs/extensions/pages/plugins/authoring.md): writing a custom plugin.

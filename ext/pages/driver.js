@@ -547,6 +547,30 @@
         client: function (id) {
           return rt.realtimeClient(String(id))
         },
+        // subscribe(topic, { filter, expand, fields }) listens like a browser on /api/realtime, as this visitor:
+        // `for await (const msg of sub)`. Each next() waits off the VM's loop; the subscription ends with the request.
+        subscribe: function (topic, opts) {
+          var sub = rt.realtimeSubscribe(String(topic), opts || {})
+          var ended = { done: true, value: undefined }
+          var it = {
+            next: function () {
+              return sub.next.async().then(function (data) {
+                return data === '' ? ended : { done: false, value: JSON.parse(data) }
+              })
+            },
+            return: function () {
+              sub.close()
+              return Promise.resolve(ended)
+            },
+            close: function () {
+              sub.close()
+            },
+          }
+          it[Symbol.asyncIterator] = function () {
+            return it
+          }
+          return it
+        },
       }
     }
     if (conf.session) {

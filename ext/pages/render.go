@@ -17,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
@@ -140,6 +141,10 @@ type request struct {
 	flashed  bool
 	where    string     // template location of the error that failed the request (__ppWhere)
 	httpErr  *httpError // a ctx.httpError() that failed the request
+
+	subsMu    sync.Mutex
+	subs      []*realtimeSub // ctx.realtime.subscribe(), ended with the request
+	subsEnded bool
 }
 
 // render runs a page or API route in the app's JS VM.
@@ -176,6 +181,7 @@ func (p *Pages) renderStatus(e *core.RequestEvent, root *os.Root, route *Route, 
 	}
 	// release on the loop: the VM may be closing meanwhile, and a closed VM has freed them anyway
 	defer func() { _ = js.Run(p.app, func(js.Runtime) error { r.release(); return nil }) }()
+	defer r.endSubscriptions()
 	if setupErr == nil {
 		_, setupErr = r.callJS(r.cache, "driver", js.NativeFunc(func(js.Call) (any, error) { return r.obj, nil }))
 	}
@@ -1023,6 +1029,7 @@ func (r *request) rtObject(t *Table) js.Object {
 	set("realtimeClients", r.realtimeClients)
 	set("realtimeSend", js.NativeFunc(r.realtimeSend))
 	set("realtimeClient", func(id string) any { return r.realtimeClient(id) })
+	set("realtimeSubscribe", r.realtimeSubscribe)
 
 	set("authToken", func() (string, error) { return r.authToken() })
 	set("authRecordJSON", func() string { return r.authRecordJSON() })

@@ -90,6 +90,7 @@ module.exports = {
 ```
 
 A stream stays open for at most the app's await time (15 minutes unless `pocketone.yaml` sets `js_limits.await_time`).
-`EventSource` and Datastar reconnect when it ends.
+`EventSource` and Datastar reconnect when it ends. To stream record changes, see
+[`ctx.realtime.subscribe()`](../plugins/realtime.md#listening-to-record-changes).
 
 Streaming is only available through `sse()`. Templates return their text all at once.

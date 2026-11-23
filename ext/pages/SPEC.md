@@ -533,6 +533,12 @@ Turned on by name in `+config.js` when no module by that name is found (7).
 - `filter(client)` returns `true` to include a client. `client` is PocketBase's realtime client: `id()`,
   `get(key)`, `set(key, value)`, `hasSubscription(topic)`.
 - `ctx.realtime.client(id)` returns one client by id, or `null`.
+- `ctx.realtime.subscribe(topic, { filter, expand, fields }?)` registers a realtime client for the request, with the
+  visitor's auth, so PocketBase's realtime broadcast applies the collection's rules, filter, expand and fields as on
+  `/api/realtime`. It returns an async iterator (and `close()`): record topics give `{ action, record }`, others the
+  data sent. Each `next()` waits as an async Go call, off the VM's loop. The client is unregistered when the request
+  ends (client gone, handler returned, await time passed) or on `close()`/`break`. Up to 64 unread messages queue;
+  one more ends the subscription and the next `next()` throws.
 - Sending never waits for slow clients: each message is handed to the client's queue in the background.
 
 ### 9.2 Custom plugins
