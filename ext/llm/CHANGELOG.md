@@ -28,6 +28,12 @@ renames the section to that version ([Changelogs](../../docs/extensions.md#chang
 - Settings → LLM is kept in the app's key-value store (kv/v1) under the private name `_llm/settings`; the old
   `_params` row `llm` moves there by itself the first time the settings are read. Nothing to do.
 
+### Fixed
+
+- A failed read of the guest signing key no longer makes and saves a new one (which gave every guest a new id): that
+  request counts guests by IP and the stored key stays.
+- Settings → LLM shows the error when the ledger's spend can't be read, instead of zeros.
+
 ## 0.0.1 (2026-11-22)
 
 ### Added

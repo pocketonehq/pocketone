@@ -234,18 +234,22 @@ type spend struct {
 	Refused       int64 `json:"refusedToday"`
 }
 
-func (r *router) spend(ctx context.Context) spend {
+func (r *router) spend(ctx context.Context) (spend, error) {
 	var s spend
 	now := time.Now()
 	day, _ := windowStart(now, WindowDay)
 	month, _ := windowStart(now, WindowMonth)
+	var err error
 	q := func(since time.Time, expr string, out *int64, extra dbx.Expression) {
+		if err != nil {
+			return
+		}
 		where := dbx.And(dbx.NewExp("[[created]] >= {:since}", dbx.Params{"since": since.Format("2006-01-02 15:04:05.000Z")}), extra)
-		_ = r.app.DB().Select("COALESCE(" + expr + ", 0)").From(LedgerCollection).Where(where).WithContext(ctx).Row(out)
+		err = r.app.DB().Select("COALESCE(" + expr + ", 0)").From(LedgerCollection).Where(where).WithContext(ctx).Row(out)
 	}
 	q(day, "SUM([[cost]])", &s.TodayMicroUSD, dbx.HashExp{"refused": ""})
 	q(month, "SUM([[cost]])", &s.MonthMicroUSD, dbx.HashExp{"refused": ""})
 	q(day, "COUNT(*)", &s.TodayCalls, dbx.HashExp{"refused": ""})
 	q(day, "COUNT(*)", &s.Refused, dbx.NewExp("[[refused]] != ''"))
-	return s
+	return s, err
 }

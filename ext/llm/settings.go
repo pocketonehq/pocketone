@@ -148,7 +148,11 @@ func (s settingsSection) Get(context.Context) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	v := settingsView{Types: Types, Kinds: kinds, Providers: []providerView{}, Limits: cur.Limits, Spend: s.r.spend(context.Background())}
+	sp, err := s.r.spend(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	v := settingsView{Types: Types, Kinds: kinds, Providers: []providerView{}, Limits: cur.Limits, Spend: sp}
 	if v.Limits == nil {
 		v.Limits = []Limit{}
 	}
