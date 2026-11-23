@@ -186,6 +186,27 @@ Two things to watch:
 - After an `await`, other requests may have run in between. Use `e.app`, not the global `$app`.
 - A transaction holds SQLite's write lock, so keep it short across `await`s.
 
+### Timers
+
+`setTimeout`, `setInterval`, `clearTimeout`, `clearInterval` and `queueMicrotask` work as in browsers and Node.js, so
+code and npm packages that use them run unchanged:
+
+```js
+// pb_hooks/timers.pb.js
+routerAdd("GET", "/later", async (e) => {
+  const word = await new Promise((resolve) => setTimeout(resolve, 500, "later"))
+  return e.string(200, word)
+})
+```
+
+Each run of a timer's callback is a separate task with its own time limits. A thrown error is logged and the app carries
+on.
+
+A timer set while a request is being served belongs to that request: it's cleared once the request has its answer, or
+when the client goes away. So a callback never writes to a response that's already finished. A handler that streams
+from a timer stays open by waiting (`await new Promise(() => {})`) until the client leaves. Timers set at the top of a
+hook file or in a cron job run until cleared. An app can have 1024 timers pending at once.
+
 ### Why there's no VM pool
 
 goja runs JS synchronously: while a handler waits on the database or an HTTP call, its runtime can't do anything else.

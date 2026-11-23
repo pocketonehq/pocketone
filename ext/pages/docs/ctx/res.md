@@ -74,4 +74,22 @@ module.exports = {
 }
 ```
 
+To keep a stream open, make the handler `async` and let it wait. While it waits (on a timer or an `.async` call), the
+app serves other requests. When the client goes away, the handler stops at its next `await` and its timers are
+cleared:
+
+```ts
+// pb_pages/ticks/+api.ts
+module.exports = {
+  async get(ctx) {
+    const stream = ctx.res.sse()
+    setInterval(() => stream.send('time', new Date().toISOString()), 1000)
+    await new Promise(() => {}) // wait until the client leaves
+  },
+}
+```
+
+A stream stays open for at most the app's await time (15 minutes unless `pocketone.yaml` sets `js_limits.await_time`).
+`EventSource` and Datastar reconnect when it ends.
+
 Streaming is only available through `sse()`. Templates return their text all at once.

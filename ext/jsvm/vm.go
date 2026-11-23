@@ -76,6 +76,9 @@ type VM struct {
 	statMaxPump   atomic.Int64
 	statPumped    atomic.Int64
 
+	timers   map[int64]*jsTimer // setTimeout/setInterval, by id
+	timerSeq int64
+
 	settleSeq   uint64
 	settles     map[uint64]chan settled
 	settleTypes map[uint64]reflect.Type
@@ -118,6 +121,15 @@ type task struct {
 type owner struct {
 	mu  sync.Mutex
 	err error
+	// ended is set when the request the call served got its response: the call's timers are dropped then, since
+	// the response they would write to is finished (its async Go calls still settle, as for any detached promise).
+	ended atomic.Bool
+}
+
+// live reports whether the call's timers may still fire: it wasn't given up, and the request it served (if any)
+// hasn't ended. A nil owner (module scope, bootstrap) is always live.
+func (o *owner) live() bool {
+	return o == nil || (o.cause() == nil && !o.ended.Load())
 }
 
 func (o *owner) cancel(err error) {
@@ -189,6 +201,7 @@ func New(cfg VMConfig, setup func(vm *VM) error) (*VM, error) {
 		settles:     map[uint64]chan settled{},
 		settleTypes: map[uint64]reflect.Type{},
 		refs:        map[*jsRef]struct{}{},
+		timers:      map[int64]*jsTimer{},
 		Log:         func(args ...any) { fmt.Println(args...) },
 	}
 	vm.self = registerVM(vm)
@@ -229,6 +242,7 @@ func (vm *VM) loop(setup func(*VM) error, ready chan error) {
 }
 
 func (vm *VM) teardown() {
+	vm.clearTimers(func(*jsTimer) bool { return true })
 	vm.free_(vm.sliceProto)
 	vm.free_(vm.objProto)
 	for r := range vm.refs {

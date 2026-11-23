@@ -7,6 +7,7 @@
 package js
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"reflect"
@@ -80,6 +81,20 @@ type Object interface {
 // result is exported to Go.
 type Func interface {
 	Call(args ...any) (any, error)
+}
+
+// CallContext calls f like Func.Call, for a caller serving ctx (an HTTP request's context). Call it from outside the
+// engine's own calls (not from a NativeFunc), so the VM serves other work while a returned promise is pending. When
+// ctx ends before the promise settles, the call is given up: it returns ctx's cause, and the code after the
+// function's next await never runs. Its timers (setTimeout, setInterval) are cleared when it returns. Engines
+// without this fall back to Call.
+func CallContext(ctx context.Context, f Func, args ...any) (any, error) {
+	if cf, ok := f.(interface {
+		CallContext(ctx context.Context, args ...any) (any, error)
+	}); ok {
+		return cf.CallContext(ctx, args...)
+	}
+	return f.Call(args...)
 }
 
 // Thrown returns what JS threw, exported to Go (an object's own enumerable properties as a map), when err is a JS

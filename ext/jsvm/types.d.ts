@@ -4719,6 +4719,10 @@ declare namespace core {
    */
   logsStats(expr: dbx.Expression): Array<(LogsStatsItem | undefined)>
   /**
+   * CountLogs returns the total number of log entries.
+   */
+  countLogs(...exprs: dbx.Expression[]): number
+  /**
    * DeleteOldLogs delete all logs that are created before createdBefore.
    */
   deleteOldLogs(createdBefore: time.Time): void
@@ -10880,6 +10884,12 @@ declare namespace core {
    */
   findLogById(id: string): (Log)
  }
+ interface BaseApp {
+  /**
+   * CountLogs returns the total number of log entries.
+   */
+  countLogs(...optExprs: dbx.Expression[]): number
+ }
  /**
   * LogsStatsItem defines the total number of logs for a specific time period.
   */
@@ -11968,7 +11978,7 @@ declare namespace core {
   /**
    * CountRecords returns the total number of records in a collection.
    */
-  countRecords(collectionModelOrIdentifier: any, ...exprs: dbx.Expression[]): number
+  countRecords(collectionModelOrIdentifier: any, ...optExprs: dbx.Expression[]): number
  }
  interface BaseApp {
   /**
@@ -25032,6 +25042,36 @@ declare namespace url {
 interface Function {
   async<A extends any[], R>(this: (...args: A) => R, ...args: A): Promise<Awaited<R>>;
 }
+
+/**
+ * Runs `callback(...args)` once after `ms` milliseconds (at least 1), as its own task. A timer set while a request is
+ * served is cleared once the request is answered or its client goes away; one set at the top of a file runs until
+ * cleared. Returns the id for `clearTimeout`.
+ *
+ * ```js
+ * const word = await new Promise((resolve) => setTimeout(resolve, 500, "later"))
+ * ```
+ *
+ * @group PocketOne
+ */
+declare function setTimeout<A extends any[]>(callback: (...args: A) => void, ms?: number, ...args: A): number;
+
+/**
+ * Runs `callback(...args)` every `ms` milliseconds (at least 1); the next run is timed from the end of the last one.
+ * Cleared like `setTimeout`. Returns the id for `clearInterval`.
+ *
+ * @group PocketOne
+ */
+declare function setInterval<A extends any[]>(callback: (...args: A) => void, ms?: number, ...args: A): number;
+
+/** Cancels a `setTimeout` (an unknown id does nothing). @group PocketOne */
+declare function clearTimeout(id: number | undefined | null): void;
+
+/** Cancels a `setInterval` (an unknown id does nothing). @group PocketOne */
+declare function clearInterval(id: number | undefined | null): void;
+
+/** Runs `callback` after the current task, before any timer. @group PocketOne */
+declare function queueMicrotask(callback: () => void): void;
 
 /** @group PocketOne */
 interface ImportMeta {

@@ -1,6 +1,7 @@
 package jsvm
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -832,6 +833,12 @@ func finishResults(t reflect.Type, res reflect.Value, err error) []reflect.Value
 // CallRef calls a JS function with Go args and waits for its result, awaiting it if it returns a promise.
 // Works from any goroutine; from the loop itself it runs inline and pumps the loop until the promise settles.
 func (vm *VM) CallRef(r *jsRef, args []reflect.Value, ft reflect.Type) (reflect.Value, error) {
+	return vm.callRef(nil, r, args, ft)
+}
+
+// callRef is CallRef for a call serving ctx (nil for none): off the loop, a pending promise is given up when ctx
+// ends, and the call's timers are dropped when it returns (the request got its response).
+func (vm *VM) callRef(ctx context.Context, r *jsRef, args []reflect.Value, ft reflect.Type) (reflect.Value, error) {
 	var resT reflect.Type
 	if ft != nil {
 		for i := 0; i < ft.NumOut(); i++ {
@@ -846,6 +853,8 @@ func (vm *VM) CallRef(r *jsRef, args []reflect.Value, ft reflect.Type) (reflect.
 	o := &owner{}
 	if vm.onLoop() {
 		o = vm.cur // re-entrant: it belongs to the call it runs for
+	} else if ctx != nil {
+		defer vm.endRequest(o)
 	}
 	derr := vm.Do(func() {
 		vm.cur = o
@@ -865,7 +874,7 @@ func (vm *VM) CallRef(r *jsRef, args []reflect.Value, ft reflect.Type) (reflect.
 	} else if vm.onLoop() {
 		s = vm.waitSettled(ch)
 	} else {
-		s = vm.awaitSettled(ch, o, nil)
+		s = vm.awaitSettled(ch, o, ctx)
 	}
 	if s.err != nil {
 		return reflect.Value{}, s.err
