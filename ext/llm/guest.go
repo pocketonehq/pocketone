@@ -60,13 +60,19 @@ func guestKey(app core.App) []byte {
 	guestKeyMu.Lock()
 	defer guestKeyMu.Unlock()
 	var k string
-	if found, err := kvv1.Get(app, guestKeyName, &k); err == nil && found && len(k) == 64 {
-		if b, err := hex.DecodeString(k); err == nil {
-			return b
-		}
-	}
+	found, err := kvv1.Get(app, guestKeyName, &k)
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
+	if err != nil {
+		// the stored key is still there: a key made now is used once and never saved over it, so guests keep their ids
+		app.Logger().Warn("llm: guest key: not read, so guest cookies won't verify and guests count by IP", "error", err)
+		return b
+	}
+	if found && len(k) == 64 {
+		if kb, err := hex.DecodeString(k); err == nil { // a stored value that isn't hex is replaced
+			return kb
+		}
+	}
 	if err := kvv1.Set(app, guestKeyName, hex.EncodeToString(b)); err != nil {
 		app.Logger().Warn("llm: guest key: not saved, so guest cookies won't verify and guests count by IP", "error", err)
 	}

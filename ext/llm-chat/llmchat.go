@@ -60,13 +60,8 @@ func (*Extension) Register(app core.App, _ extkit.Config) error {
 // chats is llm.chat/v1 on one app.
 type chats struct{ app core.App }
 
-func (c *chats) text() (textv1.Text, error) {
-	a, ok := textv1.Contract.Of(c.app)
-	if !ok {
-		return nil, llm.ErrNotConfigured
-	}
-	return a, nil
-}
+// text is llm.text/v1, which the extension Requires.
+func (c *chats) text() textv1.Text { return textv1.Contract.Must(c.app) }
 
 func (c *chats) find(id string) (*core.Record, error) {
 	if id == "" {
@@ -250,10 +245,7 @@ func (c *chats) fold(ctx context.Context, chat *core.Record, n int, model string
 	if err != nil || len(msgs) < n {
 		return err
 	}
-	a, err := c.text()
-	if err != nil {
-		return err
-	}
+	a := c.text()
 	var b strings.Builder
 	for _, m := range msgs[:n] {
 		fmt.Fprintf(&b, "%s: %s\n", m.GetString("role"), m.GetString("content"))
@@ -288,10 +280,7 @@ func (c *chats) Send(ctx context.Context, _ extkit.Auth, in chatv1.SendInput) (c
 	if err != nil {
 		return chatv1.SendResult{}, err
 	}
-	a, err := c.text()
-	if err != nil {
-		return chatv1.SendResult{}, err
-	}
+	a := c.text()
 	res, err := a.Complete(ctx, extkit.Internal, p.input)
 	if err != nil {
 		return chatv1.SendResult{}, err
@@ -310,10 +299,7 @@ func (c *chats) SendStream(ctx context.Context, _ extkit.Auth, in chatv1.SendInp
 	if err != nil {
 		return extkit.Stream{}, err
 	}
-	a, err := c.text()
-	if err != nil {
-		return extkit.Stream{}, err
-	}
+	a := c.text()
 	s, err := a.Stream(context.Background(), extkit.Internal, p.input)
 	if err != nil {
 		return extkit.Stream{}, err

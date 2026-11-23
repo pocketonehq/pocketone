@@ -93,7 +93,10 @@ func checkScreenshots(root string, out map[string]string) error {
 			}
 		}
 	}
-	entries, _ := os.ReadDir(filepath.Join(root, screenshotsDir))
+	entries, err := os.ReadDir(filepath.Join(root, screenshotsDir))
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
 	for _, e := range entries {
 		if f := screenshotsDir + "/" + e.Name(); !e.IsDir() && !listed[f] {
 			problems = append(problems, f+": not in "+screenshotsFile+" (say what it shows, where, the feature and how to retake it)")

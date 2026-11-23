@@ -260,13 +260,22 @@ func (bm *BulkMail) suppressedCheck() (func(email string) bool, error) {
 	return func(email string) bool { return set[email] }, nil
 }
 
-// suppressedNow checks one address, as [BulkMail.suppressedCheck] does.
+// suppressedNow checks one address, as [BulkMail.suppressedCheck] does. An address whose check fails counts as
+// suppressed (and the failure is logged): never mail someone who may have unsubscribed.
 func (bm *BulkMail) suppressedNow(email string) bool {
+	var sup bool
+	var err error
 	if p, ok := suppressionv1.Contract.Provider(bm.app); ok && p != Name {
-		st, err := suppressionv1.Contract.Must(bm.app).Check(context.Background(), extkit.Internal, suppressionv1.Address{Email: email})
-		return err != nil || st.Suppressed
+		var st suppressionv1.Status
+		st, err = suppressionv1.Contract.Must(bm.app).Check(context.Background(), extkit.Internal, suppressionv1.Address{Email: email})
+		sup = st.Suppressed
+	} else {
+		sup, err = bm.IsSuppressed(email)
 	}
-	sup, _ := bm.IsSuppressed(email)
+	if err != nil {
+		bm.app.Logger().Warn("bulkmail: suppression check failed; skipping the address", "email", email, "error", err)
+		return true
+	}
 	return sup
 }
 

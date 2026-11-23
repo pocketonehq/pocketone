@@ -41,10 +41,13 @@ const pbGoURL = "/docs/reference/go/pocketbase"
 
 // pbGoDirs lists PocketBase's own Go packages: the root package, core, apis, forms, mails, tools/..., plugins/... and
 // tests (internal ones and testdata left out).
-func pbGoDirs(root string) []string {
+func pbGoDirs(root string) ([]string, error) {
 	var dirs []string
-	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil || !d.IsDir() {
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
 			return nil
 		}
 		rel, _ := filepath.Rel(root, path)
@@ -58,7 +61,10 @@ func pbGoDirs(root string) []string {
 				return filepath.SkipDir // another module
 			}
 		}
-		entries, _ := os.ReadDir(path)
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return err
+		}
 		for _, e := range entries {
 			if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") && !strings.HasSuffix(e.Name(), "_test.go") {
 				dirs = append(dirs, rel)
@@ -68,35 +74,46 @@ func pbGoDirs(root string) []string {
 		return nil
 	})
 	sort.Strings(dirs)
-	return dirs
+	return dirs, err
 }
 
 // pbGoPackages reads and renders PocketBase's packages, at /docs/reference/go/pocketbase/<folder>.
-func pbGoPackages(root string) []goRefPackage {
+func pbGoPackages(root string) ([]goRefPackage, error) {
 	raw, err := os.ReadFile(filepath.Join(root, "go.mod"))
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	module := strings.TrimSpace(strings.TrimPrefix(strings.SplitN(string(raw), "\n", 2)[0], "module"))
 	var out []goRefPackage
-	for _, dir := range pbGoDirs(root) {
+	dirs, err := pbGoDirs(root)
+	if err != nil {
+		return nil, err
+	}
+	for _, dir := range dirs {
 		imp, url := module, pbGoURL
 		if dir != "." {
 			imp, url = module+"/"+dir, pbGoURL+"/"+dir
 		}
-		if p, ok := goRefRead(root, dir, imp, url); ok {
+		p, ok, err := goRefRead(root, dir, imp, url)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			p.PocketBase = true
 			out = append(out, p)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // goRefDirs lists the Go package folders under ext/contracts (internal ones and the cmd tools left out).
-func goRefDirs(root string) []string {
+func goRefDirs(root string) ([]string, error) {
 	var dirs []string
-	_ = filepath.WalkDir(filepath.Join(root, goRefRoot), func(path string, d os.DirEntry, err error) error {
-		if err != nil || !d.IsDir() {
+	err := filepath.WalkDir(filepath.Join(root, goRefRoot), func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
 			return nil
 		}
 		rel, _ := filepath.Rel(root, path)
@@ -104,7 +121,10 @@ func goRefDirs(root string) []string {
 		if base == "internal" || base == "cmd" || base == "testdata" || strings.HasPrefix(base, ".") {
 			return filepath.SkipDir
 		}
-		entries, _ := os.ReadDir(path)
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return err
+		}
 		for _, e := range entries {
 			if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") && !strings.HasSuffix(e.Name(), "_test.go") {
 				dirs = append(dirs, filepath.ToSlash(rel))
@@ -114,7 +134,7 @@ func goRefDirs(root string) []string {
 		return nil
 	})
 	sort.Strings(dirs)
-	return dirs
+	return dirs, err
 }
 
 // goRefURL is a package's page: /docs/reference/go/kv/v1 for ext/contracts/kv/v1, /docs/reference/go/contracts for
@@ -128,21 +148,29 @@ func goRefURL(dir string) string {
 }
 
 // goRefPackages reads and renders every package.
-func goRefPackages(root string) []goRefPackage {
+func goRefPackages(root string) ([]goRefPackage, error) {
+	dirs, err := goRefDirs(root)
+	if err != nil {
+		return nil, err
+	}
 	var out []goRefPackage
-	for _, dir := range goRefDirs(root) {
-		if p, ok := goRefRead(root, dir, "pocketone.dev/"+dir, goRefURL(dir)); ok {
+	for _, dir := range dirs {
+		p, ok, err := goRefRead(root, dir, "pocketone.dev/"+dir, goRefURL(dir))
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			out = append(out, p)
 		}
 	}
-	return out
+	return out, nil
 }
 
-func goRefRead(root, dir, importPath, url string) (goRefPackage, bool) {
+func goRefRead(root, dir, importPath, url string) (goRefPackage, bool, error) {
 	fset := token.NewFileSet()
 	entries, err := os.ReadDir(filepath.Join(root, dir))
 	if err != nil {
-		return goRefPackage{}, false
+		return goRefPackage{}, false, err
 	}
 	var files []*ast.File
 	for _, e := range entries {
@@ -151,14 +179,17 @@ func goRefRead(root, dir, importPath, url string) (goRefPackage, bool) {
 		}
 		f, err := parser.ParseFile(fset, filepath.Join(root, dir, e.Name()), nil, parser.ParseComments)
 		if err != nil {
-			continue
+			return goRefPackage{}, false, err
 		}
 		// a _test.go file of another package (pkg_test) still holds the examples doc.NewFromFiles wants
 		files = append(files, f)
 	}
 	pkg, err := doc.NewFromFiles(fset, files, importPath)
-	if err != nil || pkg.Name == "" {
-		return goRefPackage{}, false
+	if err != nil {
+		return goRefPackage{}, false, err
+	}
+	if pkg.Name == "" {
+		return goRefPackage{}, false, nil
 	}
 	gp := goRefPackage{Dir: dir, Import: importPath, Name: pkg.Name, Synopsis: pkg.Synopsis(pkg.Doc), URL: url}
 	split := dir == "core" // PocketBase's core: a page per family of types (coreFamilies)
@@ -310,7 +341,7 @@ func goRefRead(root, dir, importPath, url string) (goRefPackage, bool) {
 		}
 		gp.Extra[url+"/"+slug] = escapeEJS(fb.String())
 	}
-	return gp, true
+	return gp, true, nil
 }
 
 // goRefIndex is /docs/reference/go: every package, by folder.

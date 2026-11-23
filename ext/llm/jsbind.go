@@ -164,7 +164,7 @@ var jsPrelude = `(() => {
   const J = (s) => JSON.parse(s);
   // a contract's error arrives as "code: message"; throw it as an Error with that message and err.code set
   const clean = (err) => {
-    const m = /^([a-z][a-z_]*): ([\s\S]*)$/.exec(err && err.message || "");
+    const m = /^([a-z][a-z_]*): ([\s\S]*)$/.exec(err.message);
     if (!m || err.code) return err;
     const e = new Error(m[2]);
     e.code = m[1];

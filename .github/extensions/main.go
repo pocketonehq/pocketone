@@ -315,8 +315,11 @@ var (
 
 // check applies the extension rules to each module dir.
 func check(dirs []string) []string {
-	mods, _ := modules()
 	var problems []string
+	mods, err := modules()
+	if err != nil {
+		problems = append(problems, "list the modules: "+err.Error())
+	}
 	for _, dir := range dirs {
 		dir = strings.TrimSuffix(filepath.ToSlash(dir), "/")
 		var extensions []string
@@ -356,7 +359,10 @@ func check(dirs []string) []string {
 		problems = append(problems, checkDocs(dir)...)
 	}
 	// Extension folders with no Go module yet (a README for a planned extension) get the docs rules too.
-	entries, _ := os.ReadDir("ext")
+	entries, err := os.ReadDir("ext")
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
 	for _, e := range entries {
 		dir := "ext/" + e.Name()
 		if _, err := os.Stat(dir + "/go.mod"); e.IsDir() && err != nil {

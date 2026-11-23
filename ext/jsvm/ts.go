@@ -63,12 +63,14 @@ func (vm *VM) transpile(src, name string, format tsFormat, lineOffset int) (stri
 		}
 		return "", fmt.Errorf("TypeScript: %s", b.String())
 	}
-	if sm, err := parseSourceMap(res.Map, lineOffset); err == nil {
-		if vm.srcMaps == nil {
-			vm.srcMaps = map[string]*sourceMap{}
-		}
-		vm.srcMaps[name] = sm
+	sm, err := parseSourceMap(res.Map, lineOffset)
+	if err != nil {
+		return "", fmt.Errorf("TypeScript: %s: source map: %w", name, err)
 	}
+	if vm.srcMaps == nil {
+		vm.srcMaps = map[string]*sourceMap{}
+	}
+	vm.srcMaps[name] = sm
 	return string(res.Code), nil
 }
 

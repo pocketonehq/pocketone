@@ -75,9 +75,12 @@ func (a *API) listFiles(w http.ResponseWriter, r *http.Request) error {
 	if !st.IsDir() {
 		out = append(out, fileEntry{rel, false, st.Size(), mtimeMs(st)})
 	} else {
-		var walk func(dir string)
-		walk = func(dir string) {
-			entries, _ := os.ReadDir(dir)
+		var walk func(dir string) error
+		walk = func(dir string) error {
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				return err
+			}
 			names := make([]string, 0, len(entries))
 			for _, e := range entries {
 				names = append(names, e.Name())
@@ -85,7 +88,7 @@ func (a *API) listFiles(w http.ResponseWriter, r *http.Request) error {
 			sort.Strings(names)
 			for _, name := range names {
 				if len(out) >= maxListEntries {
-					return
+					return nil
 				}
 				child := filepath.Join(dir, name)
 				childRel, _ := filepath.Rel(c.dir, child)
@@ -103,11 +106,16 @@ func (a *API) listFiles(w http.ResponseWriter, r *http.Request) error {
 				}
 				out = append(out, fileEntry{childRel, fi.IsDir(), size, mtimeMs(fi)})
 				if fi.IsDir() && recursive {
-					walk(child)
+					if err := walk(child); err != nil {
+						return err
+					}
 				}
 			}
+			return nil
 		}
-		walk(fsPath)
+		if err := walk(fsPath); err != nil {
+			return err
+		}
 	}
 	writeJSON(w, 200, map[string]any{"path": rel, "entries": out, "truncated": len(out) >= maxListEntries})
 	return nil
@@ -252,7 +260,11 @@ func (a *API) deleteFile(w http.ResponseWriter, r *http.Request) error {
 	}
 	if st.IsDir() {
 		if !recursive {
-			if entries, _ := os.ReadDir(fsPath); len(entries) > 0 {
+			entries, err := os.ReadDir(fsPath)
+			if err != nil {
+				return err
+			}
+			if len(entries) > 0 {
 				return errf(409, "%s is a folder with files in it; pass recursive to delete it", rel)
 			}
 		}

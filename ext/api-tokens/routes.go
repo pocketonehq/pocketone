@@ -79,9 +79,13 @@ func (t *Tokens) bindAPI(g *router.RouterGroup[*core.RequestEvent]) {
 	g.Bind(apis.RequireAuth())
 
 	g.GET("/scopes", func(e *core.RequestEvent) error {
+		cols, err := t.Collections()
+		if err != nil {
+			return err
+		}
 		return e.JSON(http.StatusOK, map[string]any{
 			"scopes":      t.Scopes(),
-			"collections": t.Collections(),
+			"collections": cols,
 			"canCreate":   t.AllowedCollection(e.Auth.Collection()),
 		})
 	})

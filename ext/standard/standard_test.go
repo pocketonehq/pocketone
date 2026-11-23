@@ -97,7 +97,10 @@ func TestStartupLines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(lines[0], "standard: on: settings, templates, cache, api-tokens, ") || !strings.Contains(lines[0], "deploy") {
+	// on, in dependency order: api-tokens keeps its OAuth key in kv/v1, so it comes after kv
+	on := lines[0]
+	if !strings.HasPrefix(on, "standard: on: settings, templates, cache, ") || !strings.Contains(on, "deploy") ||
+		!strings.Contains(on, ", kv, ") || strings.Index(on, " api-tokens,") < strings.Index(on, " kv,") {
 		t.Fatalf("lines %q", lines)
 	}
 	if !strings.Contains(strings.Join(lines, "\n"), "api-tokens/v1 ← api-tokens") {

@@ -59,7 +59,11 @@ func loadSite(root string, p *extension) []string {
 				problems = append(problems, where+": an extension's docs are content only (no + files); the pocketone.dev site owns layouts, config, middleware and API routes")
 			case !strings.Contains(rel, "/") && strings.HasPrefix(n, "index."):
 				p.landing = true
-				raw, _ := os.ReadFile(full)
+				raw, err := os.ReadFile(full)
+				if err != nil {
+					problems = append(problems, where+": "+err.Error())
+					break
+				}
 				fm := readFront(string(raw))
 				p.section, p.docsTitle = fm["section"], fm["title"]
 				if p.section == "" {
@@ -67,7 +71,11 @@ func loadSite(root string, p *extension) []string {
 				}
 			case strings.HasSuffix(n, ".md") && !strings.HasPrefix(rel, "_private/"):
 				// any other page may also be listed in the main nav (a guide under Guides): front matter `section:`
-				raw, _ := os.ReadFile(full)
+				raw, err := os.ReadFile(full)
+				if err != nil {
+					problems = append(problems, where+": "+err.Error())
+					break
+				}
 				if fm := readFront(string(raw)); fm["section"] != "" {
 					u := strings.TrimSuffix(strings.TrimSuffix(rel, ".md"), "/index")
 					title := fm["nav"]

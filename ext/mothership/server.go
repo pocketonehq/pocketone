@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"hash/fnv"
 	"log/slog"
 	"sync"
@@ -187,13 +186,8 @@ func (w *watchServer) close() {
 	}
 }
 
-func (w *watchServer) resolver() (resolvev1.Resolver, error) {
-	r, ok := resolvev1.Contract.Of(w.app)
-	if !ok {
-		return nil, errors.New("mothership: nothing provides instance.resolve/v1")
-	}
-	return r, nil
-}
+// resolver is instance.resolve/v1, which the server Requires.
+func (w *watchServer) resolver() resolvev1.Resolver { return resolvev1.Contract.Must(w.app) }
 
 // shard resolves targets one at a time, in the order asked; a target asked for again before it ran runs once.
 type shard struct {
@@ -259,10 +253,7 @@ func (w *watchServer) build(ctx context.Context, t target) (resolved, error) {
 	w.mu.Lock()
 	seq := w.wseq
 	w.mu.Unlock()
-	r, err := w.resolver()
-	if err != nil {
-		return resolved{}, err
-	}
+	r := w.resolver()
 	out := resolved{seq: seq, event: watchv1.Event{Kind: t.kind}}
 	switch t.kind {
 	case watchv1.KindHost:
@@ -381,9 +372,10 @@ func (w *watchServer) written(rec *core.Record) {
 	if idle {
 		return
 	}
-	var touched []string
-	if r, err := w.resolver(); err == nil {
-		touched, _ = r.Touches(context.Background(), rec)
+	// a failed Touches still refreshes the record's own deps; the hosts it would have named wait for their next write
+	touched, err := w.resolver().Touches(context.Background(), rec)
+	if err != nil {
+		w.log.Warn("mothership: touches failed", "collection", rec.Collection().Name, "record", rec.Id, "error", err)
 	}
 	deps := resolvev1.RecordDeps(rec, touched...)
 	var targets []target

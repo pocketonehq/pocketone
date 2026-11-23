@@ -89,12 +89,16 @@ func lazySeal(app core.App, s *Scope) {
 		app.Logger().Error(err.Error())
 		return
 	}
-	if err := s.Seal(nil); err == nil {
-		_ = checkJSDeclarations(app, s)
-		s.mu.Lock()
-		s.autoSealed = true
-		s.mu.Unlock()
+	if err := s.Seal(nil); err != nil {
+		app.Logger().Error(err.Error())
+		return
 	}
+	if err := checkJSDeclarations(app, s); err != nil {
+		app.Logger().Error(err.Error())
+	}
+	s.mu.Lock()
+	s.autoSealed = true
+	s.mu.Unlock()
 }
 
 // autoSeal makes an app whose contracts nobody sealed (extensions registered one by one with their MustRegister,

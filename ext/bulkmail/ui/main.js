@@ -258,7 +258,7 @@
         function emailFields(name) {
             const col = data.collections.find((c) => c.name === name);
             if (!col) return [];
-            return (col.fields || [])
+            return col.fields
                 .filter((f) => f.name !== "id" && f.name !== "tokenKey" &&
                     (f.type === "email" || f.type === "text" || (f.type === "json" && col.type === "view")))
                 .sort((a, b) => (a.type === "email" ? 0 : 1) - (b.type === "email" ? 0 : 1));

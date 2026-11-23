@@ -5,11 +5,11 @@ commit. Each PocketOne release raises this extension's `version:` when there's s
 renames the section to that version ([Changelogs](../../docs/extensions.md#changelogs)).
 Sections named after a PocketOne release are from before extensions had versions of their own.
 
-### Changed
-
-- `pull`, `clone` and `dev` download in bundles: the tree once (`GET /tree?deep=1`, every folder in one answer) and the files that differ in one `POST /files/bundle` per 32 MB, instead of one request per folder and per file, so a pull no longer trips a proxy's rate limit (Cloudflare's on PocketHost). Files already the same aren't downloaded, and `pull` saves the deploy base from the same tree. Older servers are pulled file by file as before.
-
 ## Unreleased
+
+### Fixed
+
+- A deploy whose runtime can't say whether the instance is running fails with that error, instead of applying the files without the restart it asked for.
 
 ## 0.2.0 (2026-11-21)
 
@@ -27,6 +27,7 @@ Sections named after a PocketOne release are from before extensions had versions
 
 ### Changed
 
+- `pull`, `clone` and `dev` download in bundles: the tree once (`GET /tree?deep=1`, every folder in one answer) and the files that differ in one `POST /files/bundle` per 32 MB, instead of one request per folder and per file, so a pull no longer trips a proxy's rate limit (Cloudflare's on PocketHost). Files already the same aren't downloaded, and `pull` saves the deploy base from the same tree. Older servers are pulled file by file as before.
 - The deploy API gets the instance's folder, writers' lock and restart from the new instance.fs/v1 contract, and provides it on a single app (the app's own folder). Its code-path rules moved there too.
 - File routes (`/files`, `/files/raw`) and `pull` never reach `pb_data`.
 - The upload store moves from `.pb_deploy/` to `pb_cache/deploy/` (PocketOne's folder for disposable files). Deploys still upload only what changed (files already in the app's folder count); the old `.pb_deploy/` folder can be deleted.

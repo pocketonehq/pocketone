@@ -27,13 +27,8 @@
 
     // Where the history goes: the app's own S3 bucket (this form), else the server's storage, else this server's disk.
     async function storageForm(st, section) {
-        let cfg;
-        try {
-            cfg = (await app.pb.send("/api/_c/settings/v1/get", { query: { extension: "pitr" }, requestKey: null })).values;
-        } catch (_) {
-            return el("div");
-        }
-        const s3 = cfg.s3 || {};
+        const cfg = (await app.pb.send("/api/_c/settings/v1/get", { query: { extension: "pitr" }, requestKey: null })).values;
+        const s3 = cfg.s3;
         const field = (label, name, value, type = "text", placeholder = "") =>
             el("label", { className: "flex gap-10 m-b-sm" },
                 el("span", { style: "min-width:9rem" }, label),
