@@ -115,8 +115,24 @@ A provider sometimes drops a request and never answers. Calls don't wait on one 
   transcription, 1 for embeddings or starting a music or video job (following one with `wait` has its own limit).
 
 Either one cancels the request and throws with code `timeout`: `vultr/glm-5.3: the provider sent nothing for 10s, so
-the call was cancelled`, or `...: no answer in 3m0s, so the call was cancelled`. Go code wanting less passes a context
-with an earlier deadline.
+the call was cancelled`, or `...: no answer in 3m0s, so the call was cancelled`.
+
+To give up sooner, pass a `signal` (an [`AbortSignal`](/docs/quickjs#cancelling-go-calls)) in any call's options. When
+it fires, the promise rejects with its reason and the provider's request is cancelled:
+
+```js
+// at most 30 seconds, even in background work after the response was sent
+const a = await $llm.text.completeAsync({ model: "vultr/glm-5.3", prompt, signal: AbortSignal.timeout(30_000) })
+
+// or stop it yourself: a "Stop" button, a newer question
+const c = new AbortController()
+const s = $llm.text.streamAsync({ model, prompt, signal: c.signal }, (t) => { /* ... */ })
+c.abort() // s rejects with an AbortError
+```
+
+`AbortSignal.timeout` rejects with a `DOMException` named `TimeoutError`, `abort()` with one named `AbortError`. The
+same `signal` works on `chat.sendAsync(text, { signal })`. Go code passes a context with an earlier deadline, or
+cancels it.
 
 ## Costs
 

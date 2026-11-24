@@ -43,6 +43,8 @@ type LlmTextInput = {
   reasoning?: "" | "off" | "low" | "medium" | "high"
   /** The provider's own fields, passed through. */
   options?: Record<string, any>
+  /** Cancels the call, provider request included: the promise rejects with signal.reason. */
+  signal?: AbortSignal
 }
 
 /** A passage enrich added to the prompt, from a search bucket. */
@@ -57,12 +59,13 @@ type LlmTextAnswer = { text: string; data?: any; reasoning?: string; stopReason?
   /** what enrich added to the prompt, best first */
   passages?: LlmPassage[] }
 
-type LlmModelsOpts = { provider?: string }
+type LlmModelsOpts = { provider?: string; signal?: AbortSignal }
 
 /**
  * Cloud models (the llm.* contracts): each call names provider/model; providers and keys are set in Settings → LLM.
  * Every call that reaches a provider is async (its name ends in Async) and runs off the app's VM, so other requests keep
- * being served while a model works: await it in an async handler.
+ * being served while a model works: await it in an async handler. Each options object takes a signal (an AbortSignal):
+ * { signal: AbortSignal.timeout(30_000) } gives up after 30 s and cancels the provider's request.
  */
 type LlmAPI = {
   text: {
@@ -81,13 +84,13 @@ type LlmAPI = {
      * it draws from: one to change, or one whose style and characters a new scene keeps. Only models with the feature
      * "reference images" take them (Vultr, OpenRouter).
      */
-    generateAsync(opts: { model: string; prompt: string; references?: LlmFile[]; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any> }): Promise<{ files: LlmFile[]; model: string; usage: LlmUsage }>
+    generateAsync(opts: { model: string; prompt: string; references?: LlmFile[]; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any>; signal?: AbortSignal }): Promise<{ files: LlmFile[]; model: string; usage: LlmUsage }>
     /** This kind's models across the providers in Settings → LLM (or one: { provider }), as provider/model. */
     modelsAsync(opts?: LlmModelsOpts): Promise<LlmModels>
   }
   speech: {
     /** reference clones a voice: the text is read in the voice of that clip (leave voice and instructions out). Providers that don't clone refuse it. */
-    speakAsync(opts: { model: string; text: string; voice?: string; format?: string; speed?: number; instructions?: string; reference?: { audio: LlmFile; text?: string }; options?: Record<string, any> }): Promise<{ file: LlmFile; model: string; usage: LlmUsage }>
+    speakAsync(opts: { model: string; text: string; voice?: string; format?: string; speed?: number; instructions?: string; reference?: { audio: LlmFile; text?: string }; options?: Record<string, any>; signal?: AbortSignal }): Promise<{ file: LlmFile; model: string; usage: LlmUsage }>
     /** A model clones when one of its voices has mode "clone". */
     voicesAsync(model: string): Promise<{ id: string; name?: string; language?: string; gender?: string; mode?: "builtin" | "design" | "clone"; description?: string }[]>
     /** This kind's models across the providers in Settings → LLM (or one: { provider }), as provider/model. */
@@ -95,14 +98,14 @@ type LlmAPI = {
   }
   transcribe: {
     /** Writes down what's said in a recording. */
-    transcribeAsync(opts: { model: string; audio: LlmFile; language?: string; prompt?: string; options?: Record<string, any> }): Promise<{ text: string; language?: string; model: string; usage: LlmUsage }>
+    transcribeAsync(opts: { model: string; audio: LlmFile; language?: string; prompt?: string; options?: Record<string, any>; signal?: AbortSignal }): Promise<{ text: string; language?: string; model: string; usage: LlmUsage }>
     /** This kind's models across the providers in Settings → LLM (or one: { provider }), as provider/model. */
     modelsAsync(opts?: LlmModelsOpts): Promise<LlmModels>
   }
   /** Forced alignment: when each line and word of a known text is said in its audio (captions, karaoke). */
   align: {
     /** When each line and word of text is said in audio. */
-    alignAsync(opts: { model: string; audio: LlmFile; text: string; mode?: "speech" | "lyrics"; language?: string; options?: Record<string, any> }): Promise<{
+    alignAsync(opts: { model: string; audio: LlmFile; text: string; mode?: "speech" | "lyrics"; language?: string; options?: Record<string, any>; signal?: AbortSignal }): Promise<{
       duration: number
       lines: { index: number; text: string; start: number; end: number; score: number; certain: boolean; tag?: string }[]
       words: { line: number; text: string; start: number; end: number; score: number }[]
@@ -116,7 +119,7 @@ type LlmAPI = {
   /** Music is a job: createAsync with wait ("5m") resolves once it's done, files included; without, follow it with getAsync. */
   music: {
     /** Starts a piece of music; with wait ("5m") it resolves once it's done, files included. */
-    createAsync(opts: { model: string; prompt: string; lyrics?: string; seconds?: number; wait?: string; options?: Record<string, any> }): Promise<LlmJob>
+    createAsync(opts: { model: string; prompt: string; lyrics?: string; seconds?: number; wait?: string; options?: Record<string, any>; signal?: AbortSignal }): Promise<LlmJob>
     /** A job by id: its status, and its files once it's done. */
     getAsync(id: string): Promise<LlmJob>
     /** A finished job's file (index for jobs with several), downloaded. */
@@ -126,7 +129,7 @@ type LlmAPI = {
   }
   video: {
     /** Starts a video, optionally from a picture; with wait it resolves once it's done. */
-    createAsync(opts: { model: string; prompt: string; image?: LlmFile; seconds?: number; size?: string; aspectRatio?: string; wait?: string; options?: Record<string, any> }): Promise<LlmJob>
+    createAsync(opts: { model: string; prompt: string; image?: LlmFile; seconds?: number; size?: string; aspectRatio?: string; wait?: string; options?: Record<string, any>; signal?: AbortSignal }): Promise<LlmJob>
     /** A job by id: its status, and its files once it's done. */
     getAsync(id: string): Promise<LlmJob>
     /** A finished job's file (index for jobs with several), downloaded. */
@@ -136,7 +139,7 @@ type LlmAPI = {
   }
   embed: {
     /** Turns each text into a vector, for search and similarity. */
-    embedAsync(opts: { model: string; input: string[]; dimensions?: number; options?: Record<string, any> }): Promise<{ vectors: number[][]; model: string; usage: LlmUsage }>
+    embedAsync(opts: { model: string; input: string[]; dimensions?: number; options?: Record<string, any>; signal?: AbortSignal }): Promise<{ vectors: number[][]; model: string; usage: LlmUsage }>
     /** This kind's models across the providers in Settings → LLM (or one: { provider }), as provider/model. */
     modelsAsync(opts?: LlmModelsOpts): Promise<LlmModels>
   }
@@ -192,7 +195,7 @@ type LlmAPI = {
   status(): { model: string; chunks: number; embedded: number; note?: string }
   /** The best matches for a query across buckets (all of them when none are named), best first. viewer (an auth record,
    * or null for a guest) leaves out records they can't view; left out, the search sees everything. */
-  searchAsync(o: { query: string; buckets?: string | string[]; bucket?: string; limit?: number; prefix?: string; viewer?: core.Record | null }):
+  searchAsync(o: { query: string; buckets?: string | string[]; bucket?: string; limit?: number; prefix?: string; viewer?: core.Record | null; signal?: AbortSignal }):
     Promise<{ results: SearchResult[]; model?: string; usage: { costMicroUSD: number; inputTokens?: number } }>
   }
   /**
@@ -337,7 +340,7 @@ type LlmChatInfo = { id: string; title: string; summary: string; meta: any; mess
 type LlmChat = {
   id: string
   /** Asks and saves both turns. With onText, streams the answer to it as it's written. */
-  sendAsync(text: string, opts?: LlmChatOptions & { onText?: (text: string) => boolean | void; onReasoning?: (text: string) => boolean | void; schema?: object | string }): Promise<LlmTextAnswer>
+  sendAsync(text: string, opts?: LlmChatOptions & { onText?: (text: string) => boolean | void; onReasoning?: (text: string) => boolean | void; schema?: object | string; signal?: AbortSignal }): Promise<LlmTextAnswer>
   get(): LlmChatInfo
   history(opts?: { limit?: number; before?: string }): { id: string; role: "user" | "assistant"; content: string; created: string }[]
   summary(): string

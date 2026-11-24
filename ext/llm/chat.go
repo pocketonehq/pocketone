@@ -48,13 +48,16 @@ func bindChatJS(app core.App, rt js.Runtime, n js.Object) {
 		}
 		return c.New(ctx, extkit.Internal, in)
 	}))
-	_ = n.Set("chatSend", call("chat.send", func(c chatv1.Chats, raw []byte) (any, error) {
-		var in chatv1.SendInput
-		if err := json.Unmarshal(raw, &in); err != nil {
-			return nil, err
-		}
-		return c.Send(subjectCtx(raw), extkit.Internal, in)
-	}))
+	// chatSend(ctx, opts): the prelude calls it with .asyncWith, so the caller's AbortSignal cancels ctx
+	_ = n.Set("chatSend", func(ctx context.Context, opts string) (string, error) {
+		return call("chat.send", func(c chatv1.Chats, raw []byte) (any, error) {
+			var in chatv1.SendInput
+			if err := json.Unmarshal(raw, &in); err != nil {
+				return nil, err
+			}
+			return c.Send(subjectCtx(ctx, raw), extkit.Internal, in)
+		})(opts)
+	})
 	_ = n.Set("chatGet", call("chat.get", func(c chatv1.Chats, raw []byte) (any, error) {
 		return c.Get(ctx, extkit.Internal, chatv1.Ref{ID: string(raw)})
 	}))
@@ -109,9 +112,9 @@ const chatPrelude = `
     return Object.freeze({
       id,
       sendAsync: async (text, s = {}) => {
-        const i = S(sendInput(id, o, text, s));
-        if (s.onText || s.onReasoning) return readStream(n.streamStart("chat", i), s.onText, s.onReasoning);
-        try { return J(await n.chatSend.async(i)).answer; } catch (err) { throw clean(err); }
+        const i = sendInput(id, o, text, s);
+        if (s.onText || s.onReasoning) return readStream("chat", { ...i, signal: s.signal }, s.onText, s.onReasoning);
+        try { return J(await n.chatSend.asyncWith({ signal: s.signal }, S(i))).answer; } catch (err) { throw clean(err); }
       },
       get: () => J(n.chatGet(id)),
       history: (h = {}) => J(n.chatHistory(S({ id, limit: h.limit, before: h.before }))).messages,
