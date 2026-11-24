@@ -46,7 +46,7 @@ pb_migrations/1763800005_voices.js      voices: recordings a cloned narrator imi
 pb_migrations/1763800006_stories_log.js   log and attempts: each story's step-by-step log (hidden) and how many times it was tried
 pb_migrations/1763800007_costs_usage.js   usage on costs: what each call used (tokens, seconds), for what a story's steps use
 pb_hooks/admin_plugins.pb.js            registers the dashboard screen (a superuser UI extension)
-pb_admin_ext/storytime/main.js          Story Time in the dashboard's top bar: the settings, with Sample buttons
+pb_admin_ext/storytime/main.js          Story Time in the dashboard's top bar: Set up (step by step, with a chat helper) and the settings, with Sample buttons
 pb_pages/
   index.ets            Tell me a story (one click: it picks the topic, at the default length); stories told, most listened to first
   inspire.ts           POST /inspire {avoid?}: a topic no story has covered yet (the model sees every title)
@@ -58,6 +58,8 @@ pb_pages/
   admin/check.ts       POST /admin/check {clip}: transcribes a recording and compares it with its passage (superusers only)
   admin/estimate.ts    POST /admin/estimate {values}: what a story costs with the given models, step by step (superusers only)
   admin/stories.ts     POST /admin/stories: adds told stories missing from the stories bucket (superusers only)
+  admin/assist.ts      GET /admin/assist: Set up's steps; POST {step, values, chat}: one chat turn's edits to the step's fields (superusers only)
+  _private/assist.ts   Set up's steps (each owns a few settings fields) and the helper's one structured call
   view.ts              POST /view {id}: counts a listen (the player sends it after 10 seconds heard)
   story.ts             POST /story {prompt?, minutes?}: saves the record, starts making it (no prompt: it picks the topic)
   story/[id].ets       progress while it's made, then the player (scrubber, space to pause, arrows to skip 10 s)
@@ -84,6 +86,16 @@ limits for a public copy: `STORY_MAX_MAKING` stories in the making at once (3), 
 with 5 pictures (`MAX`); the form and `POST /story` both hold to it.
 
 ## Tuning, in the dashboard
+
+**Set up (experimental)** at the top of the screen's sidebar walks through the settings a step at a time, with a chat
+helper beside the fields. Step 1, **What is it about?**, asks for the general vibe of the site and fills the title, the
+tagline under it and the writer preamble (the instructions every story is written from). Say what to change ("I don't
+like the title", "make the stories calmer", "the intro text is too long"): each turn sends the step's fields as they are
+on the screen and the chat so far to `POST /admin/assist`, and one call to the text model, with a schema that holds it to
+the step's fields, answers with new values for just the fields you meant and a line saying what changed. A preamble
+that loses a placeholder (`{minutes}`, `{minWords}`, `{maxWords}`, `{anyTopic}`) or a field the answer's shape names is
+not used. The fields stay editable by hand; nothing is saved until **Save and next**. Each turn's cost is recorded
+(kind `assist`). The later steps (knowledge sources, a research loop, writing the story) are still to come.
 
 **Story Time** in the PocketBase dashboard's top bar (`/_/`) holds what shapes the app: the front page's title and caption, the story lengths (shortest and longest, the default, the narrator's words per minute, pictures per minute, the most pictures), the narrator (voice,
 instructions, seed, speed), the writing, picture-choosing and Inspire me prompts, how words are said (**Pronunciation**), what's added to each picture and music

@@ -23,7 +23,7 @@ pb_migrations/         stories, their listens, each call's cost, audio samples, 
 pb_hooks/
   admin_plugins.pb.js  registers the settings screen with the dashboard
 pb_admin_ext/
-  storytime/main.js    the settings screen: Story Time in the top bar
+  storytime/main.js    the settings screen: Story Time in the top bar, with Set up (step by step, with a chat helper)
 pb_pages/
   index.ets            ask for a story, or Inspire me; stories told, most listened to first
   inspire.ts           POST /inspire: a topic no story has covered yet
@@ -36,6 +36,7 @@ pb_pages/
   admin/export.ts      GET /admin/export, POST /admin/import: the settings and recordings as JSON (superusers only)
   admin/check.ts       POST /admin/check: transcribes a recording and compares it with its passage (superusers only)
   admin/stories.ts     POST /admin/stories: adds told stories missing from the stories bucket (superusers only)
+  admin/assist.ts      POST /admin/assist: one turn of Set up's chat helper: new values for the fields you meant (superusers only)
 pb_hooks/stories.pb.js  a deleted story leaves the stories bucket
   _private/defaults.json the defaults, in the export format
   _private/story.ts    the settings, the limits and the six steps
@@ -82,6 +83,14 @@ models are told, how pictures and music are asked for, which models run and how 
 without touching code, from **Story Time** in the top bar
 of the PocketBase dashboard (`/_/`, superusers only), one sidebar entry per part. Each part has a **Sample** button, so you hear or see a change
 before any listener does.
+
+**Set up (experimental)**, first in the sidebar, goes a step at a time with a chat helper beside the fields. Step 1
+asks what the site's general vibe should be, and your answer fills the title, the tagline under it and the writer
+preamble (what every story is written from). Then keep talking: "I don't like the title" changes only the title, "make
+the stories calmer" only the preamble. One call to the text model per turn gets the step's fields as they are and
+answers, through a schema limited to those fields, with new values for the ones you meant. You can still edit the
+fields by hand, and nothing is saved until **Save and next**. More steps (knowledge sources, research, the story) are
+coming.
 
 | Part | What you set | Sample |
 |---|---|---|

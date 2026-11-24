@@ -1,4 +1,5 @@
-// Story Time in the PocketBase dashboard's top bar, its own screen with a sidebar of sections: the front page's title and caption, story lengths, the narrator's voice, the prompts, the pictures, the music,
+// Story Time in the PocketBase dashboard's top bar, its own screen with a sidebar: Set up (the settings a step at a time,
+// with a chat helper that fills the fields: /admin/assist), then the sections: the front page's title and caption, story lengths, the narrator's voice, the prompts, the pictures, the music,
 // the models and the daily budget, and try each with Sample before saving. A superuser UI extension, registered from
 // pb_hooks/admin_plugins.pb.js (pb_admin_ext/storytime); it calls the app's /admin/tuning and /admin/sample (superusers only), and the dashboard
 // sends the signed-in superuser's token with each call.
@@ -35,6 +36,15 @@
             t.nav({ className: "sidebar-content scrollable" },
                 t.details(
                     { className: "nav-group", open: true },
+                    t.summary({ tabIndex: -1, onfocusout: () => false, onclick: () => false, onkeyup: () => false }, "Set up"),
+                    t.a(
+                        { href: "#/storytime/setup", className: () => `nav-item ${app.utils.isActivePath("#/storytime/setup", false) ? "active" : ""}` },
+                        t.i({ className: "ri-chat-smile-2-line", ariaHidden: true }),
+                        t.span({ className: "txt" }, "Step by step (experimental)"),
+                    ),
+                ),
+                t.details(
+                    { className: "nav-group", open: true },
                     t.summary({ tabIndex: -1, onfocusout: () => false, onclick: () => false, onkeyup: () => false }, "Story Time"),
                     ...SECTIONS.map((x) => t.a(
                         { href: `#/storytime/${x.id}`, className: () => `nav-item ${app.utils.isActivePath(`#/storytime/${x.id}`, false) ? "active" : ""}` },
@@ -53,6 +63,179 @@
     // #/storytime opens the first section
     app.routes.superuserOnly("#/storytime", () => page(SECTIONS[0]));
     SECTIONS.forEach((section) => app.routes.superuserOnly(`#/storytime/${section.id}`, () => page(section)));
+    app.routes.superuserOnly("#/storytime/setup", () => setupPage());
+
+    // the chat with each step's helper, kept while moving around the dashboard: step id -> [{ role, text, meta? }]
+    const chats = {};
+
+    // Set up: the settings a step at a time, each with a chat helper beside its fields (POST /admin/assist). Say what you
+    // want; the helper changes just the fields you mean, and you can still edit them by hand. Next saves and moves on.
+    function setupPage() {
+        app.store.title = "Set up · Story Time";
+        const data = store({
+            loading: true,
+            steps: [], // from GET /admin/assist: { id, title, question, about, fields: [{ path, label, about }] }
+            at: 0, // the step shown
+            busy: false, // a chat turn is out
+            saving: false,
+            message: null, // { kind, text }
+            version: 0, // bumped when a field's value is replaced, so the fields redraw
+            changed: {}, // path -> true for the fields the last turn changed, highlighted
+            chatVersion: 0,
+        });
+        let v = null; // the values, shared with the settings sections (draft) so unsaved changes carry across
+        const get = (path) => path.split(".").reduce((o, k) => (o == null ? o : o[k]), v);
+        const put = (path, value) => {
+            const keys = path.split("."), last = keys.pop();
+            keys.reduce((o, k) => o[k], v)[last] = value;
+        };
+        const step = () => data.steps[data.at];
+        const chat = () => {
+            const s = step();
+            return (chats[s.id] = chats[s.id] || [{ role: "assistant", text: s.question }]);
+        };
+
+        async function load() {
+            try {
+                const [tuning, assist] = await Promise.all([send("/admin/tuning"), send("/admin/assist")]);
+                v = draft = draft || tuning.values;
+                data.steps = assist.steps;
+            } catch (err) {
+                app.checkApiError(err);
+                data.message = { kind: "danger", text: errText(err) };
+            }
+            data.loading = false;
+        }
+
+        let input = null;
+        async function say() {
+            const text = input.value.trim();
+            if (!text || data.busy) return;
+            const s = step(), c = chat();
+            c.push({ role: "user", text });
+            input.value = "";
+            data.busy = true;
+            data.chatVersion++;
+            try {
+                // the first line is the step's question, which the helper asked: it goes along as the helper's turn
+                const out = await send("/admin/assist", { step: s.id, values: v, chat: c.map(({ role, text }) => ({ role, text })) });
+                out.edits.forEach((e) => put(e.field, e.value));
+                data.changed = Object.fromEntries(out.edits.map((e) => [e.field, true]));
+                c.push({ role: "assistant", text: out.reply,
+                    meta: [out.model, out.costUSD ? `$${out.costUSD.toFixed(4)}` : ""].filter(Boolean).join(" · ") });
+                if (out.edits.length) data.version++;
+            } catch (err) {
+                c.push({ role: "error", text: errText(err) });
+            }
+            data.busy = false;
+            data.chatVersion++;
+            setTimeout(() => input && input.focus(), 0);
+        }
+
+        async function next() {
+            data.saving = true;
+            data.message = null;
+            try {
+                const out = await send("/admin/tuning", { values: v });
+                v = draft = out.values;
+                if (data.at < data.steps.length - 1) data.at++;
+                else data.message = { kind: "success", text: "Saved. That's every step so far: the next ones (knowledge, research, the story) are coming." };
+                data.version++;
+                data.chatVersion++;
+            } catch (err) {
+                data.message = { kind: "danger", text: errText(err) };
+            }
+            data.saving = false;
+        }
+
+        function fieldsView() {
+            data.version; // redraw when the helper replaces a value
+            const s = step();
+            return t.div({ className: "grid" }, ...s.fields.map((f) => {
+                const long = f.path.startsWith("prompts.");
+                const attrs = { value: get(f.path) ?? "", onchange: (e) => put(f.path, e.target.value),
+                    className: data.changed[f.path] ? "storytime-changed" : "" };
+                const input = f.path === "site.title"
+                    ? t.input({ type: "text", ...attrs })
+                    : t.textarea({ rows: long ? 18 : 3, ...attrs,
+                        style: long ? "font-family: var(--monospaceFontFamily, monospace); font-size: 12px; line-height: 1.5;" : "" });
+                return t.div({ className: "col-lg-12" }, field(f.label, input, data.changed[f.path] ? "Just changed by the helper." : null));
+            }));
+        }
+
+        function chatView() {
+            data.chatVersion; // redraw on each turn
+            const lines = chat().map((m) => t.div({ className: `storytime-msg ${m.role}` },
+                t.div({ className: "storytime-bubble" }, m.text),
+                m.meta ? t.div({ className: "txt-hint txt-sm" }, m.meta) : null));
+            if (data.busy) lines.push(t.div({ className: "storytime-msg assistant" }, t.div({ className: "storytime-bubble" }, t.span({ className: "loader sm" }))));
+            const list = t.div({ className: "storytime-chat-list" }, ...lines);
+            setTimeout(() => { list.scrollTop = list.scrollHeight; }, 0);
+            return list;
+        }
+
+        function stepView() {
+            const s = step();
+            input = t.textarea({ rows: 3, placeholder: "Say what you want; Enter sends, Shift+Enter for a new line",
+                onkeydown: (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); say(); } } });
+            return t.div({ className: "grid" },
+                t.div({ className: "col-lg-12" },
+                    t.h4({ className: "m-b-xs" }, `Step ${data.at + 1} of ${data.steps.length}: ${s.title}`),
+                    t.p({ className: "txt-hint m-t-0" }, s.about, " Tell the helper what you want; it fills the fields, and you can edit them too. Nothing is saved until Next.")),
+                t.div({ className: "col-lg-7" }, fieldsView),
+                t.div({ className: "col-lg-5" },
+                    t.div({ className: "storytime-chat" },
+                        chatView,
+                        input,
+                        t.div({ className: "flex" },
+                            t.div({ className: "m-r-auto" }),
+                            t.button({ type: "button", className: () => `btn sm transparent ${data.busy ? "loading" : ""}`, disabled: () => data.busy, onclick: say },
+                                t.i({ className: "ri-send-plane-line", ariaHidden: true }), t.span({ className: "txt" }, "Send"))))),
+                () => data.message
+                    ? t.div({ className: "col-lg-12" }, t.div({ className: `alert ${data.message.kind}` }, t.div({ className: "content" }, data.message.text)))
+                    : null,
+                t.div({ className: "col-lg-12" }, t.hr()),
+                t.div({ className: "col-lg-12" },
+                    t.div({ className: "flex" },
+                        t.button({ type: "button", className: "btn transparent secondary", disabled: () => data.at === 0 || data.saving,
+                            onclick: () => { data.at--; data.message = null; data.chatVersion++; } }, t.span({ className: "txt" }, "Back")),
+                        t.div({ className: "m-r-auto" }),
+                        t.button({ type: "button", className: () => `btn expanded-lg ${data.saving ? "loading" : ""}`, disabled: () => data.saving || data.busy,
+                            onclick: next }, t.span({ className: "txt" }, "Save and next"), t.i({ className: "ri-arrow-right-line", ariaHidden: true })))),
+            );
+        }
+
+        load();
+        return t.div(
+            { className: "page page-storytime-settings" },
+            t.style(null, `
+                .storytime-chat { display: flex; flex-direction: column; gap: 10px; position: sticky; top: 10px; }
+                .storytime-chat-list { display: flex; flex-direction: column; gap: 10px; max-height: 60vh; overflow-y: auto; padding: 4px; }
+                .storytime-msg { display: flex; flex-direction: column; max-width: 90%; }
+                .storytime-msg.user { align-self: flex-end; align-items: flex-end; }
+                .storytime-bubble { padding: 8px 12px; border-radius: var(--baseRadius, 8px); background: var(--baseAlt1Color); white-space: pre-wrap; }
+                .storytime-msg.user .storytime-bubble { background: var(--primaryColor); color: var(--baseColor); }
+                .storytime-msg.error .storytime-bubble { background: var(--dangerAltColor); color: var(--dangerColor); }
+                .storytime-changed { box-shadow: 0 0 0 2px var(--successColor) inset; }
+            `),
+            sidebar(),
+            t.div(
+                { className: "page-content full-height" },
+                t.header({ className: "page-header" },
+                    t.nav({ className: "breadcrumbs" },
+                        t.div({ className: "breadcrumb-item" }, "Story Time"),
+                        t.div({ className: "breadcrumb-item" }, "Set up"))),
+                t.div({ className: "wrapper m-b-base" }, () => {
+                    data.at; // redraw on Next and Back
+                    if (data.loading) return t.div({ className: "block txt-center" }, t.span({ className: "loader lg" }));
+                    if (!v || !data.steps.length) return data.message
+                        ? t.div({ className: `alert ${data.message.kind}` }, t.div({ className: "content" }, data.message.text)) : null;
+                    return stepView();
+                }),
+                t.footer({ className: "page-footer" }, app.components.credits()),
+            ),
+        );
+    }
 
     function page(section) {
         app.store.title = `${section.title} · Story Time`;
