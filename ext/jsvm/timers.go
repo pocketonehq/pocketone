@@ -11,7 +11,8 @@ import (
 // the loop, where it runs as a task of its own (with a fresh TaskBudget and TaskWall). It belongs to the call that set
 // it (vm.cur), like an async Go call: it is dropped when that call is given up (the client went away, AwaitLimit) and
 // when the request the call served got its response. Timers set outside a call (module scope) belong to the VM and
-// run until cleared or the VM closes.
+// run until cleared or the VM closes. AbortSignal.timeout uses the same timers (afterEnd), which outlive the request's
+// response so background work can bound its calls; they still go when the call is given up.
 
 // maxTimerDelay is the longest delay, as in browsers and Node: a longer (or negative, or NaN) one runs as soon as it
 // can.
@@ -23,6 +24,9 @@ type jsTimer struct {
 	every time.Duration // 0 for setTimeout
 	owner *owner
 	t     *time.Timer
+	// afterEnd: the timer outlives the request its call served (AbortSignal.timeout); it is still dropped when the
+	// call is given up.
+	afterEnd bool
 }
 
 // timerBytes is what a pending timer is charged against MemoryLimit, beside what its callback holds in the JS heap.
@@ -55,6 +59,10 @@ func (vm *VM) installTimers() {
 }
 
 func (vm *VM) setTimer(name string, args []JSValue, repeat bool) JSValue {
+	return vm.setTimerOpts(name, args, repeat, false)
+}
+
+func (vm *VM) setTimerOpts(name string, args []JSValue, repeat, afterEnd bool) JSValue {
 	if len(args) == 0 || C.avm_is_function(vm.ctx, args[0]) == 0 {
 		return C.throwType(vm.ctx, name+": the callback must be a function")
 	}
@@ -62,7 +70,7 @@ func (vm *VM) setTimer(name string, args []JSValue, repeat bool) JSValue {
 	if err := o.cause(); err != nil {
 		return vm.throw(err) // the call this code runs for was given up: start nothing new
 	}
-	if o != nil && o.ended.Load() {
+	if o != nil && o.ended.Load() && !afterEnd {
 		return vm.throw(fmt.Errorf("%s: the request this code served has already been answered", name))
 	}
 	if len(vm.timers) >= vm.cfg.MaxTimers {
@@ -84,7 +92,7 @@ func (vm *VM) setTimer(name string, args []JSValue, repeat bool) JSValue {
 	}
 	d = max(d, time.Millisecond)
 
-	t := &jsTimer{fn: C.avm_dup(vm.ctx, args[0]), owner: o}
+	t := &jsTimer{fn: C.avm_dup(vm.ctx, args[0]), owner: o, afterEnd: afterEnd}
 	for _, a := range args[min(2, len(args)):] {
 		t.args = append(t.args, C.avm_dup(vm.ctx, a))
 	}
@@ -105,7 +113,7 @@ func (vm *VM) fireTimer(id int64) {
 	if t == nil {
 		return // cleared after it fired
 	}
-	if !t.owner.live() {
+	if !t.owner.live() && !(t.afterEnd && t.owner.cause() == nil) {
 		vm.dropTimer(id)
 		return
 	}
@@ -175,7 +183,7 @@ func (vm *VM) endRequest(o *owner) {
 	o.ended.Store(true)
 	clear := func() {
 		if vm.a != nil {
-			vm.clearTimers(func(t *jsTimer) bool { return t.owner == o })
+			vm.clearTimers(func(t *jsTimer) bool { return t.owner == o && !t.afterEnd })
 		}
 	}
 	if err := vm.Do(clear); errors.Is(err, ErrBusy) {
