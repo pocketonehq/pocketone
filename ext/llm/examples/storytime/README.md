@@ -101,16 +101,17 @@ the app's, added after it in code (`WRITE_RULES` in `_private/story.ts`), so the
 
 Step 2, **Try a story**, is a debugger for writing one. Pick a length (minutes, with the words that makes), the
 knowledge buckets to draw on (saved with **Save and next**), and a topic, or leave the topic empty for the app to pick
-one, and **Generate**: the story's text is written in the background, the
-way a listener's story is (no voice, pictures or music), and every step shows as it finishes, with what went in and
-what came out, word for word: picking the topic (every passage drawn at random, with its text and whether it was kept
-or why not, the ideas from the kept ones, the told stories nearest each, the pick and why), the knowledge search (every
-match with its text, and whether it went to the writer or why not), the writer's prompt piece by piece (preamble, fine-tuning, the rules the
-app adds, the request and knowledge) and its answer, the plain-words check and pronunciation,
-each with its model, time and cost. Then tell the helper what you'd change ("it reads file names out loud"): it reads
-the story and rewrites the **Fine-tuning** notes (`prompts.finetune`), which the writer gets right after the preamble.
+one, and **Generate**. Every step shows as it finishes, with what went in and what came out, word for word: picking the
+topic (every passage drawn at random, with its text and whether it was kept or why not, the ideas from the kept ones,
+the told stories nearest each, the pick and why), the knowledge search (every match with its text, and whether it went
+to the writer or why not), and the writer's call with its answer, each with its model, time and cost. This is the
+wizard's own workflow (`_private/trial.ts`), not the one listeners' stories take yet: the writer's system prompt is
+only the preamble and the fine-tuning, its prompt is the request ("Write a story about: …", and about how many words)
+with what the knowledge holds about it, and it answers `{title, body}`. No rules about the answer's shape, no
+plain-words or pronunciation passes: those come later, as steps of their own. Then tell the helper what you'd change
+("it reads file names out loud"): it reads the story and rewrites the **Fine-tuning** notes (`prompts.finetune`).
 Generate again to see the difference. A trial with no step finished in 3 minutes is reported as stalled. The later
-steps (knowledge sources, a research loop) are still to come.
+steps are still to come.
 
 **Story Time** in the PocketBase dashboard's top bar (`/_/`) holds what shapes the app: the front page's title and caption, the story lengths (shortest and longest, the default, the narrator's words per minute, pictures per minute, the most pictures), the narrator (voice,
 instructions, seed, speed), the writing, picture-choosing and Inspire me prompts, how words are said (**Pronunciation**), what's added to each picture and music

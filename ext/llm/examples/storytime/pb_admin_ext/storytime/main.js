@@ -276,13 +276,12 @@
             if (x.status === "failed") cards.push(t.div({ className: "alert danger" }, t.div({ className: "content" }, x.error)));
             const st = x.story;
             if (st) {
-                const words = st.sentences.join(" ").split(/\s+/).filter(Boolean).length;
+                const words = st.body.split(/\s+/).filter(Boolean).length;
+                const asked = Math.round(x.minutes * v.length.wordsPerMinute);
                 cards.push(t.div({ className: "storytime-step storytime-story" },
                     t.h5({ className: "m-b-xs" }, st.title),
-                    t.div({ className: "txt-hint txt-sm m-b-sm" }, `${st.topic} · ${words} words · ${x.minutes} min asked · ${usd(x.costUSD)} in all`),
-                    ...st.sentences.map((line) => t.p({ className: "m-b-xs" }, line)),
-                    t.div({ className: "txt-hint txt-sm m-t-sm" }, `Pictures: ${st.look}`),
-                    st.say && st.say.length ? t.div({ className: "txt-hint txt-sm" }, `Said: ${st.say.map((w) => `${w.term} → ${w.spoken}`).join(", ")}`) : null));
+                    t.div({ className: "txt-hint txt-sm m-b-sm" }, `${words} words (about ${asked} asked) · ${usd(x.costUSD)} in all`),
+                    ...st.body.split(/\n\s*\n/).map((para) => t.p({ className: "m-b-sm", style: "white-space: pre-wrap;" }, para.trim()))));
             }
             return t.div(null, ...cards);
         }
