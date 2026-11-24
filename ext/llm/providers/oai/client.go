@@ -14,7 +14,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // Client calls one OpenAI-compatible endpoint. BaseURL includes the version path, like https://api.openai.com/v1.
@@ -23,11 +22,12 @@ type Client struct {
 	Key     string
 	// Header is added to every request (attribution headers, for example).
 	Header http.Header
-	// HTTP defaults to a client with a 5-minute timeout.
+	// HTTP defaults to http.DefaultClient's transport with no overall timeout: a call lasts as long as its context
+	// allows, so a long answer that keeps streaming isn't cut off. Callers bound every call with a context deadline.
 	HTTP *http.Client
 }
 
-var defaultHTTP = &http.Client{Timeout: 5 * time.Minute}
+var defaultHTTP = &http.Client{}
 
 // Error is a failed call: the HTTP status and the provider's message, from an OpenAI-style error envelope when there
 // is one.
@@ -37,7 +37,12 @@ type Error struct {
 	Message string
 	// Body is the start of the raw response body.
 	Body string
+	// Err is the transport or read error behind it, if any: errors.Is sees context.Canceled and
+	// context.DeadlineExceeded through it.
+	Err error
 }
+
+func (e *Error) Unwrap() error { return e.Err }
 
 func (e *Error) Error() string {
 	if e.Status == 0 {
@@ -75,7 +80,7 @@ func (c *Client) Request(ctx context.Context, method, path string, body io.Reade
 	}
 	res, err := hc.Do(req)
 	if err != nil {
-		return nil, &Error{Message: "no answer from " + req.URL.Host + ": " + err.Error()}
+		return nil, &Error{Message: "no answer from " + req.URL.Host + ": " + err.Error(), Err: err}
 	}
 	if res.StatusCode >= 300 {
 		defer res.Body.Close()
@@ -106,7 +111,7 @@ func (c *Client) JSON(ctx context.Context, method, path string, in, out any) err
 	}
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 64<<20))
 	if err != nil {
-		return &Error{Status: res.StatusCode, Message: "reading the answer: " + err.Error()}
+		return &Error{Status: res.StatusCode, Message: "reading the answer: " + err.Error(), Err: err}
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
 		return &Error{Status: res.StatusCode, Message: "the answer isn't the JSON expected: " + err.Error(), Body: clip(string(raw), 300)}

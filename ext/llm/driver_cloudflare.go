@@ -57,15 +57,15 @@ func (d *cloudflareDriver) models(ctx context.Context) ([]llmc.ModelInfo, error)
 
 func (d *cloudflareDriver) complete(ctx context.Context, model string, in textv1.CompleteInput, onDelta func(string, string) bool) (textv1.CompleteResult, error) {
 	req := chatRequest(model, in, reasoningEffort)
-	if onDelta != nil && req.ResponseFormat != nil {
+	if req.ResponseFormat != nil {
 		// Workers AI's JSON mode doesn't stream: answer whole, then send it as one piece
-		r, err := chatComplete(ctx, d.c, req, nil)
-		if err == nil {
+		r, err := chatWhole(ctx, d.c, req)
+		if err == nil && onDelta != nil {
 			onDelta(r.Text, r.Reasoning)
 		}
 		return r, err
 	}
-	return chatComplete(ctx, d.c, req, onDelta)
+	return chatComplete(ctx, d.c, req, idleText(TypeCloudflare), onDelta)
 }
 
 func (d *cloudflareDriver) image(ctx context.Context, model string, in imagev1.GenerateInput) (imagev1.Result, error) {

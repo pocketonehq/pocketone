@@ -100,8 +100,23 @@ try {
 | `unknown_model` | No model named, or no provider by that name. |
 | `not_supported` | That kind of provider doesn't do this (music on Cloudflare, say). |
 | `provider` | The provider said no: a wrong key, no credits, a model it doesn't have. Its message is kept, with your provider's name in front. |
-| `timeout` | The provider didn't answer in time. |
+| `timeout` | The provider didn't answer in time, and the request was cancelled. The message names the model and what ran out. Worth a retry. |
 | `limit` | A limit refused the call before it reached the provider: one in Settings → LLM or your own ([Limits](guides/limits.md)). |
+
+### Time limits
+
+A provider sometimes drops a request and never answers. Calls don't wait on one for long:
+
+- **Text** is always streamed from the provider, even from `completeAsync`, so a stalled answer is spotted as soon as
+  the provider goes quiet: after 10 seconds with nothing from Vultr or OpenRouter (both send something every second
+  while a model works, thinking included), 30 from Cloudflare, 2 minutes from other OpenAI-compatible APIs (OpenAI
+  sends nothing while its reasoning models think, and a local server may take a while to read a long prompt).
+- **Every call** also has an overall limit: 10 minutes for text, 3 for a picture, 2 for speech or alignment, 5 for a
+  transcription, 1 for embeddings or starting a music or video job (following one with `wait` has its own limit).
+
+Either one cancels the request and throws with code `timeout`: `vultr/glm-5.3: the provider sent nothing for 10s, so
+the call was cancelled`, or `...: no answer in 3m0s, so the call was cancelled`. Go code wanting less passes a context
+with an earlier deadline.
 
 ## Costs
 

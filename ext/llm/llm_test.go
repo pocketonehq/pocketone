@@ -71,7 +71,11 @@ func (f *fakeCloud) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/v1/chat/completions":
 		if body["stream"] == true {
 			w.Header().Set("Content-Type", "text/event-stream")
-			for _, p := range []string{"Hel", "lo"} {
+			pieces := []string{"Hel", "lo"}
+			if body["response_format"] != nil {
+				pieces = []string{`{\"label\":`, `\"billing\"}`}
+			}
+			for _, p := range pieces {
 				_, _ = io.WriteString(w, `data: {"choices":[{"delta":{"content":"`+p+`"}}]}`+"\n\n")
 			}
 			_, _ = io.WriteString(w, `data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2}}`+"\n\ndata: [DONE]\n\n")
