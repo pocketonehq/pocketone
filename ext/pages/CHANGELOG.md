@@ -7,6 +7,8 @@ Sections named after a PocketOne release are from before extensions had versions
 
 ## Unreleased
 
+## 0.2.0 (2026-11-24)
+
 ### Added
 
 - `ctx.realtime.subscribe(topic, { filter, expand, fields }?)` in the `realtime` plugin: an `async` route listens to

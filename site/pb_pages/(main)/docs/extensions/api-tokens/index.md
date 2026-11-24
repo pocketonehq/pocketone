@@ -7,7 +7,7 @@ source: "ext/api-tokens/README.md"
 
 # API Tokens
 
-Version 0.2.1 · Owners: [@benallfree](https://github.com/benallfree)
+Version 0.3.0 · Owners: [@benallfree](https://github.com/benallfree)
 
 > Walkthrough for app owners: [API tokens](https://pocketone.dev/docs/features/tokens). This page is the technical reference.
 

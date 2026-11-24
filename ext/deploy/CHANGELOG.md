@@ -7,6 +7,8 @@ Sections named after a PocketOne release are from before extensions had versions
 
 ## Unreleased
 
+## 0.2.1 (2026-11-24)
+
 ### Fixed
 
 - A deploy whose runtime can't say whether the instance is running fails with that error, instead of applying the files without the restart it asked for.

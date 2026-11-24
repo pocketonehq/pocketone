@@ -7,7 +7,7 @@ source: "ext/pages/README.md"
 
 # Pages
 
-Version 0.1.2 · Owners: [@benallfree](https://github.com/benallfree)
+Version 0.2.0 · Owners: [@benallfree](https://github.com/benallfree)
 
 > Walkthrough for app owners: [PocketOne apps](https://pocketone.dev/docs/features/sites). This page is the technical reference.
 

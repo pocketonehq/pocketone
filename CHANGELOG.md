@@ -43,25 +43,18 @@ every extension that got a new version, with a link to its changes. Upstream Poc
 
 ## Unreleased
 
-### Changed
-
-- The Story Time (Bedtime Story) example app is no longer in the repository or the docs' example apps.
-
-### Fixed
-
-- Realtime messages reach each subscriber in the order they were sent: two quick changes to the same record could arrive swapped, so a client could end on the stale one.
-- A realtime client that disconnects no longer races the messages still being sent to it.
-
-## v0.0.1-alpha.13 (2026-11-22)
+## v0.0.1-alpha.13 (2026-11-24)
 
 ### Highlights
 
-- **LLM replaces Agent.** Your app calls cloud models on your own keys: text, pictures, speech, transcription, music, video and embeddings, from Vultr, Cloudflare Workers AI, OpenRouter or any OpenAI-compatible API. Add providers in Settings → LLM, then `await $llm.text.completeAsync({ model: "vultr/glm-5.3", prompt })` in page code. Calls run off the JS VM, and every result says what it cost ([AI in your app](https://pocketone.dev/docs/extensions/llm)). Agent and its built-in model are gone (see Upgrading).
-- **Two example apps, live.** [Docs Chat](https://learn.pocketone.dev) answers questions from the PocketOne and PocketBase docs, and [Bedtime Story](https://sleep.pocketone.dev) tells one topic slowly, read aloud with pictures and music. Both are plain PocketOne apps on `$llm`, walked through in the new [Example apps](https://pocketone.dev/docs/examples) section.
-- **Long async handlers.** A route, hook or cron job may now await for up to 15 minutes in all (`await_time` in `pocketone.yaml`'s `app: js_limits:`), where before a handler waiting over 30 seconds timed out. A handler whose client went away now stops ([JSVM](ext/jsvm/CHANGELOG.md)).
+- **LLM replaces Agent.** Your app calls cloud models on your own keys: text, pictures, speech, transcription, music, video and embeddings, from Vultr, Cloudflare Workers AI, OpenRouter or any OpenAI-compatible API. Add providers in Settings → LLM, then `await $llm.text.completeAsync({ model: "vultr/glm-5.3", prompt })` in page code. Every result says what it cost, every call is recorded, and limits in Settings → LLM (whole app, each user, each guest) stop a bill before it happens. Voice cloning and reference images are in too ([AI in your app](https://pocketone.dev/docs/extensions/llm)). Agent and its built-in model are gone (see Upgrading).
+- **New: LLM Search.** Named buckets of your app's content (files, folders, zips, web pages, Git repositories, collections) searched by meaning and keywords, and `enrich: ["help"]` on a completion or chat sends the best passages with the question. The new `ask` starter kit builds on it: `pocketone pages create mydocs --starter ask` ([LLM Search](ext/llm-search/README.md)).
+- **Pages routes go by file extension, like PHP.** `about.ts` beside `about.ets` is that page's code, and a `.ts` with no template is an endpoint; `+page.ts` and `+api.ts` are gone (see Upgrading). Async routes can wait up to 15 minutes, `setTimeout` and friends work, and `ctx.realtime.subscribe()` streams record changes to the visitor with the collection's rules applied ([Pages](ext/pages/CHANGELOG.md)).
+- **New: Key-Value Store.** `$kv.get/set/delete/list` keeps named JSON values without a collection or a migration, on by default ([Key-Value Store](ext/kv/README.md)).
 
 ### Upgrading
 
+- Pages, API Tokens, LLM Chat and Remotes have upgrade steps of their own: see each one's changelog under Extensions below. In Pages, rename each `+page.ts` to the name of the page it serves (`products/[id]/+page.ts` beside `index.ets` becomes `products/[id]/index.ts`) and each `+api.ts` to `<folder>.ts` beside its folder.
 - Agent is replaced by [LLM](ext/llm/README.md): add your providers (Vultr, Cloudflare Workers AI, OpenRouter, or any OpenAI-compatible API) in Settings → LLM, then change `$agent.complete(opts)` to `await $llm.text.completeAsync({ model: "<provider>/<model>", ...opts })` in an async handler (every `$llm` call that reaches a provider is async). The built-in model, `pocketone.yaml`'s `agent:` section and a multisite host's shared model are gone. Agent Chat is now [LLM Chat](ext/llm-chat/CHANGELOG.md) (`$llm.chat`).
 
 ### Added
@@ -72,16 +65,30 @@ every extension that got a new version, with a link to its changes. Upstream Poc
 
 - PocketPages is now just Pages, a feature of every PocketOne app: the docs, starter kits and `pocketone pages create` say "PocketOne app" (a new app's title and heading read PocketOne). The `pocketpages` Agent Skill is folded into the `pocketone` skill (`pages.md`); reinstall the plugin to drop the old skill.
 
+### Fixed
+
+- Realtime messages reach each subscriber in the order they were sent: two quick changes to the same record could arrive swapped, so a client could end on the stale one.
+- A realtime client that disconnects no longer races the messages still being sent to it.
+
 ### Extensions
 
-- [Config](ext/config/CHANGELOG.md#011-2026-11-22) 0.1.0 → 0.1.1
-- [JSVM](ext/jsvm/CHANGELOG.md#013-2026-11-22) 0.1.2 → 0.1.3
-- [LLM](ext/llm/CHANGELOG.md#001-2026-11-22) 0.0.1 (new)
-- [LLM Chat](ext/llm-chat/CHANGELOG.md#010-2026-11-22) 0.0.2 → 0.1.0 (has upgrade steps)
-- [Pocker](ext/pocker/CHANGELOG.md#013-2026-11-22) 0.1.2 → 0.1.3
-- [Sandbox](ext/sandbox/CHANGELOG.md#004-2026-11-22) 0.0.3 → 0.0.4
-- [Standard Set](ext/standard/CHANGELOG.md#013-2026-11-22) 0.1.2 → 0.1.3
-- [Upgrade](ext/upgrade/CHANGELOG.md#004-2026-11-22) 0.0.3 → 0.0.4
+- [API Tokens](ext/api-tokens/CHANGELOG.md#030-2026-11-24) 0.2.1 → 0.3.0 (has upgrade steps)
+- [Bulk Mail](ext/bulkmail/CHANGELOG.md#001-2026-11-24) 0.0.1
+- [Config](ext/config/CHANGELOG.md#011-2026-11-24) 0.1.0 → 0.1.1
+- [Deploy](ext/deploy/CHANGELOG.md#021-2026-11-24) 0.2.0 → 0.2.1
+- [Firewall](ext/firewall/CHANGELOG.md#001-2026-11-24) 0.0.1
+- [JSVM](ext/jsvm/CHANGELOG.md#013-2026-11-24) 0.1.2 → 0.1.3
+- [Key-Value Store](ext/kv/CHANGELOG.md#001-2026-11-24) 0.0.1 (new)
+- [LLM](ext/llm/CHANGELOG.md#001-2026-11-24) 0.0.1 (new)
+- [LLM Chat](ext/llm-chat/CHANGELOG.md#010-2026-11-24) 0.0.2 → 0.1.0 (has upgrade steps)
+- [LLM Search](ext/llm-search/CHANGELOG.md#010-2026-11-24) 0.1.0 (new)
+- [Multisite](ext/multisite/CHANGELOG.md#011-2026-11-24) 0.1.0 → 0.1.1
+- [Pages](ext/pages/CHANGELOG.md#020-2026-11-24) 0.1.2 → 0.2.0 (has upgrade steps)
+- [Pocker](ext/pocker/CHANGELOG.md#013-2026-11-24) 0.1.2 → 0.1.3
+- [Remotes](ext/remotes/CHANGELOG.md#010-2026-11-24) 0.0.2 → 0.1.0 (has upgrade steps)
+- [Sandbox](ext/sandbox/CHANGELOG.md#004-2026-11-24) 0.0.3 → 0.0.4
+- [Standard Set](ext/standard/CHANGELOG.md#013-2026-11-24) 0.1.2 → 0.1.3
+- [Upgrade](ext/upgrade/CHANGELOG.md#004-2026-11-24) 0.0.3 → 0.0.4
 
 ## v0.0.1-alpha.12 (2026-11-21)
 

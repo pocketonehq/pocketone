@@ -6,6 +6,8 @@ renames the section to that version ([Changelogs](../../docs/extensions.md#chang
 
 ## Unreleased
 
+## 0.1.1 (2026-11-24)
+
 ### Added
 
 - A source that doesn't hold every instance can answer hostnames itself: with an instance.lookup/v1 provider on the host, every request's hostname is looked up there (404 not found, 503 when the answer isn't known). `multisite.Provides` is a host extension that only provides contracts.

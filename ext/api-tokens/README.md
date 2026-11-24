@@ -1,6 +1,6 @@
 ---
 owners: ["@benallfree"]
-version: 0.2.1
+version: 0.3.0
 title: "API Tokens"
 group: binary
 summary: "Long-lived API tokens with scopes."

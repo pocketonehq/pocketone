@@ -7,7 +7,7 @@ source: "ext/remotes/README.md"
 
 # Remotes
 
-Version 0.0.2 · Owners: [@benallfree](https://github.com/benallfree)
+Version 0.1.0 · Owners: [@benallfree](https://github.com/benallfree)
 
 > Walkthrough for app owners: [Remote CLI](https://pocketone.dev/docs/features/remote). This page is the technical reference.
 

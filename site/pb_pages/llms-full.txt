@@ -14176,7 +14176,7 @@ Source: https://pocketone.dev/docs/extensions/api-tokens
 
 # API Tokens
 
-Version 0.2.1 · Owners: [@benallfree](https://github.com/benallfree)
+Version 0.3.0 · Owners: [@benallfree](https://github.com/benallfree)
 
 > Walkthrough for app owners: [API tokens](https://pocketone.dev/docs/features/tokens). This page is the technical reference.
 
@@ -15972,7 +15972,7 @@ Source: https://pocketone.dev/docs/extensions/deploy
 
 # Deploy
 
-Version 0.2.0 · Owners: [@benallfree](https://github.com/benallfree)
+Version 0.2.1 · Owners: [@benallfree](https://github.com/benallfree)
 
 > Walkthrough for app owners: [Deploy and live sync](https://pocketone.dev/docs/features/deploy). This page is the technical reference.
 
@@ -18067,7 +18067,7 @@ Source: https://pocketone.dev/docs/extensions/pages/extension
 
 # Pages
 
-Version 0.1.2 · Owners: [@benallfree](https://github.com/benallfree)
+Version 0.2.0 · Owners: [@benallfree](https://github.com/benallfree)
 
 > Walkthrough for app owners: [PocketOne apps](https://pocketone.dev/docs/features/sites). This page is the technical reference.
 
@@ -19232,7 +19232,7 @@ Source: https://pocketone.dev/docs/extensions/remotes
 
 # Remotes
 
-Version 0.0.2 · Owners: [@benallfree](https://github.com/benallfree)
+Version 0.1.0 · Owners: [@benallfree](https://github.com/benallfree)
 
 > Walkthrough for app owners: [Remote CLI](https://pocketone.dev/docs/features/remote). This page is the technical reference.
 
@@ -21675,7 +21675,7 @@ Source: https://pocketone.dev/docs/extensions/multisite
 
 # Multisite
 
-Version 0.1.0 · Owners: [@benallfree](https://github.com/benallfree)
+Version 0.1.1 · Owners: [@benallfree](https://github.com/benallfree)
 
 > Walkthrough: [PocketBase isolates](https://pocketone.dev/docs/features/isolates). This page is the technical reference.
 

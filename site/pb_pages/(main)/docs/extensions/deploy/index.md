@@ -7,7 +7,7 @@ source: "ext/deploy/README.md"
 
 # Deploy
 
-Version 0.2.0 · Owners: [@benallfree](https://github.com/benallfree)
+Version 0.2.1 · Owners: [@benallfree](https://github.com/benallfree)
 
 > Walkthrough for app owners: [Deploy and live sync](https://pocketone.dev/docs/features/deploy). This page is the technical reference.
 
