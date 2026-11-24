@@ -96,7 +96,7 @@ while a model works; there are no blocking versions to reach for. Each call name
 | `$llm.music.createAsync({ model, prompt, lyrics?, seconds?, wait? })`, `getAsync(id)`, `contentAsync(id, index)` | Music, as a job (below). |
 | `$llm.video.createAsync({ model, prompt, image?, seconds?, size?, aspectRatio?, wait? })`, `getAsync(id)`, `contentAsync(id, index)` | Video, as a job. |
 | `$llm.embed.embedAsync({ model, input, dimensions? })` | One vector per text: `{ vectors, model, usage }`. |
-| `$llm.<kind>.modelsAsync({ provider? })` | The models your providers offer of that kind, with prices where the provider lists them. |
+| `$llm.<kind>.modelsAsync({ provider? })` | The models your providers offer of that kind, with their prices, size, features and languages where known (below). |
 | `$llm.file(file)`, `$llm.fileAsync(file)` | A generated file as a PocketBase file, for `record.set("field", ...)`; `fileAsync` also downloads one the provider gave only a URL for. |
 | `$llm.fromRecord(record, field)` | The other way: a record's stored file as a file with its bytes, to send to a model (a voice clip, audio to transcribe). |
 | `$llm.chat.*` | Stored conversations, from the [LLM Chat](../llm-chat/README.md) extension. |
@@ -120,6 +120,23 @@ resolves once the job is done, its `files` included. The id names the provider
 whole number on every answer of every kind: what the provider charged when it says (OpenRouter on every call, Vultr for
 media), else worked out from the model's listed prices and what the call used (tokens, cached tokens, pictures,
 seconds, characters), with `usage.costEstimated` true, else `0` (free, or no prices it can count).
+
+**Models and prices:** each model in a `models` answer carries what its provider says about it: `contextTokens`,
+`size` ("27B", "30B (3B active)"), `features` (`tools`, `structured output`, `vision`, `audio input`, `voice cloning`,
+`voice design`, `built-in voices`, `lyrics`), `languages`, and `prices`. A price is a rate on one meter, in US dollars
+per `unit`, and every provider's are given in the same units: `1M input tokens`, `1M output tokens`,
+`1M cached input tokens`, `second` (of audio or video made, or read), `megapixel`, `image`, `1K characters` (read
+aloud), `request`. Its `source` is `listed` (the provider's own list) or `measured`: what this app's calls to the model
+were actually billed, from the ledger, over `calls` calls (text in `1M tokens`, in and out together, since a bill
+doesn't split them; pictures per `request`). Costs worked out from listed prices never count toward a measured one.
+No prices means the price isn't known. Extras a call may not use (web search, cache writes, images sent in) aren't
+listed, and a model with a price in a unit that can't be put in these (per inference step) lists none rather than
+look cheaper than it is.
+
+Settings → LLM lists every model of each kind across your providers under **Models**, searchable and cheapest first.
+Other dashboard screens use the same pieces through `window.pocketone.llm`: `select({ kind, value, onchange })` is a
+searchable dropdown of a kind's models with their prices (Story Time's settings use it), `browser({ kinds?, kind? })`
+the whole list, and `models(kind)`, `prices(model)`, `priceText(model)` and `rank(model)` the data underneath.
 
 **Errors** have a code: `not_configured` (no providers yet), `unknown_model` (no model named, or no provider by that
 name), `not_supported` (that provider type doesn't do this kind), `provider` (the provider's own error, its message

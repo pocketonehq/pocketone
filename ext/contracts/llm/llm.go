@@ -69,13 +69,53 @@ func MicroUSD(usd *float64) int64 {
 	return int64(math.Round(*usd * 1e6))
 }
 
-// Price is one of a model's listed prices: USD per Unit ("1M input tokens", "image", "second", "1M characters").
+// Price is one of a model's prices: USD per Unit, one of the Unit constants. A price is a rate on one meter of a call;
+// a model may list several (input and output tokens), and a call's cost is each meter's use times its rate, added up.
 type Price struct {
 	Unit string  `json:"unit"`
 	USD  float64 `json:"usd"`
+	// Source is where the price comes from: "listed" (the provider's own model list; also when empty) or "measured"
+	// (what this app's calls to the model were billed, from the ledger: cost divided by what they used).
+	Source string `json:"source,omitempty"`
+	// Calls is, for a measured price, how many billed calls it was measured over.
+	Calls int `json:"calls,omitempty"`
 }
 
-// ModelInfo is one model, as each contract's models operation lists it.
+// The units a Price is in. Every provider's prices are given in these, so prices compare across providers.
+const (
+	UnitInputTokens  = "1M input tokens"
+	UnitCachedTokens = "1M cached input tokens" // input tokens served from the provider's prompt cache
+	UnitOutputTokens = "1M output tokens"       // reasoning tokens count as output
+	// UnitTokens is input and output tokens together: the unit of a text model's measured price, since a call's bill
+	// doesn't say how much was for input and how much for output.
+	UnitTokens     = "1M tokens"
+	UnitSecond     = "second" // of audio or video made (speech, music, video) or read (transcribe, align)
+	UnitMegapixel  = "megapixel"
+	UnitImage      = "image"
+	UnitCharacters = "1K characters" // of text read aloud
+	UnitRequest    = "request"       // one call, whatever it used
+)
+
+// Price sources.
+const (
+	SourceListed   = "listed"
+	SourceMeasured = "measured"
+)
+
+// Features a model has, as ModelInfo.Features lists them (a model that thinks before answering is Reasoning instead).
+const (
+	FeatureTools        = "tools"             // calls functions the caller defines
+	FeatureStructured   = "structured output" // answers in a JSON schema
+	FeatureVision       = "vision"            // reads images
+	FeatureAudioInput   = "audio input"       // reads audio
+	FeatureVoiceCloning = "voice cloning"     // speaks in the voice of a reference clip
+	FeatureVoiceDesign  = "voice design"      // speaks in a voice described in words
+	FeatureVoices       = "built-in voices"   // has named voices to pick from
+	FeatureLyrics       = "lyrics"            // sings given lyrics
+)
+
+// ModelInfo is one model, as each contract's models operation lists it. Every field past Kinds is optional: a provider
+// fills what it says about the model, and nothing is guessed.
 type ModelInfo struct {
 	ID       string   `json:"id"`       // "provider/model", what a call names
 	Provider string   `json:"provider"` // the provider's name in Settings → LLM
@@ -84,10 +124,19 @@ type ModelInfo struct {
 	Kinds    []string `json:"kinds"`
 	Inputs   []string `json:"inputs,omitempty"` // what it reads: text, image, audio...
 	// Reasoning is true for a model that thinks before answering (its thinking counts toward maxTokens).
-	Reasoning     bool    `json:"reasoning,omitempty"`
-	ContextTokens int     `json:"contextTokens,omitempty"`
-	Prices        []Price `json:"prices,omitempty"`
-	Description   string  `json:"description,omitempty"`
+	Reasoning     bool `json:"reasoning,omitempty"`
+	ContextTokens int  `json:"contextTokens,omitempty"`
+	// Prices are its listed prices, then the prices measured from this app's own calls, each marked by Source. None
+	// means its price isn't known.
+	Prices      []Price `json:"prices,omitempty"`
+	Description string  `json:"description,omitempty"`
+	// Size is how many parameters it has, as its maker names it: "1.7B", "27B", "30B (3B active)" for a
+	// mixture of experts.
+	Size string `json:"size,omitempty"`
+	// Features are what it can do beyond its kind, from the Feature constants.
+	Features []string `json:"features,omitempty"`
+	// Languages are the languages it speaks, writes or hears (ISO 639-1 codes), when the provider lists them.
+	Languages []string `json:"languages,omitempty"`
 }
 
 // Models is a models operation's answer.

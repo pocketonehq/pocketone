@@ -10,7 +10,17 @@ type LlmUsage = { inputTokens?: number; outputTokens?: number; cachedTokens?: nu
 
 type LlmModels = {
   models: { id: string; provider: string; type: string; name?: string; kinds: string[]; inputs?: string[]; reasoning?: boolean;
-    contextTokens?: number; prices?: { unit: string; usd: number }[]; description?: string }[]
+    contextTokens?: number;
+    /** USD per unit ("1M input tokens", "1M output tokens", "1M cached input tokens", "1M tokens", "second", "megapixel",
+     * "image", "1K characters", "request"): listed by the provider, or measured from this app's billed calls (calls: how
+     * many). None: the price isn't known. */
+    prices?: { unit: string; usd: number; source?: "listed" | "measured"; calls?: number }[]; description?: string;
+    /** parameters, as its maker names them: "1.7B", "30B (3B active)" */
+    size?: string;
+    /** "tools", "structured output", "vision", "audio input", "voice cloning", "voice design", "built-in voices", "lyrics" */
+    features?: string[];
+    /** ISO 639-1 codes */
+    languages?: string[] }[]
 }
 
 type LlmJob = { id: string; status: "queued" | "running" | "done" | "failed"; progress?: number; files?: LlmFile[]; outputs?: number; error?: string; model: string; usage: LlmUsage }

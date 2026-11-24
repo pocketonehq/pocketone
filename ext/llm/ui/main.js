@@ -2,6 +2,177 @@
 // each with its endpoint and key, and the limits every call passes first. Loaded as a UI extension (/_/extensions/llm/main.js). A view over llm's settings/v1
 // section, built from the stock settings pages' pieces (accordions, fields with help under them, the save footer).
 (() => {
+    // window.pocketone.llm: models and their prices for any dashboard screen (this one's model browser, an app's own
+    // settings screen). Prices come in the llm contracts' units; each is shown in its kind's own unit (text per million
+    // tokens, audio per minute, pictures per picture or megapixel) with where it comes from: listed by the provider,
+    // measured from this app's billed calls, or unknown.
+    const llm = {};
+    const cache = {}; // kind → promise of its models, for this page load
+    llm.KINDS = ["text", "image", "speech", "transcribe", "align", "music", "video", "embed"];
+    llm.KIND_LABELS = { text: "Text", image: "Pictures", speech: "Speech", transcribe: "Transcription", align: "Word timing",
+        music: "Music", video: "Video", embed: "Embeddings" };
+
+    // models is every model of kind across the providers in Settings → LLM (cached for the page; fresh: ask again).
+    llm.models = (kind, fresh) => {
+        if (fresh || !cache[kind]) {
+            cache[kind] = app.pb.send(`/api/_c/llm.${kind}/v1/models`, { requestKey: null })
+                .then((r) => r.models || [])
+                .catch((err) => { delete cache[kind]; throw err; });
+        }
+        return cache[kind];
+    };
+
+    // usd formats dollars with as many digits as a small price needs.
+    llm.usd = (n) => {
+        if (!n) return "$0";
+        if (n >= 1) return "$" + n.toFixed(2);
+        if (n >= 0.01) return "$" + n.toFixed(3);
+        return "$" + Number(n.toPrecision(2)).toString();
+    };
+
+    const listed = (m, unit) => (m.prices || []).find((p) => p.unit === unit && p.source !== "measured");
+    const measured = (m) => (m.prices || []).find((p) => p.source === "measured");
+    const per = { second: [60, "min"], megapixel: [1, "megapixel"], image: [1, "picture"], "1K characters": [1, "1K characters"],
+        request: [1, "call"], "1M tokens": [1, "1M tokens"], "1M input tokens": [1, "1M input tokens"],
+        "1M output tokens": [1, "1M output tokens"], "1M cached input tokens": [1, "1M cached input tokens"] };
+    const one = (p) => { const [k, u] = per[p.unit] || [1, p.unit]; return `${llm.usd(p.usd * k)}/${u}`; };
+
+    // prices is a model's prices as short lines: { text, source, calls }. Text models put input and output on one line.
+    llm.prices = (m) => {
+        const out = [];
+        const inP = listed(m, "1M input tokens"), outP = listed(m, "1M output tokens");
+        if (inP || outP) {
+            out.push({ source: "listed", text: [inP ? `${llm.usd(inP.usd)} in` : null, outP ? `${llm.usd(outP.usd)} out` : null]
+                .filter(Boolean).join(" · ") + " per 1M tokens" });
+        }
+        for (const p of m.prices || []) {
+            if (p.source === "measured" || ["1M input tokens", "1M output tokens", "1M cached input tokens"].includes(p.unit)) continue;
+            out.push({ source: "listed", text: one(p) });
+        }
+        const mp = measured(m);
+        if (mp) out.push({ source: "measured", calls: mp.calls, text: `${one(mp)} measured over ${mp.calls} call${mp.calls === 1 ? "" : "s"}` });
+        return out;
+    };
+
+    // priceText is a model's prices on one line, or "price unknown".
+    llm.priceText = (m) => llm.prices(m).map((p) => p.text).join("; ") || "price unknown";
+
+    // rank is a number to sort a kind's models by price (cheapest first; unknown is Infinity): what its main meter costs,
+    // listed if the provider lists it, else measured. Tokens are mixed three in to one out, as a typical call reads more
+    // than it writes.
+    llm.rank = (m) => {
+        const mp = measured(m);
+        const pick = (...units) => { for (const u of units) { const p = listed(m, u); if (p) return p.usd; } return null; };
+        const inP = listed(m, "1M input tokens"), outP = listed(m, "1M output tokens");
+        if (inP && outP) return (3 * inP.usd + outP.usd) / 4;
+        let v = pick("1M output tokens", "1M input tokens", "second", "image", "megapixel", "1K characters", "request");
+        if (v == null && mp) v = mp.usd;
+        return v == null ? Infinity : v;
+    };
+
+    // label is what a model is called: its name, else its id.
+    llm.label = (m) => m.name || m.id.slice(m.id.indexOf("/") + 1);
+
+    // select is a searchable dropdown of kind's models, each with its prices and a line of its description; value() is
+    // the chosen provider/model and onchange(id) gets a new one. A value no provider lists (a provider not reachable
+    // now) stays as it is.
+    llm.select = ({ kind, value, onchange, required = true }) => {
+        const state = store({ models: null, error: "", value: value() });
+        llm.models(kind).then((ms) => { state.models = ms.slice().sort((a, b) => llm.rank(a) - llm.rank(b) || a.id.localeCompare(b.id)); })
+            .catch((err) => { state.error = err?.response?.message || err?.message || String(err); state.models = []; });
+        return t.div({ className: "llm-model-select" }, () => {
+            const current = state.value;
+            const ms = state.models || [];
+            const options = ms.map((m) => ({
+                value: m.id,
+                selected: m.id,
+                label: () => t.div({ className: "llm-model-option" },
+                    t.div(null, t.strong(null, llm.label(m)), " ", t.span({ className: "txt-hint" }, m.id)),
+                    t.div({ className: "txt-sm" }, llm.priceText(m), m.size ? ` · ${m.size}` : ""),
+                    m.description ? t.div({ className: "txt-sm txt-hint llm-model-desc" }, m.description) : null),
+            }));
+            if (current && !ms.some((m) => m.id === current)) options.unshift({ value: current, label: current });
+            return app.components.select({
+                required, searchThreshold: 0, placeholder: state.models ? "- Select a model -" : "Loading models…",
+                options: () => options, value: () => state.value,
+                onchange: (sel) => { if (sel?.[0] && sel[0].value !== state.value) { state.value = sel[0].value; onchange(sel[0].value); } },
+            });
+        }, () => (state.error ? t.div({ className: "field-help txt-danger" }, state.error) : null));
+    };
+
+    // browser is every model across the providers, by kind: search, sort by price or name, with each one's size,
+    // features, prices and description.
+    llm.browser = ({ kinds = llm.KINDS, kind = kinds[0] } = {}) => {
+        const state = store({ kind, models: null, error: "", search: "", sort: "price", limit: 100 });
+        const load = (fresh) => {
+            state.models = null;
+            state.error = "";
+            llm.models(state.kind, fresh).then((ms) => { state.models = ms; })
+                .catch((err) => { state.error = err?.response?.message || err?.message || String(err); state.models = []; });
+        };
+        load();
+        const rows = () => {
+            const q = state.search.trim().toLowerCase();
+            let ms = (state.models || []).filter((m) => !q || [m.id, m.name, m.description, m.size, ...(m.features || [])]
+                .some((x) => x && String(x).toLowerCase().includes(q)));
+            ms = ms.slice().sort(state.sort === "price" ? (a, b) => llm.rank(a) - llm.rank(b) || a.id.localeCompare(b.id)
+                : (a, b) => llm.label(a).localeCompare(llm.label(b)));
+            return ms;
+        };
+        return t.div({ className: "llm-model-browser" },
+            t.div({ className: "grid m-b-sm" },
+                t.div({ className: "col-md-4" }, t.div({ className: "field" }, t.label(null, "Kind"),
+                    app.components.select({ required: true, options: () => kinds.map((k) => ({ value: k, label: llm.KIND_LABELS[k] || k })),
+                        value: () => state.kind, onchange: (sel) => { if (sel?.[0] && sel[0].value !== state.kind) { state.kind = sel[0].value; state.limit = 100; load(); } } }))),
+                t.div({ className: "col-md-5" }, t.div({ className: "field" }, t.label(null, "Search"),
+                    t.input({ type: "search", placeholder: "name, feature, size…", value: () => state.search,
+                        oninput: (e) => { state.search = e.target.value; state.limit = 100; } }))),
+                t.div({ className: "col-md-3" }, t.div({ className: "field" }, t.label(null, "Sort"),
+                    app.components.select({ required: true, options: () => [{ value: "price", label: "Cheapest first" }, { value: "name", label: "By name" }],
+                        value: () => state.sort, onchange: (sel) => sel?.[0] && (state.sort = sel[0].value) }))),
+            ),
+            () => {
+                if (state.error) return t.div({ className: "alert danger" }, t.div({ className: "content" }, state.error));
+                if (!state.models) return t.div({ className: "block txt-center" }, t.span({ className: "loader" }));
+                const ms = rows();
+                if (!ms.length) return t.div({ className: "block txt-center txt-hint p-base" }, "No models.");
+                return t.div(null,
+                    t.p({ className: "txt-hint txt-sm m-t-0" }, `${ms.length} model${ms.length === 1 ? "" : "s"}. `,
+                        "Listed prices are the provider's own; measured ones are what this app's calls were billed. A price can vary with options (quality, size)."),
+                    t.table({ className: "table llm-models" },
+                        t.thead(null, t.tr(null, t.th(null, "Model"), t.th(null, "Price"), t.th(null, "About"))),
+                        t.tbody(null, ...ms.slice(0, state.limit).map((m) => t.tr(null,
+                            t.td({ style: "min-width: 14em; max-width: 22em" }, t.div(null, t.strong(null, llm.label(m))), t.div({ className: "txt-hint txt-sm" }, t.code(null, m.id)),
+                                m.size ? t.div({ className: "txt-sm" }, m.size) : null),
+                            t.td({ style: "min-width: 15em" }, ...(llm.prices(m).length
+                                ? llm.prices(m).map((p) => t.div({ className: "txt-sm" }, p.text, " ",
+                                    t.span({ className: `label sm ${p.source === "measured" ? "success" : ""}` }, p.source)))
+                                : [t.span({ className: "txt-hint txt-sm" }, "unknown")])),
+                            t.td(null,
+                                (m.features?.length || m.reasoning || m.languages?.length || m.contextTokens)
+                                    ? t.div({ className: "flex gap-5 m-b-5", style: "flex-wrap: wrap" },
+                                        m.reasoning ? t.span({ className: "label sm" }, "reasoning") : null,
+                                        ...(m.features || []).map((f) => t.span({ className: "label sm" }, f)),
+                                        m.contextTokens ? t.span({ className: "label sm" }, `${Math.round(m.contextTokens / 1024)}K context`) : null,
+                                        m.languages?.length ? t.span({ className: "label sm", title: m.languages.join(", ") }, `${m.languages.length} languages`) : null)
+                                    : null,
+                                m.description ? t.div({ className: "txt-sm" }, m.description) : null),
+                        ))),
+                    ),
+                    ms.length > state.limit
+                        ? t.div({ className: "txt-center m-t-sm" }, t.button({ type: "button", className: "btn sm secondary",
+                            onclick: () => (state.limit += 100) }, t.span({ className: "txt" }, `Show more (${ms.length - state.limit} left)`)))
+                        : null,
+                );
+            },
+        );
+    };
+
+    window.pocketone = window.pocketone || {};
+    window.pocketone.llm = llm;
+})();
+
+(() => {
     const SYSTEM = "System";
     app.store.settingsNavGroups[SYSTEM] = [
         ...app.store.settingsNavGroups[SYSTEM],
@@ -259,6 +430,24 @@
             );
         }
 
+        // modelsAccordion is every model the saved providers offer, by kind, with prices: built the first time it's opened
+        // (listing asks each provider), and asked again after a save.
+        function modelsAccordion() {
+            const body = t.div();
+            let built = false;
+            return t.details({ className: "accordion", ontoggle: (e) => {
+                if (e.target.open && !built) {
+                    built = true;
+                    body.replaceChildren(window.pocketone.llm.browser());
+                }
+            } },
+            t.summary(null, t.i({ className: "ri-list-check-2", ariaHidden: true }), t.span({ className: "txt" }, "Models"),
+                t.span({ className: "label" }, "what your providers offer, with prices")),
+            t.p({ className: "m-t-0 txt-hint" }, "Every model of each kind across the saved providers, as ", t.code(null, "provider/model"),
+                ". Prices are in each kind's own unit: text per million tokens, audio per minute, pictures per picture or megapixel."),
+            body);
+        }
+
         load();
 
         return t.div(
@@ -293,6 +482,8 @@
                                 t.button({ type: "button", className: "btn secondary sm", onclick: add },
                                     t.i({ className: "ri-add-line", ariaHidden: true }), t.span({ className: "txt" }, "New provider")),
                             ),
+                            t.div({ className: "col-lg-12" }, t.hr()),
+                            t.div({ className: "col-lg-12" }, modelsAccordion()),
                             t.div({ className: "col-lg-12" }, t.hr()),
                             t.div({ className: "col-lg-12" },
                                 t.h6({ className: "m-b-xs" }, "Limits"),

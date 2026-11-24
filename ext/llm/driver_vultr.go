@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -35,31 +36,68 @@ func (d *vultrDriver) models(ctx context.Context) ([]llmc.ModelInfo, error) {
 	}
 	out := make([]llmc.ModelInfo, 0, len(ms))
 	for _, m := range ms {
-		info := llmc.ModelInfo{ID: m.ID, Name: m.Name, Description: m.Description, Reasoning: m.Reasoning != nil}
+		info := llmc.ModelInfo{ID: m.ID, Name: m.Name, Description: m.Description, Reasoning: m.Reasoning != nil,
+			Size: sizeOf(m.HuggingFace, m.ID)}
+		video := slices.ContainsFunc(m.Outputs, func(o vultr.Output) bool { return o.Type == "video" })
 		for _, in := range m.Inputs {
 			info.Inputs = append(info.Inputs, in.Type)
+			if in.Supported.MaxContext != nil && in.Type == "text" {
+				info.ContextTokens = in.Supported.MaxContext.Value
+			}
 		}
 		for _, o := range m.Outputs {
 			k := kindOfOutput(o.Type)
 			if o.Type == "audio" {
 				k = llmc.KindMusic
 			}
-			if k == "" {
+			// a model that makes video is a video model, though it can make a still too
+			if k == "" || (k == llmc.KindImage && video) {
 				continue
 			}
 			info.Kinds = append(info.Kinds, k)
 			for _, pr := range o.Pricing {
 				usd, _ := strconv.ParseFloat(pr.USD, 64)
-				unit := pr.Unit
-				if pr.Type != "" && !strings.Contains(unit, pr.Type) {
-					unit = pr.Type + " per " + unit
+				switch pr.Unit {
+				case "token":
+					if k == llmc.KindEmbed { // an embedding's tokens are the text it reads
+						addPrice(&info, llmc.UnitInputTokens, usd*1e6)
+					} else {
+						addPrice(&info, llmc.UnitOutputTokens, usd*1e6)
+					}
+				case "second":
+					addPrice(&info, llmc.UnitSecond, usd)
+				case "megapixel":
+					addPrice(&info, llmc.UnitMegapixel, usd)
 				}
-				info.Prices = append(info.Prices, llmc.Price{Unit: unit, USD: usd})
+			}
+			vultrFeatures(&info, k, o.Params)
+		}
+		if len(info.Kinds) == 0 {
+			continue
+		}
+		// what it costs to send: prompt tokens for text, seconds of audio for a transcriber
+		for _, in := range m.Inputs {
+			for _, pr := range in.Pricing {
+				usd, _ := strconv.ParseFloat(pr.USD, 64)
+				switch {
+				case in.Type == "text" && pr.Unit == "token":
+					addPrice(&info, llmc.UnitInputTokens, usd*1e6)
+				case in.Type == "audio" && pr.Unit == "second" && slices.Contains(info.Kinds, llmc.KindTranscribe):
+					addPrice(&info, llmc.UnitSecond, usd)
+				}
+			}
+			switch in.Type {
+			case "image":
+				if slices.Contains(info.Kinds, llmc.KindText) {
+					addFeature(&info, llmc.FeatureVision)
+				}
+			case "audio":
+				if slices.Contains(info.Kinds, llmc.KindText) {
+					addFeature(&info, llmc.FeatureAudioInput)
+				}
 			}
 		}
-		if len(info.Kinds) > 0 {
-			out = append(out, info)
-		}
+		out = append(out, info)
 	}
 	// the aligner is only in the authenticated catalog (GET /models/all), under its feature
 	if d.c.Key != "" {
@@ -317,4 +355,44 @@ func dataURL(f llmc.File) string {
 		return f.URL
 	}
 	return "data:" + orDefault(f.Type, "application/octet-stream") + ";base64," + b64(f.Data)
+}
+
+// vultrFeatures reads what a model can do from the parameters its output takes.
+func vultrFeatures(info *llmc.ModelInfo, kind string, params map[string]json.RawMessage) {
+	if _, ok := params["tools"]; ok {
+		addFeature(info, llmc.FeatureTools)
+	}
+	if _, ok := params["structured_outputs"]; ok {
+		addFeature(info, llmc.FeatureStructured)
+	}
+	if _, ok := params["lyrics"]; ok && kind == llmc.KindMusic {
+		addFeature(info, llmc.FeatureLyrics)
+	}
+	var enum struct {
+		Values []string `json:"values"`
+	}
+	if v, ok := params["voice"]; ok && json.Unmarshal(v, &enum) == nil {
+		for _, voice := range enum.Values {
+			switch voice {
+			case "clone":
+				addFeature(info, llmc.FeatureVoiceCloning)
+			case "design":
+				addFeature(info, llmc.FeatureVoiceDesign)
+			case "default":
+			default:
+				addFeature(info, llmc.FeatureVoices)
+			}
+		}
+	}
+	if _, ok := params["input_references"]; ok && kind == llmc.KindSpeech {
+		addFeature(info, llmc.FeatureVoiceCloning)
+	}
+	enum.Values = nil
+	if v, ok := params["language"]; ok && json.Unmarshal(v, &enum) == nil {
+		for _, l := range enum.Values {
+			if len(l) == 2 && !slices.Contains(info.Languages, l) {
+				info.Languages = append(info.Languages, l)
+			}
+		}
+	}
 }

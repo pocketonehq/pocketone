@@ -42,9 +42,16 @@ type Model struct {
 	Raw         json.RawMessage `json:"-"`
 }
 
-// Input is a kind of input a model takes: text, image, file, audio, video.
+// Input is a kind of input a model takes: text, image, file, audio, video, with what it costs to send (prompt tokens,
+// seconds of audio) and its limits.
 type Input struct {
-	Type string `json:"type"`
+	Type      string  `json:"type"`
+	Pricing   []Price `json:"pricing"`
+	Supported struct {
+		MaxContext *struct {
+			Value int `json:"value"`
+		} `json:"max_context_length"`
+	} `json:"supported_inputs"`
 }
 
 // Output is a kind of output a model makes: text, image, speech, audio (music), video, transcription, embeddings,

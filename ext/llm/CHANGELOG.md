@@ -23,9 +23,12 @@ renames the section to that version ([Changelogs](../../docs/extensions.md#chang
 - Voice cloning: `$llm.speech.speakAsync({ ..., reference: { audio, text } })` reads in the voice of a clip (Vultr and OpenRouter; Cloudflare and other OpenAI-compatible APIs answer `not_supported`). `voicesAsync` now says each voice's `mode` (`builtin`, `design`, `clone`) and description, so an app can tell which models clone. `llm.speech/v1` gains `SpeakInput.Reference` and `Voice.Mode`.
 - `$llm.search.sample(...)`: random chunks from a bucket (LLM Search's new `sample`), bound with the rest of `$llm.search`.
 - `$llm.fromRecord(record, field)`: a record's stored file as a file with its bytes, to send to a model (a voice clip, audio to transcribe or align).
+- Models: each model in a `models` answer now carries `size`, `features` and `languages` where its provider says, and Vultr's models their context size. Prices carry `source`: `listed` by the provider, or `measured` from what this app's calls to the model were billed (from the ledger, with `calls`, how many) ([Models and prices](README.md)).
+- Settings → LLM lists every model of each kind across your providers under **Models**: searchable, cheapest first, with each one's size, features, description and prices. Other dashboard screens reuse it through `window.pocketone.llm` (`select`, a searchable model dropdown with prices; `browser`; `models`).
 
 ### Changed
 
+- Every provider's prices are in the same units: `1M input tokens`, `1M output tokens`, `1M cached input tokens`, `second`, `megapixel`, `image`, `1K characters`, `request`. Vultr's said `completion per token` and the like (and listed no input price for text); Cloudflare's `per M input tokens`, `per audio minute`, `per 512 by 512 tile`. Extras a call may not use (OpenRouter's web search, cache writes, images or audio sent in) are left out, and a model with a price per inference step lists none. Vultr no longer lists its video models among image models.
 - An `$llm` call that fails throws an `Error` with the failure's `code` (`limit`, `provider`, `unknown_model`, ...) in `err.code` and the message alone in `err.message`. Before, the message began with the code (`provider: vultr: 401: Invalid API key`). Code that matched on that text checks `err.code` instead.
 
 - Settings → LLM is kept in the app's key-value store (kv/v1) under the private name `_llm/settings`; the old

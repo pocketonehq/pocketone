@@ -2,8 +2,6 @@ package llm
 
 import (
 	"context"
-	"regexp"
-	"strings"
 
 	llmc "pocketone.dev/ext/contracts/llm"
 )
@@ -44,12 +42,8 @@ func (r *router) estimateCost(ctx context.Context, t target, u *llmc.Usage, x us
 	}
 }
 
-var (
-	perMillion  = regexp.MustCompile(`\b(1m|m|million)\b`)
-	perThousand = regexp.MustCompile(`\b(1k|k|thousand)\b`)
-)
-
-// estimate works out a cost from listed prices. ok is false when no price applied to anything the call used.
+// estimate works out a cost from listed prices (in the contract's units). ok is false when no price applied to
+// anything the call used. A price per megapixel isn't counted: the call doesn't say how many pixels it made.
 func estimate(prices []llmc.Price, u llmc.Usage, x used) (usd float64, ok bool) {
 	var input, cachedInput, output float64
 	var haveInput, haveCached, haveOutput bool
@@ -60,35 +54,21 @@ func estimate(prices []llmc.Price, u llmc.Usage, x used) (usd float64, ok bool) 
 		}
 	}
 	for _, p := range prices {
-		unit := strings.ToLower(p.Unit)
-		price := p.USD
-		switch {
-		case perMillion.MatchString(unit):
-			price /= 1e6
-		case perThousand.MatchString(unit):
-			price /= 1e3
-		}
-		switch {
-		// what a unit counts comes first: "completion per second" is seconds, not output tokens
-		case strings.Contains(unit, "second"):
-			add(price, u.Seconds)
-		case strings.Contains(unit, "minute"):
-			add(price, u.Seconds/60)
-		case strings.Contains(unit, "character") || strings.Contains(unit, "char"):
-			add(price, float64(x.chars))
-		case strings.Contains(unit, "request"):
-			add(price, 1)
-		case (strings.Contains(unit, "image") || strings.Contains(unit, "picture")) && !strings.Contains(unit, "input") && !strings.Contains(unit, "token"):
-			add(price, float64(x.files))
-		case strings.Contains(unit, "cache") && (strings.Contains(unit, "input") || strings.Contains(unit, "prompt") || strings.Contains(unit, "read")):
-			cachedInput, haveCached = price, true
-		case strings.Contains(unit, "input") || strings.Contains(unit, "prompt"):
-			if strings.Contains(unit, "image") || strings.Contains(unit, "audio") {
-				continue // prices for media sent in: not counted
-			}
-			input, haveInput = price, true
-		case strings.Contains(unit, "output") || strings.Contains(unit, "completion"):
-			output, haveOutput = price, true
+		switch p.Unit {
+		case llmc.UnitSecond:
+			add(p.USD, u.Seconds)
+		case llmc.UnitCharacters:
+			add(p.USD/1e3, float64(x.chars))
+		case llmc.UnitRequest:
+			add(p.USD, 1)
+		case llmc.UnitImage:
+			add(p.USD, float64(x.files))
+		case llmc.UnitCachedTokens:
+			cachedInput, haveCached = p.USD/1e6, true
+		case llmc.UnitInputTokens:
+			input, haveInput = p.USD/1e6, true
+		case llmc.UnitOutputTokens:
+			output, haveOutput = p.USD/1e6, true
 		}
 	}
 	in, cached := float64(u.InputTokens), float64(u.CachedTokens)

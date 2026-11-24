@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strconv"
 	"time"
 
@@ -29,9 +30,11 @@ func newOpenRouter(p Provider) *openRouterDriver {
 	return &openRouterDriver{unsupported{p.Name}, openrouter.New(p.endpoint(), p.Key)}
 }
 
-// openRouterPrices are its per-token price keys, shown per million tokens.
-var openRouterPrices = map[string]string{"prompt": "1M input tokens", "completion": "1M output tokens",
-	"input_cache_read": "1M cached input tokens", "internal_reasoning": "1M reasoning tokens"}
+// openRouterPrices are its per-token price keys in the contract's units (per million tokens). Its other keys are
+// left out: charges for extras a call may not use (web search, cache writes, images or audio sent in), and
+// internal_reasoning, which the contract counts as output.
+var openRouterPrices = map[string]string{"prompt": llmc.UnitInputTokens, "completion": llmc.UnitOutputTokens,
+	"input_cache_read": llmc.UnitCachedTokens}
 
 func (d *openRouterDriver) models(ctx context.Context) ([]llmc.ModelInfo, error) {
 	ms, err := d.c.Models(ctx, "all")
@@ -41,7 +44,7 @@ func (d *openRouterDriver) models(ctx context.Context) ([]llmc.ModelInfo, error)
 	out := make([]llmc.ModelInfo, 0, len(ms))
 	for _, m := range ms {
 		info := llmc.ModelInfo{ID: m.ID, Name: m.Name, Description: clip(m.Description, 300), Inputs: m.Architecture.Inputs,
-			Reasoning: m.Reasoning != nil, ContextTokens: m.ContextLength}
+			Reasoning: m.Reasoning != nil, ContextTokens: m.ContextLength, Size: sizeOf(m.ID, m.Name)}
 		for _, o := range m.Architecture.Outputs {
 			if k := kindOfOutput(o); k != "" {
 				info.Kinds = append(info.Kinds, k)
@@ -50,6 +53,27 @@ func (d *openRouterDriver) models(ctx context.Context) ([]llmc.ModelInfo, error)
 		if len(info.Kinds) == 0 {
 			continue
 		}
+		if slices.Contains(info.Kinds, llmc.KindText) {
+			for _, in := range m.Architecture.Inputs {
+				switch in {
+				case "image":
+					addFeature(&info, llmc.FeatureVision)
+				case "audio":
+					addFeature(&info, llmc.FeatureAudioInput)
+				}
+			}
+		}
+		for _, p := range m.Params {
+			switch p {
+			case "tools":
+				addFeature(&info, llmc.FeatureTools)
+			case "structured_outputs":
+				addFeature(&info, llmc.FeatureStructured)
+			}
+		}
+		if len(m.Voices) > 0 {
+			addFeature(&info, llmc.FeatureVoices)
+		}
 		for key, v := range m.Pricing {
 			s, _ := v.(string)
 			usd, err := strconv.ParseFloat(s, 64)
@@ -57,9 +81,9 @@ func (d *openRouterDriver) models(ctx context.Context) ([]llmc.ModelInfo, error)
 				continue
 			}
 			if unit, ok := openRouterPrices[key]; ok {
-				info.Prices = append(info.Prices, llmc.Price{Unit: unit, USD: usd * 1e6})
-			} else {
-				info.Prices = append(info.Prices, llmc.Price{Unit: key, USD: usd})
+				addPrice(&info, unit, usd*1e6)
+			} else if key == "request" {
+				addPrice(&info, llmc.UnitRequest, usd)
 			}
 		}
 		out = append(out, info)

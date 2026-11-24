@@ -179,6 +179,7 @@ func (r *router) models(ctx context.Context, kind string, in llmc.ModelsInput) (
 		return llmc.Models{}, err
 	}
 	out := llmc.Models{Models: []llmc.ModelInfo{}}
+	measured := r.measured(kind)
 	var firstErr error
 	for _, p := range s.Providers {
 		if in.Provider != "" && p.Name != in.Provider {
@@ -196,6 +197,9 @@ func (r *router) models(ctx context.Context, kind string, in llmc.ModelsInput) (
 				continue
 			}
 			m.ID = p.Name + "/" + m.ID
+			if mp, ok := measured[m.ID]; ok {
+				m.Prices = append(slices.Clone(m.Prices), mp) // a copy: m.Prices is the cached list's
+			}
 			out.Models = append(out.Models, m)
 		}
 	}
