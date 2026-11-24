@@ -91,8 +91,10 @@ the stories calmer" only the preamble. One call to the text model per turn gets 
 answers, through a schema limited to those fields, with new values for the ones you meant. You can still edit the
 fields by hand, and nothing is saved until **Save and next**.
 
-Step 2, **Try a story**, writes a story's text with those settings and shows every step as it happens, word for word:
-how it picked the topic and checked it against the stories already told, what the knowledge search found, each piece
+Step 2, **Try a story**, writes a story's text with those settings, from the knowledge buckets you tick there, and
+shows every step as it happens, word for word: every passage it drew to pick the topic and why it kept it or not, how
+it checked the idea against the stories already told, every match the knowledge search found and whether the writer
+got it, each piece
 of the writer's prompt and its answer. Tell the helper what you'd change about the story, and it rewrites the
 **Fine-tuning** notes the writer gets after the preamble; generate again to see the difference. More steps (knowledge
 sources, research) are coming.

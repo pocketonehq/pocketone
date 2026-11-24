@@ -88,6 +88,7 @@
         });
         let v = null; // the values, shared with the settings sections (draft) so unsaved changes carry across
         const opts = { minutes: 0, topic: "" }; // Try a story's length and topic (empty: it picks); plain, so typing doesn't redraw
+        let buckets = []; // LLM Search's buckets (not the stories bucket): { name, title, documents, chunks }
         const get = (path) => path.split(".").reduce((o, k) => (o == null ? o : o[k]), v);
         const put = (path, value) => {
             const keys = path.split("."), last = keys.pop();
@@ -104,6 +105,7 @@
                 const [tuning, assist] = await Promise.all([send("/admin/tuning"), send("/admin/assist")]);
                 v = draft = draft || tuning.values;
                 data.steps = assist.steps;
+                buckets = tuning.buckets || [];
                 opts.minutes = data.minutes = v.length.defaultMinutes;
                 pollTrial();
             } catch (err) {
@@ -229,6 +231,19 @@
                             t.input({ type: "range", min: String(L.minMinutes), max: String(L.maxMinutes), step: "1", value: opts.minutes, style: "flex: 1;",
                                 oninput: (e) => { opts.minutes = data.minutes = Number(e.target.value); } })),
                     () => `${data.minutes} min, about ${words()} words (${L.wordsPerMinute} words a minute).`)),
+                t.div({ className: "col-lg-12" },
+                    t.label({ className: "txt-sm", style: "font-weight: 600;" }, "Knowledge"),
+                    buckets.length
+                        ? t.div(null, ...buckets.map((b) => t.div({ className: "field form-field-toggle", style: "margin: 4px 0;" },
+                            t.input({ type: "checkbox", id: `try-kb-${b.name}`, checked: v.knowledge.buckets.includes(b.name),
+                                onchange: (e) => {
+                                    const rest = v.knowledge.buckets.filter((n) => n !== b.name);
+                                    v.knowledge.buckets = e.target.checked ? [...rest, b.name] : rest;
+                                } }),
+                            t.label({ htmlFor: `try-kb-${b.name}` }, `${b.title || b.name} `,
+                                t.span({ className: "txt-hint" }, `(${b.name}: ${b.documents} documents, ${b.chunks} passages)`)))))
+                        : t.div({ className: "txt-hint" }, "No buckets yet: add them on the dashboard's Search screen."),
+                    t.div({ className: "field-help" }, "The buckets the topic is drawn from and the writer is grounded in. None: the model's own knowledge. Saved with Save and next.")),
                 t.div({ className: "col-md-6" }, field("Topic",
                     t.input({ type: "text", placeholder: "Empty: it picks one, as Tell me a story does", value: opts.topic,
                         oninput: (e) => (opts.topic = e.target.value) }))),

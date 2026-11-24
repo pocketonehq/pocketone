@@ -520,18 +520,22 @@ async function speakableSentences(t: Tuning, sentences: string[], trace?: Trace)
  * what the docs say (they explain what it is and why), how it came to be (commits) and how it works (code), so the
  * writer can orient a listener before the details. "" without knowledge buckets or matches.
  */
-export async function research(t: Tuning, topic: string): Promise<{ text: string; found?: any }> {
+export async function research(t: Tuning, topic: string): Promise<{ text: string; found?: any; used?: string[] }> {
   if (!t.knowledge.buckets.length) return { text: '' }
   const found = await $llm.search.searchAsync({ buckets: t.knowledge.buckets, query: topic, limit: 20 })
   const piles: { [k: string]: string[] } = { docs: [], history: [], code: [] }
   const owners = new Map<string, Owner>()
   const look = lookups()
+  // how each match was used, for the debugger
+  const used: string[] = []
   for (const r of found.results) {
-    if (skipped(t, r.document)) continue
+    if (skipped(t, r.document)) { used.push('dropped: matches a Skip pattern (Knowledge)'); continue }
     // commits are named "commit <sha>" (llm.search/v1); otherwise the document's kind, as the bucket split it
     const pile = /^commit /.test(r.document) ? 'history' : look.kind(r.bucket, r.document) === 'code' ? 'code' : 'docs'
     const cap = pile === 'docs' ? 6 : 4
-    if (piles[pile].length >= cap) continue
+    if (piles[pile].length >= cap) { used.push(`dropped: ${pile} already has ${cap}`); continue }
+    used.push(`used, under ${pile === 'docs' ? 'What the docs say' : pile === 'history' ? 'How it came to be' : 'How it works'}` +
+      (String(r.text).length > 1500 ? ' (its first 1,500 characters)' : ''))
     const owner = pile === 'history' ? null : look.owner(r.bucket, r.document)
     if (owner) owners.set(owner.folder, owner)
     const label = `${r.document}${r.heading ? ` › ${r.heading}` : ''}${owner ? `, part of ${owner.title}` : ''}`
@@ -542,7 +546,7 @@ export async function research(t: Tuning, topic: string): Promise<{ text: string
     part('What these belong to (each one\'s README, opening)', [...owners.values()].map((o) => `(${o.title}, ${o.folder})\n${o.opening}`)),
     part('What the docs say', piles.docs), part('How it came to be (commits)', piles.history), part('How it works (code)', piles.code),
   ].filter(Boolean).join('\n\n')
-  return { text, found }
+  return { text, found, used }
 }
 
 /** Whether a document is one the settings' knowledge.skip patterns leave out (dependency lists, tables of contents). */
@@ -612,9 +616,12 @@ export async function write(t: Tuning, prompt: string, minutes: number, trace?: 
   trace?.({ step: 'Knowledge', seconds: Math.round((Date.now() - t0) / 100) / 10, parts: !t.knowledge.buckets.length
     ? [{ label: 'No knowledge buckets', text: 'The writer uses the model\'s own knowledge.' }]
     : [{ label: 'Search', text: `buckets: ${t.knowledge.buckets.join(', ')}\nquery: ${prompt}` },
-      { label: 'Found, best first', text: (known.found?.results || []).map((r: any) =>
-        `${r.score.toFixed(3)}  ${r.document}${r.heading ? ` › ${r.heading}` : ''}${skipped(t, r.document) ? '  (skipped: Knowledge → Skip)' : ''}`).join('\n') || 'nothing' },
-      { label: 'Handed to the writer', text: known.text || 'nothing' }] })
+      { label: 'How', text: `The ${known.found.results.length} best matches for the request, by meaning and words. Each is used or ` +
+        'not as marked: at most 6 from docs, 4 from commits and 4 from code, each up to 1,500 characters, with the opening ' +
+        'of the README each belongs to. The writer gets exactly what\'s under Writing → Prompt: Knowledge.' },
+      ...known.found.results.map((r: any, i: number) => ({
+        label: `${known.used![i].startsWith('used') ? '✓' : '✗'} ${r.score.toFixed(3)}  ${r.document}${r.heading ? ` › ${r.heading}` : ''} (${known.used![i]})`,
+        text: String(r.text) }))] })
   const request: TracePart[] = [{ label: 'Request', text: `Tonight's story: ${prompt}` }]
   if (known.text) {
     request.push({ label: 'Knowledge', text: `What the knowledge base holds about it:\n\n${known.text}` })
@@ -1031,19 +1038,29 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
   const look = lookups()
   const seen = new Set<string>()
   const passages: any[] = []
-  for (const p of drawn) {
-    if (skipped(t, p.document) || String(p.text).trim().length < 200) continue
+  // why each drawn passage was kept or not, for the debugger
+  const why: string[] = drawn.map(() => 'not looked at: 5 were already kept')
+  for (let i = 0; i < drawn.length && passages.length < 5; i++) {
+    const p = drawn[i]
+    if (skipped(t, p.document)) { why[i] = 'dropped: matches a Skip pattern (Knowledge)'; continue }
+    if (String(p.text).trim().length < 200) { why[i] = 'dropped: under 200 characters'; continue }
     const owner = /^commit /.test(p.document) ? null : look.owner(p.bucket, p.document)
     const key = owner ? owner.folder : p.document
-    if (seen.has(key)) continue
+    if (seen.has(key)) { why[i] = `dropped: from ${key}, like one already kept`; continue }
     seen.add(key)
     passages.push({ ...p, owner })
-    if (passages.length === 5) break
+    why[i] = 'kept'
   }
-  if (!passages.length) passages.push(...drawn.slice(0, 5))
+  if (!passages.length) {
+    passages.push(...drawn.slice(0, 5))
+    for (let i = 0; i < Math.min(5, drawn.length); i++) why[i] = 'kept: none passed, so the first 5'
+  }
   trace?.({ step: 'Picking the topic: drawing passages', parts: [
-    { label: `Drawn at random from ${t.knowledge.buckets.join(', ')}`, text: drawn.map((p: any) => `${p.document}${p.heading ? ` › ${p.heading}` : ''}`).join('\n') },
-    { label: 'Kept: one per thing they belong to, not skipped, 200 characters or more, at most 5', text: passages.map((p: any) => p.document).join('\n') }] })
+    { label: 'How', text: `${drawn.length} passages (chunks of documents) picked at random from ${t.knowledge.buckets.join(', ')}: not a ` +
+      'search, just material to draw ideas from. At most 5 are kept: not matching a Skip pattern, 200 characters or more, ' +
+      'and one per thing they belong to (the nearest folder with a README).' },
+    ...drawn.map((p: any, i: number) => ({ label: `${why[i].startsWith('kept') ? '✓' : '✗'} ${p.document}${p.heading ? ` › ${p.heading}` : ''} (${why[i]})`,
+      text: String(p.text) }))] })
   const material = passages.map((p: any, i: number) => [
     `[${i + 1}] ${p.document}${p.heading ? ` › ${p.heading}` : ''}${p.owner ? `, part of ${p.owner.title}` : ''}`,
     p.owner ? `What ${p.owner.title} is (${p.owner.folder}/README):\n${p.owner.opening.slice(0, 500)}` : '',

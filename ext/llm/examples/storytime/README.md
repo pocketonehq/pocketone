@@ -99,11 +99,13 @@ holds only what the stories are like; the length, what to do with "Your pick", r
 the app's, added after it in code (`WRITE_RULES` in `_private/story.ts`), so the helper never writes them. The fields stay editable by hand; nothing is saved until **Save and next**. Each turn's cost is recorded
 (kind `assist`).
 
-Step 2, **Try a story**, is a debugger for writing one. Pick a length (minutes, with the words that makes) and a topic,
-or leave the topic empty for the app to pick one, and **Generate**: the story's text is written in the background, the
+Step 2, **Try a story**, is a debugger for writing one. Pick a length (minutes, with the words that makes), the
+knowledge buckets to draw on (saved with **Save and next**), and a topic, or leave the topic empty for the app to pick
+one, and **Generate**: the story's text is written in the background, the
 way a listener's story is (no voice, pictures or music), and every step shows as it finishes, with what went in and
-what came out, word for word: picking the topic (the passages drawn, the ideas from them, the told stories nearest
-each, the pick and why), the knowledge search, the writer's prompt piece by piece (preamble, fine-tuning, the rules the
+what came out, word for word: picking the topic (every passage drawn at random, with its text and whether it was kept
+or why not, the ideas from the kept ones, the told stories nearest each, the pick and why), the knowledge search (every
+match with its text, and whether it went to the writer or why not), the writer's prompt piece by piece (preamble, fine-tuning, the rules the
 app adds, the pronunciation note, the request and knowledge) and its answer, the plain-words check and pronunciation,
 each with its model, time and cost. Then tell the helper what you'd change ("it reads file names out loud"): it reads
 the story and rewrites the **Fine-tuning** notes (`prompts.finetune`), which the writer gets right after the preamble.
