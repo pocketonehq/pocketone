@@ -731,7 +731,7 @@ export async function make(app: any, id: string): Promise<void> {
       let topic = prompt
       if (prompt === ANY_TOPIC && t.knowledge.buckets.length) {
         save({ status: 'writing', progress: 'Picking the story' })
-        topic = (await step('topic', () => inspire(app, [], t))) || prompt
+        topic = (await step('topic', () => inspire(app, [], t, id))) || prompt
       }
       save({ status: 'writing', progress: 'Writing the story' })
       const w = await step('write', () => write(t, topic, minutes))
@@ -938,7 +938,7 @@ export type Inspiration = {
  * topics grounded in those passages, look up the told stories nearest each candidate, and have the model pick the
  * candidate the told stories cover least. Without: the model sees the told stories' titles and suggests something else.
  */
-export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tuning(app)): Promise<Inspiration> {
+export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tuning(app), story = ''): Promise<Inspiration> {
   const avoiding = avoid.length ? `\n\nAlready suggested, so suggest something different:\n${avoid.map((a) => `- ${a}`).join('\n')}` : ''
   if (!t.knowledge.buckets.length) {
     const told = app.findRecordsByFilter('stories', "status = 'done'", '-views,-created', 200, 0)
@@ -949,7 +949,7 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
     const r = await $llm.text.completeAsync({ model: t.models.idea, system: t.prompts.inspire,
       prompt: (list ? `Stories already told:\n${list}` : 'No stories have been told yet.') + avoiding,
       schema: { type: 'object', properties: { topic: { type: 'string' } }, required: ['topic'] }, reasoning: 'off', maxTokens: 4000, temperature: 1 })
-    record(app, 'inspire', r)
+    record(app, 'inspire', r, story)
     return { topic: String(r.data.topic || '').trim() }
   }
 
@@ -981,7 +981,7 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
     prompt: `Material to draw from (random passages, each with what it belongs to):\n\n${material.join('\n\n')}\n\n` +
       fill(t.prompts.ideas, { count: passages.length }) + avoiding,
     schema: CANDIDATES_SCHEMA })
-  record(app, 'inspire', c)
+  record(app, 'inspire', c, story)
   // the model may number what it lists ("3. Why..."): a prompt never starts with its place in a list
   const unnumbered = (x: any) => String(x || '').replace(/^\s*(?:\d{1,2}[.)]|[a-z]\))\s+/i, '').replace(/\s+/g, ' ').trim()
   const ideas = (c.data.candidates || [])
@@ -1008,16 +1008,126 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
       'sentence what makes it new.',
     prompt: near.map((n, i) => `${i + 1}. ${n.topic}\n   closest told: ${n.nearest.length ? n.nearest.join('; ') : 'none'}`).join('\n'),
     schema: pickSchema(near.length) })
-  record(app, 'inspire', pick)
+  record(app, 'inspire', pick, story)
   const choice = Math.round(Number(pick.data.choice))
   const topic = candidates[choice >= 1 && choice <= candidates.length ? choice - 1 : 0]
   return { topic, why: String(pick.data.why || '').trim(), material: passages.map((p: any) => p.document), candidates: near }
 }
 
 /** Just the topic (Inspire me's button). */
-export async function inspire(app: any, avoid: string[] = [], t: Tuning = tuning(app)): Promise<string> {
-  return (await inspiration(app, avoid, t)).topic
+export async function inspire(app: any, avoid: string[] = [], t: Tuning = tuning(app), story = ''): Promise<string> {
+  return (await inspiration(app, avoid, t, story)).topic
 }
 
 /** A story in the making whose record hasn't moved for this long was cut off (the app restarted). */
 export const STALE_MS = 15 * 60_000
+
+// ---- what a story costs: the settings screen shows it beside the budget, for the models chosen there
+
+/** One step of a story's cost: what it came to, and how that was worked out. */
+export type EstimatePart = {
+  step: string // what the step does, in words
+  model: string // the provider/model it uses ('' for knowledge search, which uses LLM Search's own model)
+  usd: number | null // null: not known (no stories made with the model yet, and it lists no price)
+  method: 'stories' | 'listed' | 'unknown' // stories: the average of the finished stories made with the model
+  stories?: number // how many stories it's the average of
+  note?: string // listed: what the list price was multiplied by
+}
+export type StoryEstimate = { minutes: number; pictures: number; usd: number; complete: boolean; parts: EstimatePart[] }
+
+/** The steps a story costs money in: the costs collection's kind, the model kind, and what the cost grows with. */
+const COST_STEPS: { kind: string; label: string; modelKind: string; model: (t: Tuning) => string; per: 'minute' | 'picture' | 'story' }[] = [
+  { kind: 'inspire', label: 'Picking the story', modelKind: 'text', model: (t) => t.models.idea, per: 'story' },
+  { kind: 'search', label: 'Knowledge search', modelKind: '', model: () => '', per: 'minute' },
+  { kind: 'write', label: 'Writing', modelKind: 'text', model: (t) => t.models.text, per: 'minute' },
+  { kind: 'speech', label: 'Reading it aloud', modelKind: 'speech', model: (t) => t.models.speech, per: 'minute' },
+  { kind: 'align', label: 'Timing each word', modelKind: 'align', model: (t) => t.models.align, per: 'minute' },
+  { kind: 'place', label: 'Choosing the pictures', modelKind: 'text', model: (t) => t.models.text, per: 'minute' },
+  { kind: 'image', label: 'Painting the pictures', modelKind: 'image', model: (t) => t.models.image, per: 'picture' },
+  { kind: 'music', label: 'Composing the music', modelKind: 'music', model: (t) => t.models.music, per: 'story' },
+]
+
+/** Tokens in a word of English, for the list-price estimate of the text steps. */
+const TOKENS_PER_WORD = 1.4
+
+/**
+ * What a story at the default length costs with t's models, step by step. Each step is the average of what it cost in
+ * the finished stories made with the same model (measured: per minute, per picture or per story, scaled to this
+ * length), or when there are none, the model's list price times the story's shape (the words written, the minutes
+ * read aloud, the pictures, the song's length), or unknown when it lists no price either.
+ */
+export async function estimateStory(app: any, t: Tuning): Promise<StoryEstimate> {
+  const { minutes, pictures } = storyLength(t)
+  const picking = t.knowledge.buckets.length > 0 // the front page gives no prompt: with knowledge, a topic is picked first
+  const steps = COST_STEPS.filter((s) => (s.kind !== 'inspire' && s.kind !== 'search') || picking)
+
+  // measured: each finished story's cost per step and model, per minute, picture or story
+  const made = new Map<string, { minutes: number; pictures: number }>()
+  for (const r of app.findRecordsByFilter('stories', "status = 'done'", '-created', 500, 0)) {
+    made.set(r.id, { minutes: r.getInt('minutes') || 1, pictures: r.getInt('picture_count') || 1 })
+  }
+  const perStory = new Map<string, Map<string, number>>() // kind|model → story → micro-dollars
+  for (const c of app.findRecordsByFilter('costs', "story != ''", '', 0, 0)) {
+    if (!made.has(c.getString('story'))) continue
+    const key = c.getString('kind') + '|' + (c.getString('kind') === 'search' ? '' : c.getString('model'))
+    const m = perStory.get(key) || new Map<string, number>()
+    m.set(c.getString('story'), (m.get(c.getString('story')) || 0) + c.getInt('micro_usd'))
+    perStory.set(key, m)
+  }
+
+  const listings: { [kind: string]: any[] } = {}
+  const modelInfo = async (kind: string, id: string) => {
+    if (!listings[kind]) listings[kind] = (await $llm[kind].modelsAsync()).models
+    return listings[kind].find((m: any) => m.id === id)
+  }
+  const listed = (m: any, unit: string) => (m?.prices || []).find((p: any) => p.unit === unit && p.source !== 'measured')
+
+  const words = minutes * t.length.wordsPerMinute
+  const storyTokens = Math.round(words * TOKENS_PER_WORD)
+  const parts: EstimatePart[] = []
+  for (const s of steps) {
+    const model = s.model(t)
+    const seen = perStory.get(s.kind + '|' + model)
+    if (seen && seen.size) {
+      const scale = s.per === 'minute' ? minutes : s.per === 'picture' ? pictures : 1
+      let sum = 0
+      for (const [id, micro] of seen) {
+        const st = made.get(id)!
+        sum += micro / (s.per === 'minute' ? st.minutes : s.per === 'picture' ? st.pictures : 1)
+      }
+      parts.push({ step: s.label, model, usd: (sum / seen.size) * scale / 1e6, method: 'stories', stories: seen.size })
+      continue
+    }
+    if (!s.modelKind) {
+      parts.push({ step: s.label, model, usd: null, method: 'unknown' })
+      continue
+    }
+    const m = await modelInfo(s.modelKind, model)
+    let usd: number | null = null
+    let note = ''
+    const tokens = (input: number, output: number) => {
+      const i = listed(m, '1M input tokens'), o = listed(m, '1M output tokens')
+      if (!i && !o) return null
+      note = `about ${input.toLocaleString()} tokens in and ${output.toLocaleString()} out`
+      return ((i ? i.usd * input : 0) + (o ? o.usd * output : 0)) / 1e6
+    }
+    if (s.kind === 'write') usd = tokens(3000 + storyTokens * 3, storyTokens * 3) // the story, its speakable rewrite, the pronunciations
+    else if (s.kind === 'place') usd = tokens(1000 + Math.round(storyTokens * 1.5), 800) // the timed transcript in, the pictures out
+    else if (s.kind === 'inspire') usd = tokens(6000, 1500) // passages in, candidates and a pick out
+    else if (s.kind === 'speech' || s.kind === 'align') {
+      const sec = listed(m, 'second'), chars = listed(m, '1K characters')
+      if (sec) { usd = sec.usd * minutes * 60; note = `${minutes} min of audio` }
+      else if (chars) { usd = chars.usd * words * 6 / 1000; note = `about ${(words * 6).toLocaleString()} characters` }
+    } else if (s.kind === 'image') {
+      const each = listed(m, 'image'), mp = listed(m, 'megapixel')
+      if (each) { usd = each.usd * pictures; note = `${pictures} pictures` }
+      else if (mp) { usd = mp.usd * pictures; note = `${pictures} pictures at 1 megapixel each` }
+    } else if (s.kind === 'music') {
+      const sec = listed(m, 'second')
+      if (sec) { usd = sec.usd * t.music.seconds; note = `${t.music.seconds} s of music` }
+    }
+    parts.push(usd === null ? { step: s.label, model, usd: null, method: 'unknown' } : { step: s.label, model, usd, method: 'listed', note })
+  }
+  const known = parts.filter((p) => p.usd !== null)
+  return { minutes, pictures, usd: known.reduce((a, p) => a + (p.usd as number), 0), complete: known.length === parts.length, parts }
+}

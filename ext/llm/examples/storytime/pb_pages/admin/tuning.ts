@@ -1,4 +1,5 @@
-// GET /admin/tuning: the tuning in effect, the defaults, the speech model's voices, and the recordings a clone can imitate.
+// GET /admin/tuning: the tuning in effect, the defaults, the speech model's voices, the recordings a clone can imitate,
+// and what a story costs with these models (story.estimateStory).
 // POST /admin/tuning {values}: saves it (known keys only, on top of the defaults); {reset: true} puts the defaults back.
 // Superusers only.
 export async function get(ctx: any) {
@@ -19,7 +20,9 @@ export async function get(ctx: any) {
   const all = $llm.search.buckets().map((b: any) => ({ name: b.name, title: b.title, documents: b.documents, chunks: b.chunks }))
   const stories = all.find((b: any) => b.name === story.STORIES_BUCKET) || { name: story.STORIES_BUCKET, documents: 0 }
   const buckets = all.filter((b: any) => b.name !== story.STORIES_BUCKET)
-  return ctx.res.json(200, { values, defaults: story.DEFAULT_TUNING, voices, clips, buckets, stories, spentToday: story.spentToday(ctx.app) })
+  const estimate = await story.estimateStory(ctx.app, values)
+  return ctx.res.json(200, { values, defaults: story.DEFAULT_TUNING, voices, clips, buckets, stories, spentToday: story.spentToday(ctx.app),
+    estimate })
 }
 
 export async function post(ctx: any) {

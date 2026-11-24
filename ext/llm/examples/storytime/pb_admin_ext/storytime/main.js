@@ -56,6 +56,8 @@
             check: null, // the last check of a recording: { id, busy } or { id, heard, match, missing, cutOff, model } or { id, error }
             rec: { state: "idle" }, // the recorder: idle, recording, saving, saved (seconds, name); error
             spent: 0,
+            estimate: null, // what a story costs with the models on the page: { minutes, pictures, usd, complete, parts }
+            estimating: false,
             version: 0, // bumped when the values are replaced, so the form redraws with them
             samples: {}, // what -> { busy, meta, error, audio, image, idea, story }
         });
@@ -84,6 +86,46 @@
         const area = (path, rows = 4) => t.textarea({ rows, value: get(path) ?? "", onchange: (e) => put(path, e.target.value),
             style: "font-family: var(--monospaceFontFamily, monospace); font-size: 12px; line-height: 1.5;" });
 
+        // a model field: a searchable list of the kind's models with their prices (ext/llm's dashboard helper), or a
+        // plain box when that isn't loaded. A change works out the story's cost again.
+        const modelField = (path, kind) => window.pocketone?.llm
+            ? window.pocketone.llm.select({ kind, value: () => get(path), onchange: (id) => { put(path, id); estimateSoon(); } })
+            : t.input({ type: "text", value: get(path) ?? "", onchange: (e) => { put(path, e.target.value); estimateSoon(); } });
+
+        // estimateSoon asks again what a story costs with the models on the page (unsaved), a moment after the last change
+        let estimateTimer = 0;
+        function estimateSoon() {
+            clearTimeout(estimateTimer);
+            estimateTimer = setTimeout(async () => {
+                data.estimating = true;
+                try {
+                    data.estimate = await send("/admin/estimate", { values: v });
+                } catch (err) {
+                    data.estimate = { error: errText(err) };
+                }
+                data.estimating = false;
+            }, 300);
+        }
+
+        // estimateView is the story's cost, step by step, each saying how it was worked out
+        function estimateView() {
+            const e = data.estimate;
+            if (!e) return null;
+            if (e.error) return t.div({ className: "txt-danger txt-sm" }, e.error);
+            const usd = (n) => window.pocketone?.llm ? window.pocketone.llm.usd(n) : "$" + n.toFixed(3);
+            const how = (p) => p.method === "stories" ? `average of ${p.stories} stor${p.stories === 1 ? "y" : "ies"} made with it`
+                : p.method === "listed" ? `list price × ${p.note}` : "not known: no stories with this model yet, and it lists no price";
+            return t.div({ className: () => (data.estimating ? "faded" : "") },
+                t.p({ className: "m-b-xs" }, t.strong(null, `A story costs about ${usd(e.usd)}`),
+                    ` (${e.minutes} min, ${e.pictures} picture${e.pictures === 1 ? "" : "s"})`,
+                    e.complete ? "." : ", plus the steps whose cost isn't known."),
+                t.table({ className: "table txt-sm" }, t.tbody(null, ...e.parts.map((p) => t.tr(null,
+                    t.td({ className: "min-width" }, p.step),
+                    t.td({ className: "min-width" }, p.usd === null ? "?" : usd(p.usd)),
+                    t.td({ className: "txt-hint" }, how(p)))))),
+            );
+        }
+
         async function load() {
             try {
                 const out = await send("/admin/tuning");
@@ -94,6 +136,7 @@
                 data.stories = out.stories || null;
                 data.knowledge = [...((out.values.knowledge && out.values.knowledge.buckets) || [])];
                 data.spent = out.spentToday || 0;
+                data.estimate = out.estimate || null;
                 data.version++;
             } catch (err) {
                 app.checkApiError(err);
@@ -596,16 +639,17 @@
                         t.div({ className: "col-lg-12" }, field("Ideas from knowledge", area("prompts.ideas", 6))),
                         sampleRow("idea", "Sample an idea"),
                     ),
-                    block("Models and budget", "Each as provider/model: a provider in Settings → LLM, then its model.",
-                        t.div({ className: "col-md-6" }, field("Writing", text("models.text"))),
-                        t.div({ className: "col-md-6" }, field("Inspire me", text("models.idea"))),
-                        t.div({ className: "col-md-4" }, field("Voice", text("models.speech"))),
-                        t.div({ className: "col-md-4" }, field("Voice, other languages", text("models.speechOther"))),
-                        t.div({ className: "col-md-4" }, field("Word timing", text("models.align"))),
-                        t.div({ className: "col-md-4" }, field("Pictures", text("models.image"))),
-                        t.div({ className: "col-md-4" }, field("Music", text("models.music"))),
-                        t.div({ className: "col-md-4" }, field("Daily budget, US dollars", num("budget", { step: "0.5", min: "0" }),
+                    block("Models and budget", "Each from the providers in Settings → LLM, cheapest first, with its price: listed by the provider, or measured from what this app's calls were billed.",
+                        t.div({ className: "col-md-6" }, field("Writing", modelField("models.text", "text"))),
+                        t.div({ className: "col-md-6" }, field("Picking the story", modelField("models.idea", "text"))),
+                        t.div({ className: "col-md-6" }, field("Voice", modelField("models.speech", "speech"))),
+                        t.div({ className: "col-md-6" }, field("Voice, other languages", modelField("models.speechOther", "speech"))),
+                        t.div({ className: "col-md-6" }, field("Word timing", modelField("models.align", "align"))),
+                        t.div({ className: "col-md-6" }, field("Pictures", modelField("models.image", "image"))),
+                        t.div({ className: "col-md-6" }, field("Music", modelField("models.music", "music"))),
+                        t.div({ className: "col-md-6" }, field("Daily budget, US dollars", num("budget", { step: "0.5", min: "0" }),
                             () => `Spent today (UTC): $${data.spent.toFixed(3)}.`)),
+                        t.div({ className: "col-lg-12" }, estimateView),
                     ),
                 ),
                 () => data.message

@@ -55,6 +55,7 @@ pb_pages/
   admin/export.ts      GET /admin/export: the saved settings and every recording as one JSON file, the format of _private/defaults.json (superusers only)
   admin/import.ts      POST /admin/import: loads that file, keeping recordings already here (superusers only)
   admin/check.ts       POST /admin/check {clip}: transcribes a recording and compares it with its passage (superusers only)
+  admin/estimate.ts    POST /admin/estimate {values}: what a story costs with the given models, step by step (superusers only)
   admin/stories.ts     POST /admin/stories: adds told stories missing from the stories bucket (superusers only)
   view.ts              POST /view {id}: counts a listen (the player sends it after 10 seconds heard)
   story.ts             POST /story {prompt?, minutes?}: saves the record, starts making it (no prompt: it picks the topic)
@@ -122,6 +123,13 @@ cost, since the settings can change.
   Once the day's rows add up to the budget, the front page says "Out of tokens for today; try again tomorrow. Please
   enjoy something from our archives." and turns the form off, and `POST /story` and `POST /inspire` answer 429 with the
   same message. A story already being made finishes.
+- **What a story costs:** under the models on the settings screen, each one picked from a searchable list of what the
+  providers in Settings → LLM offer, cheapest first, with its price. Below them is what a story at the default length
+  costs with those models, step by step: the average of the finished stories made with that model (each step's cost per
+  minute, per picture or per story, from `costs`), or when there are none, the model's list price times the story's
+  shape (its words at about 1.4 tokens each, its minutes of audio, its pictures at 1 megapixel each, the song's
+  seconds), or not known when the model lists no price either. Each step says which. `story.estimateStory`
+  works it out.
 - **Models:** before anything is made, `health()` checks that `$llm` exists and that each model's provider is in
   Settings → LLM, answers, and offers that model (Vultr lists its aligner only for a working key, so a wrong key shows
   too). Checked at most once a minute. If not, the front page says the storyteller can't reach its models and turns
