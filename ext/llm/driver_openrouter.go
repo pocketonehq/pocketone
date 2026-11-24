@@ -53,6 +53,10 @@ func (d *openRouterDriver) models(ctx context.Context) ([]llmc.ModelInfo, error)
 		if len(info.Kinds) == 0 {
 			continue
 		}
+		// an image model that reads images draws from them: they go to it in a chat request
+		if slices.Contains(info.Kinds, llmc.KindImage) && slices.Contains(m.Architecture.Inputs, "image") {
+			addFeature(&info, llmc.FeatureReferenceImages)
+		}
 		if slices.Contains(info.Kinds, llmc.KindText) {
 			for _, in := range m.Architecture.Inputs {
 				switch in {
@@ -106,8 +110,8 @@ func (d *openRouterDriver) complete(ctx context.Context, model string, in textv1
 	return chatComplete(ctx, d.c, req, onDelta)
 }
 
-func (d *openRouterDriver) image(ctx context.Context, model string, in imagev1.GenerateInput, edit []llmc.File) (imagev1.Result, error) {
-	if len(edit) == 0 {
+func (d *openRouterDriver) image(ctx context.Context, model string, in imagev1.GenerateInput) (imagev1.Result, error) {
+	if len(in.References) == 0 {
 		req := oai.ImageRequest{Model: model, Prompt: in.Prompt, N: in.N, Size: in.Size, Extra: in.Options}
 		if in.AspectRatio != "" {
 			req.Extra = merge(map[string]any{"aspect_ratio": in.AspectRatio}, in.Options)
@@ -127,7 +131,7 @@ func (d *openRouterDriver) image(ctx context.Context, model string, in imagev1.G
 		// a model that draws only in chat (Gemini's image models): ask it there
 	}
 	content := []any{map[string]any{"type": "text", "text": in.Prompt}}
-	for _, f := range edit {
+	for _, f := range in.References {
 		content = append(content, map[string]any{"type": "image_url", "image_url": map[string]any{"url": dataURL(f)}})
 	}
 	extra := in.Options

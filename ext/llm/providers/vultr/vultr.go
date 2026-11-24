@@ -51,6 +51,11 @@ type Input struct {
 		MaxContext *struct {
 			Value int `json:"value"`
 		} `json:"max_context_length"`
+		// References is how many reference images an image input takes, on a model that draws from them.
+		References *struct {
+			Min int `json:"min"`
+			Max int `json:"max"`
+		} `json:"references"`
 	} `json:"supported_inputs"`
 }
 

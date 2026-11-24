@@ -33,7 +33,7 @@ var W = extkit.NewWire(Contract, "llm", func(inner Image, g *extkit.Guard[Image]
 },
 	extkit.Op[Image]{
 		Name:   "generate",
-		Desc:   "Makes pictures from a prompt.",
+		Desc:   "Makes pictures from a prompt, and from the reference pictures it's given.",
 		Method: "POST",
 		Path:   "generate",
 		In:     reflect.TypeOf(GenerateInput{}),
@@ -44,21 +44,6 @@ var W = extkit.NewWire(Contract, "llm", func(inner Image, g *extkit.Guard[Image]
 				return nil, err
 			}
 			return impl.Generate(ctx, a, in)
-		},
-	},
-	extkit.Op[Image]{
-		Name:   "edit",
-		Desc:   "Changes the pictures it's given as the prompt says.",
-		Method: "POST",
-		Path:   "edit",
-		In:     reflect.TypeOf(EditInput{}),
-		Out:    extkit.OutJSON,
-		Invoke: func(ctx context.Context, impl Image, a extkit.Auth, req extkit.OpRequest) (any, error) {
-			var in EditInput
-			if err := extkit.DecodeInput(req.JSON, &in); err != nil {
-				return nil, err
-			}
-			return impl.Edit(ctx, a, in)
 		},
 	},
 	extkit.Op[Image]{
@@ -99,20 +84,6 @@ func OnGenerate(owner any, fn func(e *extkit.CallEvent, in *GenerateInput) error
 	})
 }
 
-func (d *guardImage) Edit(ctx context.Context, a extkit.Auth, in EditInput) (Result, error) {
-	return extkit.Run(d.g, a, "edit", &in, func(in *EditInput) (Result, error) {
-		return d.inner.Edit(ctx, a, *in)
-	})
-}
-
-// OnEdit binds fn to edit calls on owner (an app, or a host's scope for calls the host answers). Call e.Next()
-// to continue; return an error to refuse. in is the call's input; changes reach the provider.
-func OnEdit(owner any, fn func(e *extkit.CallEvent, in *EditInput) error) {
-	W.On(owner, "edit").BindFunc(func(e *extkit.CallEvent) error {
-		return fn(e, e.Input.(*EditInput))
-	})
-}
-
 func (d *guardImage) Models(ctx context.Context, a extkit.Auth, in llm.ModelsInput) (llm.Models, error) {
 	return extkit.Run(d.g, a, "models", &in, func(in *llm.ModelsInput) (llm.Models, error) {
 		return d.inner.Models(ctx, a, *in)
@@ -141,11 +112,6 @@ var _ Image = (*Client)(nil)
 func (c *Client) Generate(ctx context.Context, _ extkit.Auth, in GenerateInput) (Result, error) {
 	var out Result
 	return out, c.c.Call(ctx, "POST", "generate", in, &out)
-}
-
-func (c *Client) Edit(ctx context.Context, _ extkit.Auth, in EditInput) (Result, error) {
-	var out Result
-	return out, c.c.Call(ctx, "POST", "edit", in, &out)
 }
 
 func (c *Client) Models(ctx context.Context, _ extkit.Auth, in llm.ModelsInput) (llm.Models, error) {

@@ -23,20 +23,13 @@ declare namespace contracts.llm.image.v1 {
      * AspectRatio is "16:9", "1:1"... for models that take one instead of a size.
      */
     aspectRatio: string;
+    /**
+     * References are pictures the model draws from: one to change as the prompt says, or one whose style and
+     * characters a new scene keeps ("same style and characters; show them ..."). Only a model whose ModelInfo lists
+     * llm.FeatureReferenceImages takes them; any other answers not_supported or the provider's own error.
+     */
+    references: Array<LlmFile>;
     options: Record<string, any>;
-  }
-
-  /**
-   * EditInput is what to change, and the pictures to change.
-   */
-  interface EditInput {
-    model: string;
-    prompt: string;
-    n: number;
-    size: string;
-    aspectRatio: string;
-    options: Record<string, any>;
-    images: Array<LlmFile>;
   }
 
   interface LlmModelsInput {
@@ -52,7 +45,7 @@ declare namespace contracts.llm.image.v1 {
 }
 
 /**
- * Generate makes pictures from a prompt.
+ * Generate makes pictures from a prompt, and from the reference pictures it's given.
  *
  * Runs on every generate call to llm.image/v1, from any surface (HTTP, Go, MCP, the CLI): change e.input, or throw to
  * refuse.
@@ -60,15 +53,6 @@ declare namespace contracts.llm.image.v1 {
  * @group PocketOne
  */
 declare function onLlmImageGenerate(handler: (e: contracts.CallEvent<contracts.llm.image.v1.GenerateInput>) => void): void;
-/**
- * Edit changes the pictures it's given as the prompt says.
- *
- * Runs on every edit call to llm.image/v1, from any surface (HTTP, Go, MCP, the CLI): change e.input, or throw to
- * refuse.
- *
- * @group PocketOne
- */
-declare function onLlmImageEdit(handler: (e: contracts.CallEvent<contracts.llm.image.v1.EditInput>) => void): void;
 /**
  * Models lists the image models of every provider in Settings → LLM.
  *
