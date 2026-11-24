@@ -135,7 +135,7 @@ look cheaper than it is.
 
 Settings → LLM lists every model of each kind across your providers under **Models**, searchable and cheapest first.
 Other dashboard screens use the same pieces through `window.pocketone.llm`: `select({ kind, value, onchange })` is a
-searchable dropdown of a kind's models with their prices (Story Time's settings use it). Give it the work the model is
+searchable dropdown of a kind's models with their prices. Give it the work the model is
 for, `job: () => ({ "1M input tokens": 0.006, "1M output tokens": 0.002 })` (how much of each price unit the work uses)
 and `per: "a story"`, and each model also shows what that work costs on it ("≈ $0.0012 a story", "≥" when it lists only
 one side of the tokens), cheapest first. `browser({ kinds?, kind? })` is the whole list, and `models(kind)`,
