@@ -92,9 +92,9 @@ helper beside the fields. Step 1, **What is it about?**, asks for the general vi
 tagline under it and the writer preamble (the instructions every story is written from). Say what to change ("I don't
 like the title", "make the stories calmer", "the intro text is too long"): each turn sends the step's fields as they are
 on the screen and the chat so far to `POST /admin/assist`, and one call to the text model, with a schema that holds it to
-the step's fields, answers with new values for just the fields you meant and a line saying what changed. A preamble
-that loses a placeholder (`{minutes}`, `{minWords}`, `{maxWords}`, `{anyTopic}`) or a field the answer's shape names is
-not used. The fields stay editable by hand; nothing is saved until **Save and next**. Each turn's cost is recorded
+the step's fields, answers with new values for just the fields you meant and a line saying what changed. The preamble
+holds only what the stories are like; the length, what to do with "Your pick", reading aloud and the answer's fields are
+the app's, added after it in code (`WRITE_RULES` in `_private/story.ts`), so the helper never writes them. The fields stay editable by hand; nothing is saved until **Save and next**. Each turn's cost is recorded
 (kind `assist`). The later steps (knowledge sources, a research loop, writing the story) are still to come.
 
 **Story Time** in the PocketBase dashboard's top bar (`/_/`) holds what shapes the app: the front page's title and caption, the story lengths (shortest and longest, the default, the narrator's words per minute, pictures per minute, the most pictures), the narrator (voice,

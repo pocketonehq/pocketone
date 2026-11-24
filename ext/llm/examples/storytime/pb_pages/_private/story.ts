@@ -54,9 +54,10 @@ export type Tuning = {
     sample: string // what Sample reads
   }
   /**
-   * The system prompts. write: {minutes} ("3 minutes"), {minWords}, {maxWords}, {anyTopic}; place: {n}. The JSON shape
-   * each must answer in is fixed (WRITE_SCHEMA, PLACE_SCHEMA, the inspire schema), so keep the field names the prompts
-   * mention. ideas: how Inspire me turns knowledge passages into story requests ({count}). pronounce: how words in this
+   * The system prompts. write: the writer's preamble, what the stories are like (who tells them, about what, the tone);
+   * the length, "Your pick", reading aloud and the answer's fields are added after it (WRITE_RULES). place: {n}. The
+   * JSON shape each must answer in is fixed (WRITE_SCHEMA, PLACE_SCHEMA, the inspire schema), so keep the field names
+   * the prompts mention. ideas: how Inspire me turns knowledge passages into story requests ({count}). pronounce: how words in this
    * field are said, with examples, for the writer's respellings and the pronunciation call.
    */
   prompts: { write: string; place: string; inspire: string; ideas: string; pronounce: string }
@@ -158,12 +159,30 @@ export function saveTuning(app: any, values: any): Tuning {
 const fill = (template: string, vars: { [k: string]: string | number }) =>
   template.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m))
 
-const writePrompt = (t: Tuning, minutes: number) => fill(t.prompts.write, {
-  minutes: `${minutes} minute${minutes === 1 ? '' : 's'}`,
-  minWords: Math.round(minutes * t.length.wordsPerMinute * 0.9),
-  maxWords: Math.round(minutes * t.length.wordsPerMinute * 1.1),
-  anyTopic: ANY_TOPIC,
-}) + sayNote(t)
+/**
+ * What every story needs, whatever the site is about, told to the writer after the settings' preamble (prompts.write,
+ * which says only what the stories are like): the length, what to do with "Your pick", that it's read aloud, and the
+ * answer's fields (WRITE_SCHEMA). The app relies on these, so they're here and not in the settings.
+ */
+const WRITE_RULES = `How to write it:
+- It is read aloud in about {minutes}: {minWords} to {maxWords} words.
+- If the request is "{anyTopic}", choose the topic yourself, one that fits the stories described above.
+- Every sentence is read aloud by a narrator: no symbols, code, URLs, file paths or abbreviations a narrator can't say naturally; say what they are in plain words.
+- Write in the language the request is written in, unless it asks for another; "language" is that language's ISO 639-1 code ("en", "es", "ja").
+- "title" is the story's title, and "topic" its subject in a short phrase.
+- "sentences" is the story, one sentence per item, in order: each a single sentence of at most about 30 words, shown as a caption while it's read, never a paragraph.
+- "look" describes, for an illustrator, what recurs through the story's pictures (a place, a person with their dress and era, an object), so every picture can show it the same way.`
+
+const writePrompt = (t: Tuning, minutes: number) => {
+  const vars = {
+    minutes: `${minutes} minute${minutes === 1 ? '' : 's'}`,
+    minWords: Math.round(minutes * t.length.wordsPerMinute * 0.9),
+    maxWords: Math.round(minutes * t.length.wordsPerMinute * 1.1),
+    anyTopic: ANY_TOPIC,
+  }
+  // the preamble may still use the placeholders (settings saved before the rules moved here)
+  return `${fill(t.prompts.write, vars).trim()}\n\n${fill(WRITE_RULES, vars)}` + sayNote(t)
+}
 
 const WRITE_SCHEMA = {
   type: 'object',

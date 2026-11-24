@@ -819,7 +819,7 @@
                         t.div({ className: "col-lg-12" }, field("Sample text", area("voice.sample", 3))),
                         sampleRow("voice", "Sample the voice"),
                     ),
-                    block("Writing the story", "Placeholders: {minutes}, {minWords}, {maxWords}, {anyTopic}. Keep the field names it mentions (title, language, topic, look, sentences): the answer's shape is fixed. A note asking for the words the narrator could say wrong (say) is added after it.",
+                    block("Writing the story", "What the stories are like: who tells them, about what, the tone. The app adds the rest after it: the length, what to do when the listener leaves the topic to it, that every sentence is read aloud, the answer's fields, and the words the narrator could say wrong (say).",
                         t.div({ className: "col-lg-12" }, field("Instructions", area("prompts.write", 16))),
                         t.div({ className: "col-lg-12" }, field("Topic for the sample",
                             t.input({ type: "text", placeholder: "Empty: it picks", value: extra.storyTopic, onchange: (e) => (extra.storyTopic = e.target.value) }))),
