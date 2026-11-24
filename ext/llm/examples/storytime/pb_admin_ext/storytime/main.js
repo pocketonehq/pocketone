@@ -1,10 +1,9 @@
-// Settings → Story Time in the PocketBase dashboard: the front page's title and caption, story lengths, the narrator's voice, the prompts, the pictures, the music,
+// Story Time in the PocketBase dashboard's top bar, its own screen with a sidebar of sections: the front page's title and caption, story lengths, the narrator's voice, the prompts, the pictures, the music,
 // the models and the daily budget, and try each with Sample before saving. A superuser UI extension, registered from
 // pb_hooks/admin_plugins.pb.js (pb_admin_ext/storytime); it calls the app's /admin/tuning and /admin/sample (superusers only), and the dashboard
 // sends the signed-in superuser's token with each call.
 (() => {
-    const GROUP = "Story Time";
-    // each part of the settings is its own entry in the sidebar, all on one route (#/settings/storytime/<id>)
+    // each part of the settings is its own entry in the screen's sidebar (#/storytime/<id>)
     const SECTIONS = [
         { id: "front", title: "Front page", icon: "ri-home-4-line" },
         { id: "knowledge", title: "Knowledge", icon: "ri-book-2-line" },
@@ -18,10 +17,12 @@
         { id: "inspire", title: "Inspire me", icon: "ri-lightbulb-line" },
         { id: "models", title: "Models and budget", icon: "ri-money-dollar-circle-line" },
     ];
-    app.store.settingsNavGroups[GROUP] = [
-        ...(app.store.settingsNavGroups[GROUP] || []),
-        ...SECTIONS.map((x) => ({ href: `#/settings/storytime/${x.id}`, icon: x.icon, label: x.title })),
-    ];
+    // Story Time in the top bar, before the last link (Settings), as other extensions' screens are
+    app.store.headerLinks.splice(Math.max(app.store.headerLinks.length - 1, 0), 0, {
+        href: "#/storytime",
+        icon: "ri-moon-clear-line",
+        label: "Story Time",
+    });
     // the values being edited, kept while moving between sections so unsaved changes aren't lost; replaced on save
     let draft = null;
 
@@ -30,22 +31,18 @@
 
     function sidebar() {
         return app.components.pageSidebar(
-            { className: "settings-sidebar" },
-            t.nav({ className: "sidebar-content scrollable" }, () => {
-                const out = [];
-                for (const group in app.store.settingsNavGroups) {
-                    out.push(t.details(
-                        { className: "nav-group", open: true },
-                        t.summary({ tabIndex: -1, onfocusout: () => false, onclick: () => false, onkeyup: () => false }, group),
-                        ...app.store.settingsNavGroups[group].map((link) => t.a(
-                            { href: link.href, className: () => `nav-item ${app.utils.isActivePath(link.href, false) ? "active" : ""}` },
-                            link.icon ? t.i({ className: link.icon, ariaHidden: true }) : null,
-                            t.span({ className: "txt" }, link.label),
-                        )),
-                    ));
-                }
-                return out;
-            }),
+            { className: "storytime-sidebar" },
+            t.nav({ className: "sidebar-content scrollable" },
+                t.details(
+                    { className: "nav-group", open: true },
+                    t.summary({ tabIndex: -1, onfocusout: () => false, onclick: () => false, onkeyup: () => false }, "Story Time"),
+                    ...SECTIONS.map((x) => t.a(
+                        { href: `#/storytime/${x.id}`, className: () => `nav-item ${app.utils.isActivePath(`#/storytime/${x.id}`, false) ? "active" : ""}` },
+                        t.i({ className: x.icon, ariaHidden: true }),
+                        t.span({ className: "txt" }, x.title),
+                    )),
+                ),
+            ),
         );
     }
 
@@ -53,9 +50,9 @@
         return t.div(null, t.div({ className: "field" }, t.label({}, label), input), hint ? t.div({ className: "field-help" }, hint) : null);
     }
 
-    // the old single page opens the first section
-    app.routes.superuserOnly("#/settings/storytime", () => { window.location.replace(`#/settings/storytime/${SECTIONS[0].id}`); });
-    SECTIONS.forEach((section) => app.routes.superuserOnly(`#/settings/storytime/${section.id}`, () => page(section)));
+    // #/storytime opens the first section
+    app.routes.superuserOnly("#/storytime", () => page(SECTIONS[0]));
+    SECTIONS.forEach((section) => app.routes.superuserOnly(`#/storytime/${section.id}`, () => page(section)));
 
     function page(section) {
         app.store.title = `${section.title} · Story Time`;
@@ -714,7 +711,6 @@
                 { className: "page-content full-height" },
                 t.header({ className: "page-header" },
                     t.nav({ className: "breadcrumbs" },
-                        t.div({ className: "breadcrumb-item" }, "Settings"),
                         t.div({ className: "breadcrumb-item" }, "Story Time"),
                         t.div({ className: "breadcrumb-item" }, section.title))),
                 t.div({ className: "wrapper m-b-base" }, () => {

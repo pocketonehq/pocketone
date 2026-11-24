@@ -46,7 +46,7 @@ pb_migrations/1763800005_voices.js      voices: recordings a cloned narrator imi
 pb_migrations/1763800006_stories_log.js   log and attempts: each story's step-by-step log (hidden) and how many times it was tried
 pb_migrations/1763800007_costs_usage.js   usage on costs: what each call used (tokens, seconds), for what a story's steps use
 pb_hooks/admin_plugins.pb.js            registers the dashboard screen (a superuser UI extension)
-pb_admin_ext/storytime/main.js          Settings → Story Time in the dashboard: the settings, with Sample buttons
+pb_admin_ext/storytime/main.js          Story Time in the dashboard's top bar: the settings, with Sample buttons
 pb_pages/
   index.ets            Tell me a story (one click: it picks the topic, at the default length); stories told, most listened to first
   inspire.ts           POST /inspire {avoid?}: a topic no story has covered yet (the model sees every title)
@@ -85,7 +85,7 @@ with 5 pictures (`MAX`); the form and `POST /story` both hold to it.
 
 ## Tuning, in the dashboard
 
-Settings → Story Time in the PocketBase dashboard (`/_/`) holds what shapes the app: the front page's title and caption, the story lengths (shortest and longest, the default, the narrator's words per minute, pictures per minute, the most pictures), the narrator (voice,
+**Story Time** in the PocketBase dashboard's top bar (`/_/`) holds what shapes the app: the front page's title and caption, the story lengths (shortest and longest, the default, the narrator's words per minute, pictures per minute, the most pictures), the narrator (voice,
 instructions, seed, speed), the writing, picture-choosing and Inspire me prompts, how words are said (**Pronunciation**), what's added to each picture and music
 prompt, the models and the daily budget. Each part has a **Sample** button that tries it with what's on the screen,
 saved or not: the voice reads a paragraph, the music plays 20 seconds, a picture is painted, a 1-minute story is

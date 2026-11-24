@@ -264,12 +264,12 @@ const PLACE_SCHEMA = {
 
 /** A recording the narrator imitates: the voices record, as a speech call's reference (the clip and what it says). */
 export function cloneReference(app: any, clip: string): { reference: any; name: string } {
-  if (!clip) throw new Error('the clone voice needs a recording: record one on Settings → Story Time → Narrator')
+  if (!clip) throw new Error('the clone voice needs a recording: record one on Story Time → Narrator in the dashboard')
   let r: any
   try {
     r = app.findRecordById('voices', clip)
   } catch (_) {
-    throw new Error('the narrator\'s recording is gone: pick or record another on Settings → Story Time → Narrator')
+    throw new Error('the narrator\'s recording is gone: pick or record another on Story Time → Narrator in the dashboard')
   }
   return { reference: { audio: $llm.fromRecord(r, 'audio'), text: r.getString('passage') }, name: r.getString('name') }
 }

@@ -1,6 +1,6 @@
 /// <reference path="../types.d.ts" />
 // voices: recordings of a real voice for the narrator to imitate (voice cloning). Each is a short clip read from a
-// passage, plus the passage itself, which helps the model match the voice. Recorded on Settings → Story Time →
+// passage, plus the passage itself, which helps the model match the voice. Recorded on Story Time →
 // Narrator and sent with every story's speech call. Superusers only: the stories it reads are public, the raw clip
 // isn't.
 migrate((app) => {

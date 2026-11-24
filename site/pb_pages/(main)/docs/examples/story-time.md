@@ -23,7 +23,7 @@ pb_migrations/         stories, their listens, each call's cost, audio samples, 
 pb_hooks/
   admin_plugins.pb.js  registers the settings screen with the dashboard
 pb_admin_ext/
-  storytime/main.js    the settings screen: Settings → Story Time
+  storytime/main.js    the settings screen: Story Time in the top bar
 pb_pages/
   index.ets            ask for a story, or Inspire me; stories told, most listened to first
   inspire.ts           POST /inspire: a topic no story has covered yet
@@ -79,8 +79,8 @@ listens at the same moment all count. The front page lists stories by it.
 
 Everything that shapes the app (what the front page says, how long stories may be, the narrator's voice, what the
 models are told, how pictures and music are asked for, which models run and how much a day may cost) can be changed
-without touching code, from **Settings → Story Time**
-in the PocketBase dashboard (`/_/`, superusers only). Each part has a **Sample** button, so you hear or see a change
+without touching code, from **Story Time** in the top bar
+of the PocketBase dashboard (`/_/`, superusers only), one sidebar entry per part. Each part has a **Sample** button, so you hear or see a change
 before any listener does.
 
 | Part | What you set | Sample |
@@ -128,7 +128,7 @@ models and voice that made it. The story's splash shows them with its date and c
   ```
 
   PocketBase serves the folder at `/_/extensions/storytime/` and loads its `main.js` into the dashboard. `main.js` adds
-  the Settings entry (`app.store.settingsNavGroups`) and the page (`app.routes.superuserOnly("#/settings/storytime", ...)`),
+  the top-bar link (`app.store.headerLinks`) and a page per section (`app.routes.superuserOnly("#/storytime/narrator", ...)`),
   built from the dashboard's own pieces, and calls the `/admin/...` endpoints with `app.pb.send`, which carries
   the signed-in superuser's token. `pb_pages/admin/+middleware.ts` lets only superusers through to any of them.
 - **Audio samples are saved, then played.** The dashboard plays media only from its own address (its
