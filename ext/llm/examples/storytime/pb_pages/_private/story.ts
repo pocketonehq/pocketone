@@ -43,7 +43,9 @@ export type Tuning = {
    * without / matches the base name */
   knowledge: { buckets: string[]; skip: string[] }
   /** each as provider/model: a provider added in Settings → LLM, then its model */
-  models: { text: string; idea: string; image: string; speech: string; speechOther: string; align: string; music: string }
+  models: { text: string; idea: string; image: string; speech: string; speechOther: string; align: string; music: string
+    /** Set up's chat helper (pb_pages/_private/assist.ts) */
+    assist: string }
   /** the narrator, for the speech model (not speechOther, which reads other languages with its own voice) */
   voice: {
     voice: string // the model's voice id: "default", a built-in speaker, "design" (a voice made from instructions) or "clone"
@@ -79,6 +81,7 @@ export const DEFAULT_TUNING: Tuning = (() => {
   const env = process.env
   t.models.text = env.STORY_TEXT_MODEL || t.models.text
   t.models.idea = env.STORY_IDEA_MODEL || env.STORY_TEXT_MODEL || t.models.idea
+  t.models.assist = env.STORY_ASSIST_MODEL || env.STORY_TEXT_MODEL || t.models.assist
   t.models.image = env.STORY_IMAGE_MODEL || t.models.image
   t.models.speech = env.STORY_SPEECH_MODEL || t.models.speech
   t.models.speechOther = env.STORY_SPEECH_MODEL_OTHER || t.models.speechOther

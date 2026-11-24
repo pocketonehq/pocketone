@@ -324,6 +324,17 @@
                 () => (data.kept ? storyCard(data.kept) : t.p(null, "Nothing yet: generate a story in step 2 and Save and next.")));
         }
 
+        // the models this step runs, each picked here (saved with Save and next; Generate and the chat use them at once)
+        function modelsView() {
+            const s = step();
+            if (!s.models.length) return null;
+            const pick = (m) => window.pocketone?.llm
+                ? window.pocketone.llm.select({ kind: m.kind, value: () => get(m.path), onchange: (id) => put(m.path, id) })
+                : t.input({ type: "text", value: get(m.path) ?? "", onchange: (e) => put(m.path, e.target.value) });
+            return t.div({ className: "grid", style: "margin-bottom: 6px;" },
+                ...s.models.map((m) => t.div({ className: s.models.length > 2 ? "col-md-4" : "col-md-6" }, field(m.label, pick(m)))));
+        }
+
         // the steps, each a tab: any one opens without saving or generating anything
         function stepTabs() {
             return t.div({ className: "flex", style: "gap: 6px; flex-wrap: wrap; margin-bottom: 10px;" },
@@ -341,7 +352,8 @@
                     stepTabs(),
                     t.h4({ className: "m-b-xs" }, `Step ${data.at + 1} of ${data.steps.length}: ${s.title}`),
                     t.p({ className: "txt-hint m-t-0" }, s.about,
-                        s.fields.length ? " Tell the helper what you want; it fills the fields, and you can edit them too. Nothing is saved until Save and next." : "")),
+                        s.fields.length ? " Tell the helper what you want; it fills the fields, and you can edit them too. Nothing is saved until Save and next." : ""),
+                    modelsView()),
                 s.view === "empty"
                     ? t.div({ className: "col-lg-12" }, emptyView())
                     : s.view === "story"
@@ -1023,6 +1035,7 @@
                     block("Models and budget", "Each from the providers in Settings → LLM, cheapest first, with its price: listed by the provider, or measured from what this app's calls were billed.",
                         t.div({ className: "col-md-6" }, field("Writing", modelField("models.text", "text"))),
                         t.div({ className: "col-md-6" }, field("Picking the story", modelField("models.idea", "text"))),
+                        t.div({ className: "col-md-6" }, field("Set up's helper (the chat)", modelField("models.assist", "text"))),
                         t.div({ className: "col-md-6" }, field("Voice", modelField("models.speech", "speech"))),
                         t.div({ className: "col-md-6" }, field("Voice, other languages", modelField("models.speechOther", "speech"))),
                         t.div({ className: "col-md-6" }, field("Word timing", modelField("models.align", "align"))),

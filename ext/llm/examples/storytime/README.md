@@ -112,6 +112,10 @@ plain-words or pronunciation passes: those come later, as steps of their own. Th
 ("it reads file names out loud"): it reads the story and rewrites the **Fine-tuning** notes (`prompts.finetune`).
 Generate again to see the difference. A trial with no step finished in 3 minutes is reported as stalled.
 
+Each step shows the models it runs, picked right there (saved with **Save and next**; Generate and the chat use them
+at once): step 1 its chat helper (`models.assist`, also on the settings' Models page), step 2 the topic picker, the
+writer and the helper, step 3 the picture model.
+
 The wizard is a debugger you can walk back and forth through: the steps are tabs, any one opens without saving or
 generating anything, and the screen comes back to the step you were on after a refresh. **Save and next** on step 2
 saves the settings and hands the story on (`POST /admin/trial {keep}`, kept in `$kv` as `storytime/wizard/story`):

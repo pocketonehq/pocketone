@@ -18,13 +18,14 @@
     },
     "budget": 1,
     "models": {
-      "align": "vultr/aligner-1",
+      "text": "vultr/mimo-v2.6-flash",
       "idea": "vultr/mimo-v2.6-flash",
+      "assist": "vultr/mimo-v2.6-flash",
+      "align": "vultr/aligner-1",
       "image": "vultr/z-image-turbo",
       "music": "vultr/ace-step-1.5",
       "speech": "vultr/auk",
-      "speechOther": "vultr/chatterbox",
-      "text": "vultr/mimo-v2.6-flash"
+      "speechOther": "vultr/chatterbox"
     },
     "music": {
       "seconds": 90,

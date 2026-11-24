@@ -12,7 +12,13 @@ export type StepField = {
 
 /** view: how the screen shows the step: its fields, (story) a story to try beside them, which the helper reads too, or
  * (empty) nothing yet but what the step before handed on */
-export type Step = { id: string; title: string; question: string; about: string; view: 'fields' | 'story' | 'empty'; fields: StepField[] }
+export type Step = { id: string; title: string; question: string; about: string; view: 'fields' | 'story' | 'empty'; fields: StepField[]
+  /** the models the step runs, each picked on its screen (a settings path, its label, and the kind of model) */
+  models: StepModel[] }
+
+export type StepModel = { path: string; label: string; kind: 'text' | 'image' }
+
+const HELPER: StepModel = { path: 'models.assist', label: 'Helper (the chat)', kind: 'text' }
 
 export const STEPS: Step[] = [
   {
@@ -21,6 +27,7 @@ export const STEPS: Step[] = [
     question: 'What do you want the general vibe of your story site to be?',
     about: 'The site\'s name, the tagline under it, and the general vibe every story is written in.',
     view: 'fields',
+    models: [HELPER],
     fields: [
       { path: 'site.title', label: 'Title',
         about: 'The site\'s name, shown large on the front page; its last word is highlighted. A few words. Also called the name or heading.' },
@@ -41,6 +48,7 @@ export const STEPS: Step[] = [
     about: 'Write a story with these settings and see every step of how it was made. What you\'d change about it becomes ' +
       'the fine-tuning: notes the writer gets right after the preamble.',
     view: 'story',
+    models: [{ path: 'models.idea', label: 'Picking the topic', kind: 'text' }, { path: 'models.text', label: 'Writer', kind: 'text' }, HELPER],
     fields: [
       { path: 'prompts.finetune', label: 'Fine-tuning',
         about: 'Notes from reading the stories the writer wrote: what to do or avoid ("Never say file names; say what the ' +
@@ -57,6 +65,7 @@ export const STEPS: Step[] = [
     about: 'Nothing here yet. It starts from the story step 2 handed on.',
     view: 'empty',
     fields: [],
+    models: [{ path: 'models.image', label: 'Pictures', kind: 'image' }],
   },
 ]
 
@@ -94,7 +103,7 @@ export async function assist(t: any, stepId: string, values: any, chat: ChatTurn
     ...earlier.map((c) => ({ role: c.role, content: c.text })),
     { role: 'user', content: (context ? `${context}\n\n` : '') + `The fields now:\n${JSON.stringify(current, null, 2)}\n\nMy message: ${last.text}` },
   ]
-  const result = await $llm.text.completeAsync({ model: t.models.text, system: system(s), messages, reasoning: 'off',
+  const result = await $llm.text.completeAsync({ model: t.models.assist, system: system(s), messages, reasoning: 'off',
     maxTokens: 8000, temperature: 0.7,
     schema: {
       type: 'object',
