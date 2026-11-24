@@ -82,8 +82,12 @@
             version: 0, // bumped when a field's value is replaced, so the fields redraw
             changed: {}, // path -> true for the fields the last turn changed, highlighted
             chatVersion: 0,
+            minutes: 0, // Try a story's length, for its hint (read only inside the hint, so moving the slider redraws only that)
+            trial: null, // the latest trial from /admin/trial: { id, status, minutes, topic, steps, story, error, costUSD }
+            starting: false,
         });
         let v = null; // the values, shared with the settings sections (draft) so unsaved changes carry across
+        const opts = { minutes: 0, topic: "" }; // Try a story's length and topic (empty: it picks); plain, so typing doesn't redraw
         const get = (path) => path.split(".").reduce((o, k) => (o == null ? o : o[k]), v);
         const put = (path, value) => {
             const keys = path.split("."), last = keys.pop();
@@ -100,6 +104,8 @@
                 const [tuning, assist] = await Promise.all([send("/admin/tuning"), send("/admin/assist")]);
                 v = draft = draft || tuning.values;
                 data.steps = assist.steps;
+                opts.minutes = data.minutes = v.length.defaultMinutes;
+                pollTrial();
             } catch (err) {
                 app.checkApiError(err);
                 data.message = { kind: "danger", text: errText(err) };
@@ -122,7 +128,7 @@
                 out.edits.forEach((e) => put(e.field, e.value));
                 data.changed = Object.fromEntries(out.edits.map((e) => [e.field, true]));
                 c.push({ role: "assistant", text: out.reply,
-                    meta: [out.model, out.costUSD ? `$${out.costUSD.toFixed(4)}` : ""].filter(Boolean).join(" · ") });
+                    meta: [out.model, out.costUSD ? usd(out.costUSD) : ""].filter(Boolean).join(" · ") });
                 if (out.edits.length) data.version++;
             } catch (err) {
                 c.push({ role: "error", text: errText(err) });
@@ -152,12 +158,12 @@
             data.version; // redraw when the helper replaces a value
             const s = step();
             return t.div({ className: "grid" }, ...s.fields.map((f) => {
-                const long = f.path.startsWith("prompts.");
+                const long = f.path === "prompts.write";
                 const attrs = { value: get(f.path) ?? "", onchange: (e) => put(f.path, e.target.value),
                     className: data.changed[f.path] ? "storytime-changed" : "" };
                 const input = f.path === "site.title"
                     ? t.input({ type: "text", ...attrs })
-                    : t.textarea({ rows: long ? 18 : 3, ...attrs,
+                    : t.textarea({ rows: long ? 18 : f.path.startsWith("prompts.") ? 8 : 3, ...attrs,
                         style: long ? "font-family: var(--monospaceFontFamily, monospace); font-size: 12px; line-height: 1.5;" : "" });
                 return t.div({ className: "col-lg-12" }, field(f.label, input, data.changed[f.path] ? "Just changed by the helper." : null));
             }));
@@ -174,6 +180,98 @@
             return list;
         }
 
+        // ---- Try a story: the text of a story made in the background with the settings on the screen; the screen polls
+        // its log (/admin/trial) while it runs
+        let pollTimer = 0;
+        async function pollTrial() {
+            clearTimeout(pollTimer);
+            try {
+                const { trial } = await send("/admin/trial");
+                const before = data.trial;
+                // replaced only when it moved on, so open sections of the log stay open
+                if (!before || !trial || before.id !== trial.id || before.status !== trial.status || before.steps.length !== trial.steps.length) {
+                    data.trial = trial;
+                }
+                if (trial && trial.status === "running" && app.utils.isActivePath("#/storytime/setup", false)) {
+                    pollTimer = setTimeout(pollTrial, 1200);
+                }
+            } catch (err) {
+                data.message = { kind: "danger", text: errText(err) };
+            }
+        }
+
+        async function generate() {
+            data.starting = true;
+            data.message = null;
+            opened.clear();
+            try {
+                const { trial } = await send("/admin/trial", { values: v, minutes: opts.minutes, topic: opts.topic });
+                data.trial = trial;
+                pollTimer = setTimeout(pollTrial, 800);
+            } catch (err) {
+                data.message = { kind: "danger", text: errText(err) };
+            }
+            data.starting = false;
+        }
+
+        const usd = (n) => (window.pocketone?.llm ? window.pocketone.llm.usd(n) : "$" + n.toFixed(4));
+        // which parts of the log are open, kept across redraws: "step index/part index"
+        const opened = new Set();
+
+        function lengthView() {
+            const L = v.length;
+            const words = () => Math.round(data.minutes * L.wordsPerMinute);
+            return t.div({ className: "grid" },
+                t.div({ className: "col-md-6" }, field("Length",
+                    L.minMinutes === L.maxMinutes
+                        ? t.div({ className: "txt-hint", style: "padding: 6px 0;" }, `${L.minMinutes} min (Shortest and Longest are the same in Story length)`)
+                        : t.div({ className: "flex", style: "align-items: center; gap: 10px; padding: 6px 0;" },
+                            t.input({ type: "range", min: String(L.minMinutes), max: String(L.maxMinutes), step: "1", value: opts.minutes, style: "flex: 1;",
+                                oninput: (e) => { opts.minutes = data.minutes = Number(e.target.value); } })),
+                    () => `${data.minutes} min, about ${words()} words (${L.wordsPerMinute} words a minute).`)),
+                t.div({ className: "col-md-6" }, field("Topic",
+                    t.input({ type: "text", placeholder: "Empty: it picks one, as Tell me a story does", value: opts.topic,
+                        oninput: (e) => (opts.topic = e.target.value) }))),
+                t.div({ className: "col-lg-12" },
+                    t.button({ type: "button", className: () => `btn ${data.starting ? "loading" : ""}`,
+                        disabled: () => data.starting || data.trial?.status === "running", onclick: generate },
+                        t.i({ className: "ri-quill-pen-line", ariaHidden: true }),
+                        t.span({ className: "txt" }, () => (data.trial ? "Generate again" : "Generate a story")))),
+            );
+        }
+
+        function partView(key, p) {
+            const short = p.text.length < 500;
+            return t.details({ className: "storytime-part", open: short || opened.has(key),
+                ontoggle: (e) => (e.target.open ? opened.add(key) : opened.delete(key)) },
+                t.summary(null, t.strong(null, p.label), short ? null : t.span({ className: "txt-hint" }, ` ${p.text.length.toLocaleString()} characters`)),
+                t.pre({ className: "storytime-pre" }, p.text));
+        }
+
+        function trialView() {
+            const x = data.trial;
+            if (!x) return t.p({ className: "txt-hint" }, "No story tried yet.");
+            const cards = x.steps.map((st, i) => t.div({ className: "storytime-step" },
+                t.div({ className: "flex", style: "gap: 8px; align-items: baseline;" },
+                    t.strong(null, st.step),
+                    t.span({ className: "txt-hint txt-sm" },
+                        [st.model, st.seconds != null ? `${st.seconds} s` : "", st.costUSD ? usd(st.costUSD) : ""].filter(Boolean).join(" · "))),
+                ...st.parts.map((p, j) => partView(`${i}/${j}`, p))));
+            if (x.status === "running") cards.push(t.div({ className: "storytime-step txt-hint" }, t.span({ className: "loader sm" }), " Working on the next step…"));
+            if (x.status === "failed") cards.push(t.div({ className: "alert danger" }, t.div({ className: "content" }, x.error)));
+            const st = x.story;
+            if (st) {
+                const words = st.sentences.join(" ").split(/\s+/).filter(Boolean).length;
+                cards.push(t.div({ className: "storytime-step storytime-story" },
+                    t.h5({ className: "m-b-xs" }, st.title),
+                    t.div({ className: "txt-hint txt-sm m-b-sm" }, `${st.topic} · ${words} words · ${x.minutes} min asked · ${usd(x.costUSD)} in all`),
+                    ...st.sentences.map((line) => t.p({ className: "m-b-xs" }, line)),
+                    t.div({ className: "txt-hint txt-sm m-t-sm" }, `Pictures: ${st.look}`),
+                    st.say && st.say.length ? t.div({ className: "txt-hint txt-sm" }, `Said: ${st.say.map((w) => `${w.term} → ${w.spoken}`).join(", ")}`) : null));
+            }
+            return t.div(null, ...cards);
+        }
+
         function stepView() {
             const s = step();
             input = t.textarea({ rows: 3, placeholder: "Say what you want; Enter sends, Shift+Enter for a new line",
@@ -182,9 +280,12 @@
                 t.div({ className: "col-lg-12" },
                     t.h4({ className: "m-b-xs" }, `Step ${data.at + 1} of ${data.steps.length}: ${s.title}`),
                     t.p({ className: "txt-hint m-t-0" }, s.about, " Tell the helper what you want; it fills the fields, and you can edit them too. Nothing is saved until Next.")),
-                t.div({ className: "col-lg-7" }, fieldsView),
+                s.view === "story"
+                    ? t.div({ className: "col-lg-7" }, lengthView(), t.hr(), () => trialView())
+                    : t.div({ className: "col-lg-7" }, fieldsView),
                 t.div({ className: "col-lg-5" },
                     t.div({ className: "storytime-chat" },
+                        s.view === "story" ? fieldsView : null,
                         chatView,
                         input,
                         t.div({ className: "flex" },
@@ -217,6 +318,12 @@
                 .storytime-msg.user .storytime-bubble { background: var(--primaryColor); color: var(--baseColor); }
                 .storytime-msg.error .storytime-bubble { background: var(--dangerAltColor); color: var(--dangerColor); }
                 .storytime-changed { box-shadow: 0 0 0 2px var(--successColor) inset; }
+                .storytime-step { padding: 10px 12px; margin-bottom: 10px; border-radius: var(--baseRadius, 8px); background: var(--baseAlt1Color); }
+                .storytime-step.storytime-story { background: transparent; box-shadow: 0 0 0 1px var(--baseAlt2Color) inset; }
+                .storytime-part { margin-top: 6px; }
+                .storytime-part summary { cursor: pointer; }
+                .storytime-pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.5; max-height: 420px; overflow-y: auto;
+                    margin: 4px 0 0; padding: 8px; border-radius: var(--baseRadius, 8px); background: var(--baseColor); }
             `),
             sidebar(),
             t.div(
@@ -821,6 +928,8 @@
                     ),
                     block("Writing the story", "What the stories are like: who tells them, about what, the tone. The app adds the rest after it: the length, what to do when the listener leaves the topic to it, that every sentence is read aloud, the answer's fields, and the words the narrator could say wrong (say).",
                         t.div({ className: "col-lg-12" }, field("Instructions", area("prompts.write", 16))),
+                        t.div({ className: "col-lg-12" }, field("Fine-tuning", area("prompts.finetune", 6),
+                            "Notes from trying stories (Set up's second step), told to the writer right after the instructions.")),
                         t.div({ className: "col-lg-12" }, field("Topic for the sample",
                             t.input({ type: "text", placeholder: "Empty: it picks", value: extra.storyTopic, onchange: (e) => (extra.storyTopic = e.target.value) }))),
                         sampleRow("story", "Sample a 1-minute story", () => extra.storyTopic),

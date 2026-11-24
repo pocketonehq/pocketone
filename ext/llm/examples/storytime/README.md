@@ -60,6 +60,8 @@ pb_pages/
   admin/stories.ts     POST /admin/stories: adds told stories missing from the stories bucket (superusers only)
   admin/assist.ts      GET /admin/assist: Set up's steps; POST {step, values, chat}: one chat turn's edits to the step's fields (superusers only)
   _private/assist.ts   Set up's steps (each owns a few settings fields) and the helper's one structured call
+  admin/trial.ts       POST /admin/trial {values, minutes, topic?}: starts Try a story; GET: its log so far (superusers only)
+  _private/trial.ts    Try a story: a story's text written in the background, each step's inputs and outputs kept in $kv
   view.ts              POST /view {id}: counts a listen (the player sends it after 10 seconds heard)
   story.ts             POST /story {prompt?, minutes?}: saves the record, starts making it (no prompt: it picks the topic)
   story/[id].ets       progress while it's made, then the player (scrubber, space to pause, arrows to skip 10 s)
@@ -95,7 +97,18 @@ on the screen and the chat so far to `POST /admin/assist`, and one call to the t
 the step's fields, answers with new values for just the fields you meant and a line saying what changed. The preamble
 holds only what the stories are like; the length, what to do with "Your pick", reading aloud and the answer's fields are
 the app's, added after it in code (`WRITE_RULES` in `_private/story.ts`), so the helper never writes them. The fields stay editable by hand; nothing is saved until **Save and next**. Each turn's cost is recorded
-(kind `assist`). The later steps (knowledge sources, a research loop, writing the story) are still to come.
+(kind `assist`).
+
+Step 2, **Try a story**, is a debugger for writing one. Pick a length (minutes, with the words that makes) and a topic,
+or leave the topic empty for the app to pick one, and **Generate**: the story's text is written in the background, the
+way a listener's story is (no voice, pictures or music), and every step shows as it finishes, with what went in and
+what came out, word for word: picking the topic (the passages drawn, the ideas from them, the told stories nearest
+each, the pick and why), the knowledge search, the writer's prompt piece by piece (preamble, fine-tuning, the rules the
+app adds, the pronunciation note, the request and knowledge) and its answer, the plain-words check and pronunciation,
+each with its model, time and cost. Then tell the helper what you'd change ("it reads file names out loud"): it reads
+the story and rewrites the **Fine-tuning** notes (`prompts.finetune`), which the writer gets right after the preamble.
+Generate again to see the difference. A trial with no step finished in 3 minutes is reported as stalled. The later
+steps (knowledge sources, a research loop) are still to come.
 
 **Story Time** in the PocketBase dashboard's top bar (`/_/`) holds what shapes the app: the front page's title and caption, the story lengths (shortest and longest, the default, the narrator's words per minute, pictures per minute, the most pictures), the narrator (voice,
 instructions, seed, speed), the writing, picture-choosing and Inspire me prompts, how words are said (**Pronunciation**), what's added to each picture and music

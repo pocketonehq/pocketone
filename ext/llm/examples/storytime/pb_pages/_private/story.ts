@@ -55,12 +55,13 @@ export type Tuning = {
   }
   /**
    * The system prompts. write: the writer's preamble, what the stories are like (who tells them, about what, the tone);
-   * the length, "Your pick", reading aloud and the answer's fields are added after it (WRITE_RULES). place: {n}. The
+   * the length, "Your pick", reading aloud and the answer's fields are added after it (WRITE_RULES). finetune: notes
+   * from trying stories (Set up's step 2), told to the writer right after the preamble. place: {n}. The
    * JSON shape each must answer in is fixed (WRITE_SCHEMA, PLACE_SCHEMA, the inspire schema), so keep the field names
    * the prompts mention. ideas: how Inspire me turns knowledge passages into story requests ({count}). pronounce: how words in this
    * field are said, with examples, for the writer's respellings and the pronunciation call.
    */
-  prompts: { write: string; place: string; inspire: string; ideas: string; pronounce: string }
+  prompts: { write: string; finetune: string; place: string; inspire: string; ideas: string; pronounce: string }
   /** added after every picture's prompt */
   picture: string
   /** added after the music prompt the story gets; seconds of song (it loops) */
@@ -172,16 +173,35 @@ const WRITE_RULES = `How to write it:
 - "title" is the story's title, and "topic" its subject in a short phrase.
 - "look" describes, for an illustrator, what recurs through the story's pictures (a place, a person with their dress and era, an object), so every picture can show it the same way.`
 
-const writePrompt = (t: Tuning, minutes: number) => {
+/** The writer's system prompt, piece by piece (the debugger shows each): the preamble, the fine-tuning, the app's rules,
+ * the pronunciation note. */
+export function writerParts(t: Tuning, minutes: number): TracePart[] {
   const vars = {
     minutes: `${minutes} minute${minutes === 1 ? '' : 's'}`,
     minWords: Math.round(minutes * t.length.wordsPerMinute * 0.9),
     maxWords: Math.round(minutes * t.length.wordsPerMinute * 1.1),
     anyTopic: ANY_TOPIC,
   }
-  // the preamble may still use the placeholders (settings saved before the rules moved here)
-  return `${fill(t.prompts.write, vars).trim()}\n\n${fill(WRITE_RULES, vars)}` + sayNote(t)
+  const finetune = t.prompts.finetune.trim()
+  return [
+    // the preamble may still use the placeholders (settings saved before the rules moved here)
+    { label: 'Preamble', text: fill(t.prompts.write, vars).trim() },
+    ...(finetune ? [{ label: 'Fine-tuning', text: `Notes from trying stories, to follow:\n${finetune}` }] : []),
+    { label: 'Rules the app adds', text: fill(WRITE_RULES, vars) },
+    { label: 'Pronunciation note', text: sayNote(t) },
+  ]
 }
+
+const writePrompt = (t: Tuning, minutes: number) => writerParts(t, minutes).map((p) => p.text).join('\n\n')
+
+// ---- the Set up screen's debugger: a step of making a story's text, with what went in and what came out, verbatim
+
+export type TracePart = { label: string; text: string }
+export type TraceStep = { step: string; parts: TracePart[]; model?: string; costUSD?: number; seconds?: number }
+/** Told each step as it finishes; story-making passes none. */
+export type Trace = (s: TraceStep) => void
+const callInfo = (r: any, t0: number) => ({ model: r.model, costUSD: r.usage.costMicroUSD / 1e6, seconds: Math.round((Date.now() - t0) / 100) / 10 })
+const pretty = (x: any) => JSON.stringify(x, null, 2)
 
 const WRITE_SCHEMA = {
   type: 'object',
@@ -204,7 +224,7 @@ const WRITE_SCHEMA = {
 // read the respelled sentences, and the captions keep the written words
 
 /** Told to the writer after the profile's prompt: list the words to respell, as the settings say words are said. */
-const sayNote = (t: Tuning) => '\n\nIn "say", list each word in the story a narrator could say wrong, one word each, ' +
+const sayNote = (t: Tuning) => 'In "say", list each word in the story a narrator could say wrong, one word each, ' +
   'exactly as written in the sentences, with how to spell it so a text-to-speech voice says it right. Leave out ordinary ' +
   `words; an empty list is fine. How words are said: ${t.prompts.pronounce}`
 
@@ -241,14 +261,20 @@ const PRONOUNCE_SCHEMA = {
  * The respellings for a story: the writer's list, plus how the odd-looking words it left out are said (one small call;
  * a word read as written comes back unchanged and is dropped).
  */
-async function pronounce(t: Tuning, sentences: string[], say: Say[]): Promise<{ say: Say[]; result?: any }> {
+async function pronounce(t: Tuning, sentences: string[], say: Say[], trace?: Trace): Promise<{ say: Say[]; result?: any }> {
   const ask_ = oddWords(sentences).filter((w) => !say.some((x) => x.term === w))
-  if (!ask_.length) return { say }
-  const result = await ask(t.models.text, {
-    system: 'You tell a narrator how to say words. For each word, answer how to spell it so a text-to-speech voice says ' +
-      `it right; a word read as written comes back unchanged. ${t.prompts.pronounce}`,
-    prompt: ask_.join('\n'), schema: PRONOUNCE_SCHEMA, temperature: 0,
-  })
+  const listed = { label: 'The writer listed', text: say.length ? say.map((x) => `${x.term} → ${x.spoken}`).join('\n') : 'none' }
+  if (!ask_.length) {
+    trace?.({ step: 'Pronunciation', parts: [listed, { label: 'Odd-looking words it left out', text: 'none, so no call' }] })
+    return { say }
+  }
+  const t0 = Date.now()
+  const system = 'You tell a narrator how to say words. For each word, answer how to spell it so a text-to-speech voice says ' +
+    `it right; a word read as written comes back unchanged. ${t.prompts.pronounce}`
+  const result = await ask(t.models.text, { system, prompt: ask_.join('\n'), schema: PRONOUNCE_SCHEMA, temperature: 0 })
+  trace?.({ step: 'Pronunciation', ...callInfo(result, t0), parts: [listed,
+    { label: 'Odd-looking words it left out, asked about', text: ask_.join('\n') },
+    { label: 'System', text: system }, { label: 'Answer', text: pretty(result.data) }] })
   return { say: sayList([...say, ...(result.data.words || [])]), result }
 }
 
@@ -464,22 +490,28 @@ export function looksLikeCode(sentence: string): boolean {
 const SPEAKABLE_SCHEMA = { type: 'object', properties: { sentences: { type: 'array', items: { type: 'string' } } }, required: ['sentences'] }
 
 /** Speakable sentences: cleaned, then any that still look like code rewritten in plain words (one call for all of them). */
-async function speakableSentences(t: Tuning, sentences: string[]): Promise<{ sentences: string[]; result?: any }> {
+async function speakableSentences(t: Tuning, sentences: string[], trace?: Trace): Promise<{ sentences: string[]; result?: any }> {
   const clean = sentences.map(speakable)
   // rewritten: what still looks like code, and what the writer marked as code or wrote with arrows (a command or a
   // menu path reads badly even with the marks gone: "Settings → LLM")
   const marked = (s: string) => /`|→|->|=>|⟶|›/.test(s)
   const bad = clean.map((s, i) => (looksLikeCode(s) || marked(sentences[i]) ? i : -1)).filter((i) => i >= 0)
-  if (!bad.length) return { sentences: clean }
-  const result = await ask(t.models.text, {
-    system: 'You rewrite sentences of a story so a narrator can read them aloud. Replace file paths, commands, flags, code, ' +
-      'config keys, URLs and symbols with plain words that say what they are ("a setting in the key-value store", "the ' +
-      'command to switch models"). Keep the meaning, the tone and the language; keep each to one sentence; never add facts.',
-    prompt: bad.map((i, n) => `${n + 1}. ${clean[i]}`).join('\n') + `\n\nAnswer with the ${bad.length} rewritten sentences, in order.`,
-    schema: SPEAKABLE_SCHEMA, temperature: 0.3,
-  })
+  const cleaned = clean.filter((c, i) => c !== sentences[i]).length
+  const tidied = { label: 'Markdown and symbols turned into words', text: `${cleaned} of ${clean.length} items changed` }
+  if (!bad.length) {
+    trace?.({ step: 'Plain words', parts: [tidied, { label: 'Still looking like code', text: 'none, so no call' }] })
+    return { sentences: clean }
+  }
+  const t0 = Date.now()
+  const system = 'You rewrite sentences of a story so a narrator can read them aloud. Replace file paths, commands, flags, code, ' +
+    'config keys, URLs and symbols with plain words that say what they are ("a setting in the key-value store", "the ' +
+    'command to switch models"). Keep the meaning, the tone and the language; keep each to one sentence; never add facts.'
+  const prompt = bad.map((i, n) => `${n + 1}. ${clean[i]}`).join('\n') + `\n\nAnswer with the ${bad.length} rewritten sentences, in order.`
+  const result = await ask(t.models.text, { system, prompt, schema: SPEAKABLE_SCHEMA, temperature: 0.3 })
   const fixed: string[] = (result.data.sentences || []).map((x: any) => speakable(String(x)))
   bad.forEach((i, n) => { if (fixed[n]) clean[i] = fixed[n] })
+  trace?.({ step: 'Plain words', ...callInfo(result, t0), parts: [tidied, { label: 'System', text: system },
+    { label: 'Still looking like code, sent to be rewritten', text: prompt }, { label: 'Rewritten', text: fixed.join('\n') }] })
   return { sentences: clean, result }
 }
 
@@ -573,14 +605,31 @@ function ownerFrom(bucket: string, folder: string, name: string): Owner {
   return { folder, title, opening }
 }
 
-export async function write(t: Tuning, prompt: string, minutes: number): Promise<{ story: Story; result: any; fixes?: any; said?: any; searched?: any }> {
+export async function write(t: Tuning, prompt: string, minutes: number, trace?: Trace): Promise<{ story: Story; result: any; fixes?: any; said?: any; searched?: any }> {
   // grounded in the knowledge buckets: what they hold about the topic follows the request, docs first
+  let t0 = Date.now()
   const known = await research(t, prompt)
-  const request = `Tonight's story: ${prompt}` + (known.text ? `\n\nWhat the knowledge base holds about it:\n\n${known.text}` +
-    '\n\nBefore any detail, name what the story is about by its own name (from what the passages belong to) and say in a ' +
-    'sentence what it is and why someone would use it. Call it by its title (the README\'s title or first heading), not a tagline. An example, recipe or test is an example of that thing, never the ' +
-    'thing itself: say what it is an example of.' : '')
-  const result = await ask(t.models.text, { system: writePrompt(t, minutes), prompt: request, schema: WRITE_SCHEMA, temperature: 0.9 })
+  trace?.({ step: 'Knowledge', seconds: Math.round((Date.now() - t0) / 100) / 10, parts: !t.knowledge.buckets.length
+    ? [{ label: 'No knowledge buckets', text: 'The writer uses the model\'s own knowledge.' }]
+    : [{ label: 'Search', text: `buckets: ${t.knowledge.buckets.join(', ')}\nquery: ${prompt}` },
+      { label: 'Found, best first', text: (known.found?.results || []).map((r: any) =>
+        `${r.score.toFixed(3)}  ${r.document}${r.heading ? ` › ${r.heading}` : ''}${skipped(t, r.document) ? '  (skipped: Knowledge → Skip)' : ''}`).join('\n') || 'nothing' },
+      { label: 'Handed to the writer', text: known.text || 'nothing' }] })
+  const request: TracePart[] = [{ label: 'Request', text: `Tonight's story: ${prompt}` }]
+  if (known.text) {
+    request.push({ label: 'Knowledge', text: `What the knowledge base holds about it:\n\n${known.text}` })
+    request.push({ label: 'After the knowledge', text: 'Before any detail, name what the story is about by its own name (from what the passages belong to) and say in a ' +
+      'sentence what it is and why someone would use it. Call it by its title (the README\'s title or first heading), not a tagline. An example, recipe or test is an example of that thing, never the ' +
+      'thing itself: say what it is an example of.' })
+  }
+  const system = writerParts(t, minutes)
+  t0 = Date.now()
+  const result = await ask(t.models.text, { system: system.map((p) => p.text).join('\n\n'), prompt: request.map((p) => p.text).join('\n\n'),
+    schema: WRITE_SCHEMA, temperature: 0.9 })
+  trace?.({ step: 'Writing', ...callInfo(result, t0), parts: [
+    ...system.map((p) => ({ label: `System: ${p.label}`, text: p.text })),
+    ...request.map((p) => ({ label: `Prompt: ${p.label}`, text: p.text })),
+    { label: 'Answer', text: pretty(result.data) }] })
   const written = result.data
   const story: Story = {
     title: String(written.title || 'A story'),
@@ -591,9 +640,9 @@ export async function write(t: Tuning, prompt: string, minutes: number): Promise
     say: sayList(written.say),
   }
   if (story.sentences.length < 5) throw new Error(`the story came back too short: ${story.sentences.length} sentences, ${JSON.stringify(written).slice(0, 300)}`)
-  const spoken = await speakableSentences(t, story.sentences)
+  const spoken = await speakableSentences(t, story.sentences, trace)
   story.sentences = spoken.sentences
-  const said = await pronounce(t, story.sentences, story.say || [])
+  const said = await pronounce(t, story.sentences, story.say || [], trace)
   story.say = said.say.filter((x) => story.sentences.some((s) => respell(s, [x]) !== s))
   return { story, result, fixes: spoken.result, said: said.result, searched: known.found }
 }
@@ -957,7 +1006,7 @@ export type Inspiration = {
  * topics grounded in those passages, look up the told stories nearest each candidate, and have the model pick the
  * candidate the told stories cover least. Without: the model sees the told stories' titles and suggests something else.
  */
-export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tuning(app), story = ''): Promise<Inspiration> {
+export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tuning(app), story = '', trace?: Trace): Promise<Inspiration> {
   const avoiding = avoid.length ? `\n\nAlready suggested, so suggest something different:\n${avoid.map((a) => `- ${a}`).join('\n')}` : ''
   if (!t.knowledge.buckets.length) {
     const told = app.findRecordsByFilter('stories', "status = 'done'", '-views,-created', 200, 0)
@@ -965,10 +1014,13 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
       const topic = (JSON.parse(r.getString('story') || '{}') || {}).topic
       return `- ${r.getString('title')}${topic ? ` (${topic})` : ''}`
     }).join('\n')
-    const r = await $llm.text.completeAsync({ model: t.models.idea, system: t.prompts.inspire,
-      prompt: (list ? `Stories already told:\n${list}` : 'No stories have been told yet.') + avoiding,
+    const prompt = (list ? `Stories already told:\n${list}` : 'No stories have been told yet.') + avoiding
+    const t0 = Date.now()
+    const r = await $llm.text.completeAsync({ model: t.models.idea, system: t.prompts.inspire, prompt,
       schema: { type: 'object', properties: { topic: { type: 'string' } }, required: ['topic'] }, reasoning: 'off', maxTokens: 4000, temperature: 1 })
     record(app, 'inspire', r, story)
+    trace?.({ step: 'Picking the topic', ...callInfo(r, t0), parts: [{ label: 'System (settings: Inspire me)', text: t.prompts.inspire },
+      { label: 'Prompt: the stories already told', text: prompt }, { label: 'Answer', text: pretty(r.data) }] })
     return { topic: String(r.data.topic || '').trim() }
   }
 
@@ -989,6 +1041,9 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
     if (passages.length === 5) break
   }
   if (!passages.length) passages.push(...drawn.slice(0, 5))
+  trace?.({ step: 'Picking the topic: drawing passages', parts: [
+    { label: `Drawn at random from ${t.knowledge.buckets.join(', ')}`, text: drawn.map((p: any) => `${p.document}${p.heading ? ` › ${p.heading}` : ''}`).join('\n') },
+    { label: 'Kept: one per thing they belong to, not skipped, 200 characters or more, at most 5', text: passages.map((p: any) => p.document).join('\n') }] })
   const material = passages.map((p: any, i: number) => [
     `[${i + 1}] ${p.document}${p.heading ? ` › ${p.heading}` : ''}${p.owner ? `, part of ${p.owner.title}` : ''}`,
     p.owner ? `What ${p.owner.title} is (${p.owner.folder}/README):\n${p.owner.opening.slice(0, 500)}` : '',
@@ -996,11 +1051,16 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
   ].filter(Boolean).join('\n'))
 
   // 2. one idea per seed, each a story request that stands on its own
+  const ideasPrompt = `Material to draw from (random passages, each with what it belongs to):\n\n${material.join('\n\n')}\n\n` +
+    fill(t.prompts.ideas, { count: passages.length }) + avoiding
+  let t0 = Date.now()
   const c = await $llm.text.completeAsync({ model: t.models.idea, system: t.prompts.inspire, reasoning: 'off', maxTokens: 3000, temperature: 0.9,
-    prompt: `Material to draw from (random passages, each with what it belongs to):\n\n${material.join('\n\n')}\n\n` +
-      fill(t.prompts.ideas, { count: passages.length }) + avoiding,
-    schema: CANDIDATES_SCHEMA })
+    prompt: ideasPrompt, schema: CANDIDATES_SCHEMA })
   record(app, 'inspire', c, story)
+  trace?.({ step: 'Picking the topic: ideas from the passages', ...callInfo(c, t0), parts: [
+    { label: 'System (settings: Inspire me)', text: t.prompts.inspire },
+    { label: 'Prompt: the passages, then Ideas from knowledge (settings)', text: ideasPrompt },
+    { label: 'Answer', text: pretty(c.data) }] })
   // the model may number what it lists ("3. Why..."): a prompt never starts with its place in a list
   const unnumbered = (x: any) => String(x || '').replace(/^\s*(?:\d{1,2}[.)]|[a-z]\))\s+/i, '').replace(/\s+/g, ' ').trim()
   const ideas = (c.data.candidates || [])
@@ -1017,17 +1077,22 @@ export async function inspiration(app: any, avoid: string[] = [], t: Tuning = tu
     const titles = [...new Set(told.map((r: any) => r.getString('title')))] as string[]
     near.push({ topic, nearest: titles })
   }
+  trace?.({ step: 'Picking the topic: told stories nearest each idea', parts: near.map((n, i) => ({
+    label: `${i + 1}. ${n.topic}`, text: n.nearest.length ? n.nearest.join('\n') : 'none told' })) })
 
   // 4. the candidate the told stories cover least. The model answers with the candidate's number (a schema holds it to
   // 1..n), never the topic retyped, so the topic is exactly the candidate's words
+  const pickSystem = 'You choose the next story. You get numbered candidate story requests, each with the stories already told that are ' +
+    'closest to it. Pick the one those stories cover least, so the next story is about something new; between ones ' +
+    'equally new, pick the one a listener would find most interesting. "choice" is its number; "why" says in one short ' +
+    'sentence what makes it new.'
+  const pickPrompt = near.map((n, i) => `${i + 1}. ${n.topic}\n   closest told: ${n.nearest.length ? n.nearest.join('; ') : 'none'}`).join('\n')
+  t0 = Date.now()
   const pick = await $llm.text.completeAsync({ model: t.models.idea, reasoning: 'off', maxTokens: 1000, temperature: 0.3,
-    system: 'You choose the next story. You get numbered candidate story requests, each with the stories already told that are ' +
-      'closest to it. Pick the one those stories cover least, so the next story is about something new; between ones ' +
-      'equally new, pick the one a listener would find most interesting. "choice" is its number; "why" says in one short ' +
-      'sentence what makes it new.',
-    prompt: near.map((n, i) => `${i + 1}. ${n.topic}\n   closest told: ${n.nearest.length ? n.nearest.join('; ') : 'none'}`).join('\n'),
-    schema: pickSchema(near.length) })
+    system: pickSystem, prompt: pickPrompt, schema: pickSchema(near.length) })
   record(app, 'inspire', pick, story)
+  trace?.({ step: 'Picking the topic: the pick', ...callInfo(pick, t0), parts: [{ label: 'System', text: pickSystem },
+    { label: 'Prompt', text: pickPrompt }, { label: 'Answer', text: pretty(pick.data) }] })
   const choice = Math.round(Number(pick.data.choice))
   const topic = candidates[choice >= 1 && choice <= candidates.length ? choice - 1 : 0]
   return { topic, why: String(pick.data.why || '').trim(), material: passages.map((p: any) => p.document), candidates: near }

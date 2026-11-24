@@ -89,8 +89,13 @@ asks what the site's general vibe should be, and your answer fills the title, th
 preamble (what every story is written from). Then keep talking: "I don't like the title" changes only the title, "make
 the stories calmer" only the preamble. One call to the text model per turn gets the step's fields as they are and
 answers, through a schema limited to those fields, with new values for the ones you meant. You can still edit the
-fields by hand, and nothing is saved until **Save and next**. More steps (knowledge sources, research, the story) are
-coming.
+fields by hand, and nothing is saved until **Save and next**.
+
+Step 2, **Try a story**, writes a story's text with those settings and shows every step as it happens, word for word:
+how it picked the topic and checked it against the stories already told, what the knowledge search found, each piece
+of the writer's prompt and its answer. Tell the helper what you'd change about the story, and it rewrites the
+**Fine-tuning** notes the writer gets after the preamble; generate again to see the difference. More steps (knowledge
+sources, research) are coming.
 
 | Part | What you set | Sample |
 |---|---|---|
@@ -99,7 +104,7 @@ coming.
 | **Mix** | How every story sounds when it plays: the voice's level (dBFS) and how far the music sits under it. The player measures each story's voice and music once and sets them to these, so quiet cloned voices, hot generated ones and loud songs all play balanced. | |
 | **Story length** | The slider's ends (shortest and longest, in whole minutes) and where it starts, the narrator's pace in words per minute (how many words a story of that length gets), pictures per minute, and the most pictures a story gets. Shortest equal to longest hides the slider. | |
 | **Narrator** | **Voice:** `default`, a calm middle-aged woman with a low, clear voice, generated afresh each call; `design`, a new voice made from the description in Instructions; or a clone, the voice of a recording you make on the screen (record, listen back, keep or delete; each take is compressed (3:1) and levelled before it's saved, and **Compress and level** does the same to an older one; **Check** transcribes a recording and shows how much of the passage it heard; recordings are superuser-only and sent with every story as speech's `reference`). **Instructions:** how `default` reads, or the voice itself for `design` ("A deep, calm older man's voice, slow and soft"). **Seed:** the same seed gives the same voice every time; empty lets it vary a little. **Speed:** 1 is normal. **Sample text:** what Sample reads. | Reads the sample text in that voice. `design` with no description is refused. |
-| **Writing the story** | The writer's preamble: what the stories are like (who tells them, about what, the tone). The app adds what every story needs after it: the length, what to do when the listener leaves the topic to it, that it's read aloud, and the answer's fields. | Writes a 1-minute story on the topic you give (or one it picks) and shows its sentences. |
+| **Writing the story** | The writer's preamble: what the stories are like (who tells them, about what, the tone), and the fine-tuning notes from trying stories. The app adds what every story needs after it: the length, what to do when the listener leaves the topic to it, that it's read aloud, and the answer's fields. | Writes a 1-minute story on the topic you give (or one it picks) and shows its sentences. |
 | **Pronunciation** | How words in this field are said, with examples ("WASM is said wazzum, SES is spelled out"). A cloned voice takes no instructions, so the writer lists the words a narrator could get wrong with a respelling; odd-looking words it left out (acronyms, names with capitals inside) are asked about in one small call. The voice reads the respelled text and the captions keep the written words. | |
 | **Choosing the pictures** | The instructions that turn the timed transcript into pictures, their style and the music prompt (placeholder `{n}`), and the words added after every picture's prompt. | Paints one picture in the style you give. |
 | **Music** | The words added after every story's music prompt, and how many seconds of music to make (it loops). | Plays 20 seconds for the music prompt you give. |

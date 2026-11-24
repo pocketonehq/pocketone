@@ -10,7 +10,8 @@ export type StepField = {
   about: string
 }
 
-export type Step = { id: string; title: string; question: string; about: string; fields: StepField[] }
+/** view: how the screen shows the step: its fields, or (story) a story to try beside them, which the helper reads too */
+export type Step = { id: string; title: string; question: string; about: string; view: 'fields' | 'story'; fields: StepField[] }
 
 export const STEPS: Step[] = [
   {
@@ -18,6 +19,7 @@ export const STEPS: Step[] = [
     title: 'What is it about?',
     question: 'What do you want the general vibe of your story site to be?',
     about: 'The site\'s name, the tagline under it, and the general vibe every story is written in.',
+    view: 'fields',
     fields: [
       { path: 'site.title', label: 'Title',
         about: 'The site\'s name, shown large on the front page; its last word is highlighted. A few words. Also called the name or heading.' },
@@ -29,6 +31,22 @@ export const STEPS: Step[] = [
           'deep they go, their tone, pace and voice. Asking for the stories to be different (calmer, funnier, more ' +
           'technical, told by someone) means this field. Only what the person said or clearly implied: the app adds the ' +
           'length, reading aloud, the language and the answer\'s fields itself, so never write those.' },
+    ],
+  },
+  {
+    id: 'story',
+    title: 'Try a story',
+    question: 'Generate a story, then tell me what you\'d change about it.',
+    about: 'Write a story with these settings and see every step of how it was made. What you\'d change about it becomes ' +
+      'the fine-tuning: notes the writer gets right after the preamble.',
+    view: 'story',
+    fields: [
+      { path: 'prompts.finetune', label: 'Fine-tuning',
+        about: 'Notes from reading the stories the writer wrote: what to do or avoid ("Never say file names; say what the ' +
+          'file is for", "Open with what it is before any detail"). Short lines, one note each, said as instructions to ' +
+          'the writer. A turn keeps the notes that still apply, adds or changes what the person asked, merges ones that ' +
+          'overlap and drops what they take back. Point at what in the story was wrong only to make a note clear; a note ' +
+          'is about every story, not this one.' },
     ],
   },
 ]
@@ -53,8 +71,9 @@ const system = (s: Step) => [
   'the message is unclear or asks something, your question or answer with no edits.',
 ].join('\n\n')
 
-/** One chat turn: the model's edits (only the step's fields, each checked) and its reply, plus the call (for its cost). */
-export async function assist(t: any, stepId: string, values: any, chat: ChatTurn[]): Promise<{ edits: Edit[]; reply: string; result: any }> {
+/** One chat turn: the model's edits (only the step's fields) and its reply, plus the call (for its cost). context: what
+ * the step shows beside its fields (the story tried last), told to the model with the fields. */
+export async function assist(t: any, stepId: string, values: any, chat: ChatTurn[], context = ''): Promise<{ edits: Edit[]; reply: string; result: any }> {
   const s = STEPS.find((x) => x.id === stepId)
   if (!s) throw new Error(`no step ${stepId}`)
   const current = Object.fromEntries(s.fields.map((f) => [f.path, String(get(values, f.path) ?? '')]))
@@ -64,7 +83,7 @@ export async function assist(t: any, stepId: string, values: any, chat: ChatTurn
   while (earlier.length && earlier[0].role === 'assistant') earlier.shift()
   const messages = [
     ...earlier.map((c) => ({ role: c.role, content: c.text })),
-    { role: 'user', content: `The fields now:\n${JSON.stringify(current, null, 2)}\n\nMy message: ${last.text}` },
+    { role: 'user', content: (context ? `${context}\n\n` : '') + `The fields now:\n${JSON.stringify(current, null, 2)}\n\nMy message: ${last.text}` },
   ]
   const result = await $llm.text.completeAsync({ model: t.models.text, system: system(s), messages, reasoning: 'off',
     maxTokens: 8000, temperature: 0.7,
