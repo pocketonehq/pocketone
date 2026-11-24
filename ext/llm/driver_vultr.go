@@ -152,14 +152,24 @@ func (d *vultrDriver) complete(ctx context.Context, model string, in textv1.Comp
 }
 
 func (d *vultrDriver) image(ctx context.Context, model string, in imagev1.GenerateInput, edit []llmc.File) (imagev1.Result, error) {
-	if len(edit) > 0 {
-		return imagev1.Result{}, d.no("image edits yet")
-	}
-	req := oai.ImageRequest{Model: model, Prompt: in.Prompt, N: in.N, Size: in.Size, ResponseFormat: "b64_json", Extra: in.Options}
+	extra := map[string]any{}
 	if in.AspectRatio != "" {
-		req.Extra = merge(map[string]any{"aspect_ratio": in.AspectRatio}, in.Options)
+		extra["aspect_ratio"] = in.AspectRatio
 	}
-	r, err := d.c.Images(ctx, req)
+	// pictures in make it an edit: OpenAI's JSON shape on /images/edits, each picture a data: URL (or its https URL).
+	// Only a model with reference editing takes them (qwen-image-2.1); any other answers a 400 naming "images".
+	path := "images/generations"
+	if len(edit) > 0 {
+		path = "images/edits"
+		images := make([]any, 0, len(edit))
+		for _, f := range edit {
+			images = append(images, map[string]any{"image_url": dataURL(f)})
+		}
+		extra["images"] = images
+	}
+	req := oai.ImageRequest{Model: model, Prompt: in.Prompt, N: in.N, Size: in.Size, ResponseFormat: "b64_json",
+		Extra: merge(extra, in.Options)}
+	r, err := d.c.ImagesAt(ctx, path, req)
 	if err != nil {
 		return imagev1.Result{}, err
 	}

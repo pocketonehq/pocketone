@@ -28,7 +28,11 @@ page.Set("picture", f)
 ```
 
 `n` asks for several, `size` (`"1024x768"`) or `aspectRatio` (`"16:9"`) shapes them, as the model allows.
-`$llm.image.editAsync({ model, prompt, images: [file] })` changes pictures you give it (on OpenRouter).
+`$llm.image.editAsync({ model, prompt, images: [file] })` makes a picture from pictures you give it: changes one, or
+draws a new scene in the same style and with the same characters as a reference ("same style and characters; show
+them ..."). On OpenRouter, and on Vultr's `qwen-image-2.1` (up to 10 pictures, evaluation only under the Qwen Research
+License); a Vultr model without reference editing answers its own error naming `images`. Cloudflare and other
+OpenAI-compatible APIs answer `not_supported`.
 
 ## Speech
 
