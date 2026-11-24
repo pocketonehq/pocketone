@@ -6,6 +6,8 @@ renames the section to that version ([Changelogs](../../docs/extensions.md#chang
 
 ## Unreleased
 
+## 0.0.1 (2026-11-24)
+
 ### Added
 
 - New: the app's key-value store. Named JSON values kept without a collection or a migration (rows `kv:<name>` in
@@ -13,3 +15,4 @@ renames the section to that version ([Changelogs](../../docs/extensions.md#chang
   [kv/v1](../contracts/kv/v1/README.md) helpers (`kvv1.Get`, `kvv1.Set`, ...) for Go, and superuser operations at
   `/api/_c/kv/v1` (also `pocketone remote kv ...` and MCP). On by default. Names starting with `_` are private to Go
   code (the API and `$kv` refuse them); LLM, Bulk Mail and API Tokens keep their settings and keys there.
+

@@ -7,7 +7,7 @@ Sections named after a PocketOne release are from before extensions had versions
 
 ## Unreleased
 
-## 0.0.4 (2026-11-22)
+## 0.0.4 (2026-11-24)
 
 ### Fixed
 

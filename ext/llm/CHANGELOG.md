@@ -6,15 +6,16 @@ renames the section to that version ([Changelogs](../../docs/extensions.md#chang
 
 ## Unreleased
 
+## 0.0.1 (2026-11-24)
+
 ### Upgrading
 
-- `$llm.image.editAsync({ ..., images })` and llm.image/v1's `edit` operation (`EditInput`, `onLlmImageEdit`) are gone: call `generateAsync({ ..., references: images })` (`POST /api/_c/llm.image/v1/generate` with `references`).
-- Guest calls (`$llm.for(e)` for a visitor who isn't signed in) are refused until Settings → LLM has a limit for all guests together. An app that answers visitors who aren't signed in adds one there (say $1 a day) after upgrading. Plain `$llm` calls aren't guest calls and aren't affected.
-- A failed `$llm` call's `err.message` no longer starts with its code (`provider: `, `unknown_model: `...). Code that matched on that text checks `err.code` instead.
+- Agent is gone, with its built-in model, `pocketone.yaml`'s `agent:` section and a multisite host's shared model. Replace `$agent.complete(opts)` with `await $llm.text.completeAsync({ model: "<provider>/<model>", ...opts })` (in an async handler) after adding a provider in Settings → LLM; `$agent.stream` is `await $llm.text.streamAsync`. There are no blocking versions. `thread`, `wait`, `warm`, `forget`, `threads` and `status` have no replacement (they were the built-in model's).
 
 ### Added
 
-- Time limits: a provider that never answers no longer holds a call for 5 minutes. Text calls (`completeAsync` too, with or without `schema`) always stream from the provider and end after 10 s with nothing from Vultr or OpenRouter (30 s from Cloudflare, 2 minutes from other OpenAI-compatible APIs), and every call has an overall limit by kind (10 minutes for text, 3 for a picture, 1 for embeddings...). Either cancels the request and throws with code `timeout` (504), naming the model and what ran out (`llm.ErrTimeout`) ([Time limits](docs/index.md#time-limits)).
+- New standard extension, replacing Agent: cloud models for your app, one contract per kind (`llm.text/v1`, `llm.image/v1`, `llm.speech/v1`, `llm.transcribe/v1`, `llm.align/v1`, `llm.music/v1`, `llm.video/v1`, `llm.embed/v1`) and `$llm.<kind>` in page code, where every call that reaches a provider is async and named so (`await $llm.text.completeAsync({...})`, `generateAsync`, `speakAsync`...): it runs off the app's JS VM, so the app keeps serving other requests while a model works. Providers are added in Settings → LLM with your own keys: Vultr, Cloudflare Workers AI, OpenRouter, or any OpenAI-compatible API. Every call names its model as `provider/model`. Music and video are jobs (`createAsync`, `getAsync`, `contentAsync`, or `wait`); `$llm.file()` turns a generated file into a PocketBase file. Every result's `usage.costMicroUSD` is what the call cost, in millionths of a US dollar (a whole number, `0` when free or not known): the provider's figure when it reports one, else estimated from the model's listed prices (`usage.costEstimated`).
+- Time limits: text calls (`completeAsync` too, with or without `schema`) always stream from the provider and end after 10 s with nothing from Vultr or OpenRouter (30 s from Cloudflare, 2 minutes from other OpenAI-compatible APIs), and every call has an overall limit by kind (10 minutes for text, 3 for a picture, 1 for embeddings...). Either cancels the request and throws with code `timeout` (504), naming the model and what ran out (`llm.ErrTimeout`) ([Time limits](docs/index.md#time-limits)).
 - `signal` on every `$llm` call that reaches a provider (`completeAsync`, `streamAsync`, `generateAsync`, `chat.sendAsync`...): pass an `AbortSignal` (`AbortSignal.timeout(30_000)`, or an `AbortController`'s) and the call rejects with its reason when it fires, cancelling the provider's request ([Time limits](docs/index.md#time-limits)).
 - Reference images: `$llm.image.generateAsync({ ..., references: [file] })` draws from the pictures given, to change one or to keep a story's characters and style across its pictures. On Vultr (`qwen-image-2.1`, and `minimax-h3`, now listed as an image model too) and OpenRouter. Models that take them list the feature `reference images` (`llm.FeatureReferenceImages`), so an app offers references only then.
 - The dashboard's model dropdown (`window.pocketone.llm.select`) takes the work a model is picked for (`job`, in price units, and `per`) and shows what that work costs on each model, cheapest first; `llm.costFor(model, job)` works it out.
@@ -30,30 +31,6 @@ renames the section to that version ([Changelogs](../../docs/extensions.md#chang
 - `$llm.fromRecord(record, field)`: a record's stored file as a file with its bytes, to send to a model (a voice clip, audio to transcribe or align).
 - Models: each model in a `models` answer now carries `size`, `features` and `languages` where its provider says, and Vultr's models their context size. Prices carry `source`: `listed` by the provider, or `measured` from what this app's calls to the model were billed (from the ledger, with `calls`, how many) ([Models and prices](README.md)).
 - Settings → LLM lists every model of each kind across your providers under **Models**: searchable, cheapest first, with each one's size, features, description and prices. Other dashboard screens reuse it through `window.pocketone.llm` (`select`, a searchable model dropdown with prices; `browser`; `models`).
-
-### Changed
-
-- Every provider's prices are in the same units: `1M input tokens`, `1M output tokens`, `1M cached input tokens`, `second`, `megapixel`, `image`, `1K characters`, `request`. Vultr's said `completion per token` and the like (and listed no input price for text); Cloudflare's `per M input tokens`, `per audio minute`, `per 512 by 512 tile`. Extras a call may not use (OpenRouter's web search, cache writes, images or audio sent in) are left out, and a model with a price per inference step lists none. Vultr no longer lists its video models among image models.
-- An `$llm` call that fails throws an `Error` with the failure's `code` (`limit`, `provider`, `unknown_model`, ...) in `err.code` and the message alone in `err.message`. Before, the message began with the code (`provider: vultr: 401: Invalid API key`). Code that matched on that text checks `err.code` instead.
-
-- Settings → LLM is kept in the app's key-value store (kv/v1) under the private name `_llm/settings`; the old
-  `_params` row `llm` moves there by itself the first time the settings are read. Nothing to do.
-
-### Fixed
-
-- A call that ran past a Go caller's context deadline threw `provider` ("no answer from ..."); it's `timeout` now. A streamed answer that keeps arriving is no longer cut off after 5 minutes.
-
-- A failed read of the guest signing key no longer makes and saves a new one (which gave every guest a new id): that
-  request counts guests by IP and the stored key stays.
-- Settings → LLM shows the error when the ledger's spend can't be read, instead of zeros.
-
-## 0.0.1 (2026-11-22)
-
-### Added
-
-- New standard extension, replacing Agent: cloud models for your app, one contract per kind (`llm.text/v1`, `llm.image/v1`, `llm.speech/v1`, `llm.transcribe/v1`, `llm.align/v1`, `llm.music/v1`, `llm.video/v1`, `llm.embed/v1`) and `$llm.<kind>` in page code, where every call that reaches a provider is async and named so (`await $llm.text.completeAsync({...})`, `generateAsync`, `speakAsync`...): it runs off the app's JS VM, so the app keeps serving other requests while a model works. Providers are added in Settings → LLM with your own keys: Vultr, Cloudflare Workers AI, OpenRouter, or any OpenAI-compatible API. Every call names its model as `provider/model`. Music and video are jobs (`createAsync`, `getAsync`, `contentAsync`, or `wait`); `$llm.file()` turns a generated file into a PocketBase file. Every result's `usage.costMicroUSD` is what the call cost, in millionths of a US dollar (a whole number, `0` when free or not known): the provider's figure when it reports one, else estimated from the model's listed prices (`usage.costEstimated`).
-
-### Upgrading
-
-- Agent is gone, with its built-in model, `pocketone.yaml`'s `agent:` section and a multisite host's shared model. Replace `$agent.complete(opts)` with `await $llm.text.completeAsync({ model: "<provider>/<model>", ...opts })` (in an async handler) after adding a provider in Settings → LLM; `$agent.stream` is `await $llm.text.streamAsync`. There are no blocking versions. `thread`, `wait`, `warm`, `forget`, `threads` and `status` have no replacement (they were the built-in model's).
+- An `$llm` call that fails throws an `Error` with the failure's `code` (`limit`, `provider`, `unknown_model`, ...) in `err.code` and the message alone in `err.message`.
+- Guest calls (`$llm.for(e)` for a visitor who isn't signed in) are refused until Settings → LLM has a limit for all guests together. An app that answers visitors who aren't signed in adds one there (say $1 a day) after upgrading. Plain `$llm` calls aren't guest calls and aren't affected.
 

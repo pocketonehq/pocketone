@@ -7,6 +7,8 @@ Sections named after a PocketOne release are from before extensions had versions
 
 ## Unreleased
 
+## 0.1.0 (2026-11-24)
+
 ### Upgrading
 
 - Per-remote token variables (`P1_TOKEN_<NAME>`, such as `P1_TOKEN_STAGING`) are no longer read: `P1_TOKEN` is the only variable, and it overrides the saved login for whatever remote the command uses. Rename `P1_TOKEN_<NAME>` to `P1_TOKEN`, set per job or per command (`P1_TOKEN=... pocketone deploy staging`). `remoteclient.EnvToken` takes no remote name.

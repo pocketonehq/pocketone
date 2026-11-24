@@ -1,6 +1,6 @@
 ---
 owners: ["@benallfree"]
-version: 0.1.2
+version: 0.2.0
 title: "Pages"
 group: binary
 summary: "Server-rendered pages from a pb_pages folder."

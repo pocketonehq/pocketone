@@ -7,13 +7,13 @@ Sections named after a PocketOne release are from before extensions had versions
 
 ## Unreleased
 
+## 0.1.3 (2026-11-24)
+
 ### Added
 
 - Cancellable Go calls: `AbortController`, `AbortSignal` (`timeout`, `abort`, `any`, `throwIfAborted`, `onabort` and `abort` listeners) and `DOMException`, as in browsers, and `fn.asyncWith({ signal }, ...args)`, an `.async` call that rejects with the signal's reason when it aborts (`TimeoutError` for `AbortSignal.timeout`, `AbortError` for `controller.abort()`). A Go function whose first parameter is a `context.Context` now gets one from the engine (JS passes the other arguments), cancelled when its request or hook is given up, when the VM closes, and when the call's signal aborts. `AbortSignal.timeout` keeps working after the request was answered, where `setTimeout` is refused, so background work can bound a call that hangs. Bindings take `{ signal }` by passing it to `asyncWith`; see the README's "Cancelling Go calls".
 
 - Timers: `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval` and `queueMicrotask`, as in browsers and Node.js. Each callback runs as its own task with its own time limits; a thrown error is logged. A timer set while serving a request is cleared once the request is answered or its client goes away; one set at the top of a hook file runs until cleared. At most 1024 are pending at once (`VMConfig.MaxTimers`).
-
-## 0.1.3 (2026-11-22)
 
 ### Changed
 

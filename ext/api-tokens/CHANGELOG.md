@@ -7,6 +7,8 @@ Sections named after a PocketOne release are from before extensions had versions
 
 ## Unreleased
 
+## 0.3.0 (2026-11-24)
+
 ### Upgrading
 
 1. Go: `Tokens.Collections()` returns `([]string, error)`; handle the error.

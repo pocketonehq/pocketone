@@ -6,7 +6,7 @@ renames the section to that version ([Changelogs](../../docs/extensions.md#chang
 
 ## Unreleased
 
-## 0.1.1 (2026-11-22)
+## 0.1.1 (2026-11-24)
 
 ### Added
 
