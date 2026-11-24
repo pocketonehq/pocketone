@@ -112,15 +112,20 @@
 
         async function load() {
             try {
-                const [tuning, assist] = await Promise.all([send("/admin/tuning"), send("/admin/assist")]);
+                const [tuning, assist, tried] = await Promise.all([send("/admin/tuning"), send("/admin/assist"), send("/admin/trial")]);
                 v = draft = draft || tuning.values;
                 data.steps = assist.steps;
                 let last = null;
                 try { last = localStorage.getItem(STEP_KEY); } catch (_) {}
                 data.at = Math.max(0, data.steps.findIndex((x) => x.id === last));
                 buckets = tuning.buckets || [];
-                opts.minutes = data.minutes = v.length.defaultMinutes;
-                pollTrial();
+                // Try a story starts from the last story's length and topic (kept with it on the server), so a refresh
+                // shows what made it; the settings' default length before the first
+                data.trial = tried.trial;
+                data.kept = tried.kept;
+                opts.minutes = data.minutes = tried.trial ? tried.trial.minutes : v.length.defaultMinutes;
+                opts.topic = tried.trial ? tried.trial.topic : "";
+                if (tried.trial?.status === "running") pollTrial();
             } catch (err) {
                 app.checkApiError(err);
                 data.message = { kind: "danger", text: errText(err) };
