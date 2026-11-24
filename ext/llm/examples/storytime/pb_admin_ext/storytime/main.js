@@ -223,7 +223,8 @@
                 if (data.kept[r]?.id !== kept?.id) data.kept = { ...data.kept, [r]: kept };
                 const before = data.runs[r];
                 // replaced only when it moved on, so open sections of the log stay open
-                if (!before || !run || before.id !== run.id || before.status !== run.status || before.steps.length !== run.steps.length) {
+                if (!before || !run || before.id !== run.id || before.status !== run.status || before.steps.length !== run.steps.length ||
+                    before.waiting?.since !== run.waiting?.since) {
                     data.runs = { ...data.runs, [r]: run };
                 }
                 if (run && run.status === "running" && app.utils.isActivePath("#/storytime/setup", false)) {
@@ -318,7 +319,8 @@
                     t.span({ className: "txt-hint txt-sm" },
                         [st.model, st.seconds != null ? `${st.seconds} s` : "", st.costUSD ? usd(st.costUSD) : ""].filter(Boolean).join(" · "))),
                 ...st.parts.map((p, j) => partView(`${i}/${j}`, p))));
-            if (x.status === "running") cards.push(t.div({ className: "storytime-step txt-hint" }, t.span({ className: "loader sm" }), " Working on the next step…"));
+            if (x.status === "running") cards.push(t.div({ className: "storytime-step txt-hint" }, t.span({ className: "loader sm" }),
+                x.waiting ? ` ${x.waiting.what}: waiting for the model (up to ${x.waiting.seconds} s)…` : " Working on the next step…"));
             if (x.status === "failed") cards.push(t.div({ className: "alert danger" }, t.div({ className: "content" }, x.error)));
             if (r === "story" && x.story) cards.push(storyCard(x));
             if (r === "pictures" && x.status === "done") cards.push(picturesCard(x));

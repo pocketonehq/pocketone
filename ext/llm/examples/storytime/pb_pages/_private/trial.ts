@@ -44,13 +44,26 @@ class Superseded extends Error {}
 /** A run with no step finished for this long has stalled (a model or search call that never answered). */
 const STALLED_MS = 3 * 60_000
 
-/** A step's latest run, running or finished; null before the first. One that stalled shows as failed. */
+/**
+ * A step's latest run, running or finished; null before the first. A run past the limit of the model call it's waiting
+ * for (waiting), or with nothing finished for STALLED_MS, has stalled: it's marked failed here, when someone looks
+ * (a run can't time itself out: timers end with the request that started it), and the call it left behind is ignored.
+ */
 export function current(step: string): Run | null {
   const x: Run | null = $kv.get(runKey(step))
-  if (x && x.status === 'running' && Date.now() - new Date(x.updated || x.started).getTime() > STALLED_MS) {
+  if (!x || x.status !== 'running') return x
+  const w = x.waiting
+  if (w && Date.now() - new Date(w.since).getTime() > w.seconds * 1000) {
     x.status = 'failed'
-    x.error = `Stalled: nothing answered for ${STALLED_MS / 60_000} minutes after "${x.steps.length ? x.steps[x.steps.length - 1].step : 'starting'}". Try again.`
+    x.error = `${w.what}: the model didn't answer in ${w.seconds} s (the provider sometimes drops a request). Generate again, or pick another model.`
+  } else if (Date.now() - new Date(x.updated || x.started).getTime() > STALLED_MS) {
+    x.status = 'failed'
+    x.error = `Stalled: nothing answered for ${STALLED_MS / 60_000} minutes after "${x.steps.length ? x.steps[x.steps.length - 1].step : 'starting'}". Generate again.`
+  } else {
+    return x
   }
+  delete x.waiting
+  $kv.set(runKey(step), x)
   return x
 }
 
@@ -78,7 +91,8 @@ function begin(step: string, fields: { [k: string]: any }, work: Work): Run {
   /** Changes the stored run, unless a newer one replaced it. */
   const update = (change: (x: Run) => void) => {
     const x: Run | null = $kv.get(key)
-    if (!x || x.id !== run.id) throw new Superseded()
+    // replaced by a newer run, or marked stalled (a late answer from a call it gave up on changes nothing)
+    if (!x || x.id !== run.id || x.status !== 'running') throw new Superseded()
     change(x)
     x.updated = new Date().toISOString()
     $kv.set(key, x)
@@ -96,6 +110,17 @@ function begin(step: string, fields: { [k: string]: any }, work: Work): Run {
 }
 
 const secs = (t0: number) => Math.round((Date.now() - t0) / 100) / 10
+
+/**
+ * A model call waited for at most seconds: the run notes what it's waiting for, so current() can mark it failed once
+ * that's past (a provider sometimes never answers a request, and the HTTP client gives up only after 5 minutes).
+ */
+async function waitFor<T>(update: (change: (x: Run) => void) => void, what: string, seconds: number, call: () => Promise<T>): Promise<T> {
+  update((x) => { x.waiting = { what, seconds, since: new Date().toISOString() } })
+  const out = await call()
+  update((x) => { delete x.waiting })
+  return out
+}
 
 // ---- step 2: write a story
 
@@ -135,8 +160,9 @@ export function startStory(story: any, app: any, t: Tuning, minutes: number, ask
     const prompt = [{ label: 'Request', text: `${topic ? `Write a story about: ${topic}` : 'Write a story.'} About ${words} words.` },
       ...(known.text ? [{ label: 'Knowledge', text: `What the knowledge base holds about it:\n\n${known.text}` }] : [])]
     t0 = Date.now()
-    const result = await $llm.text.completeAsync({ model: t.models.text, reasoning: 'off', maxTokens: 12000, temperature: 0.9,
-      system: system.map((p) => p.text).join('\n\n'), prompt: prompt.map((p) => p.text).join('\n\n'), schema: DRAFT_SCHEMA })
+    const result: any = await waitFor(update, 'Writing', 90, () => $llm.text.completeAsync({ model: t.models.text, reasoning: 'off',
+      maxTokens: 12000, temperature: 0.9, system: system.map((p) => p.text).join('\n\n'), prompt: prompt.map((p) => p.text).join('\n\n'),
+      schema: DRAFT_SCHEMA }))
     const usd = story.record(app, 'sample-story', result)
     trace({ step: 'Writing', model: result.model, costUSD: usd, seconds: secs(t0), parts: [
       ...system.map((p) => ({ label: `System: ${p.label}`, text: p.text })),
@@ -207,8 +233,8 @@ export function startPictures(story: any, app: any, t: Tuning, count: number): R
     let t0 = Date.now()
     const system = t.prompts.spots.replace(/\{count\}/g, String(count)).trim()
     const prompt = `${draft.title}\n\n${draft.body}`
-    const planned = await $llm.text.completeAsync({ model: t.models.plan, reasoning: 'off', maxTokens: 6000, temperature: 0.7,
-      system, prompt, schema: SPOTS_SCHEMA })
+    const planned: any = await waitFor(update, 'Finding the spots', 60, () => $llm.text.completeAsync({ model: t.models.plan,
+      reasoning: 'off', maxTokens: 6000, temperature: 0.7, system, prompt, schema: SPOTS_SCHEMA }))
     let usd = story.record(app, 'sample-plan', planned)
     // what the model wrote back: each quote should be in the story, word for word
     const body = squash(draft.body)
@@ -227,8 +253,8 @@ export function startPictures(story: any, app: any, t: Tuning, count: number): R
     t0 = Date.now()
     const themeSystem = t.prompts.theme.trim()
     const themePrompt = spots.map((x, i) => `${i + 1}. ${x.shows}`).join('\n')
-    const themed = await $llm.text.completeAsync({ model: t.models.plan, reasoning: 'off', maxTokens: 2000, temperature: 0.7,
-      system: themeSystem, prompt: themePrompt, schema: THEME_SCHEMA })
+    const themed: any = await waitFor(update, 'The theme', 60, () => $llm.text.completeAsync({ model: t.models.plan, reasoning: 'off',
+      maxTokens: 2000, temperature: 0.7, system: themeSystem, prompt: themePrompt, schema: THEME_SCHEMA }))
     usd = story.record(app, 'sample-plan', themed)
     const vibe = String(themed.data.vibe).trim()
     trace({ step: 'The theme', model: themed.model, costUSD: usd, seconds: secs(t0), parts: [
@@ -241,7 +267,7 @@ export function startPictures(story: any, app: any, t: Tuning, count: number): R
     // 3. the reference picture, painted from the vibe
     t0 = Date.now()
     const call = { model: t.models.image, prompt: vibe, aspectRatio: '16:9' }
-    const painted = await $llm.image.generateAsync(call)
+    const painted: any = await waitFor(update, 'The reference picture', 120, () => $llm.image.generateAsync(call))
     usd = story.record(app, 'sample-picture', painted)
     const f = painted.files[0]
     const r = new Record(app.findCollectionByNameOrId('setup_files'))
