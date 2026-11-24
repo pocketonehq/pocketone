@@ -124,12 +124,9 @@ func TestEnvTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("P1_TOKEN", "general")
-	t.Setenv("P1_TOKEN_MY_PROD", "specific")
-	if tok, _ := remoteclient.EnvToken("my-prod"); tok != "specific" {
-		t.Fatal(tok)
-	}
-	if tok, _ := remoteclient.EnvToken("other"); tok != "general" {
-		t.Fatal(tok)
+	t.Setenv("P1_TOKEN_PROD", "named") // per-remote variables are not read
+	if tok, src := remoteclient.EnvToken(); tok != "general" || src != "P1_TOKEN" {
+		t.Fatal(tok, src)
 	}
 	c, err := remoteclient.Open(dir, "prod")
 	if err != nil || c.Token != "general" {
@@ -308,7 +305,7 @@ func TestConfigFolderFollowsCommandVariablesDont(t *testing.T) {
 		t.Fatal(d)
 	}
 	t.Setenv("P1_TOKEN", "t")
-	if tok, src := remoteclient.EnvToken("prod"); tok != "t" || src != "P1_TOKEN" {
+	if tok, src := remoteclient.EnvToken(); tok != "t" || src != "P1_TOKEN" {
 		t.Fatal(tok, src)
 	}
 }

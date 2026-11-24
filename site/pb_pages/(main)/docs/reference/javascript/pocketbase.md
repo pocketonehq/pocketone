@@ -2707,6 +2707,12 @@ InternalServerError returns 429 ApiError.
 
 Is a <code><a href="/docs/reference/javascript/pocketbase/router#routerapierror">router.ApiError</a></code>.
 
+### DOMException
+
+### AbortSignal
+
+### AbortController
+
 ### process
 
 ### Buffer
@@ -2822,6 +2828,78 @@ Each hook takes a handler that gets the event; call `e.next()` to go on to the n
 |---|---|---|
 | `append()` | <code>(key: string, value: any): void</code> |  |
 | `set()` | <code>(key: string, value: any): void</code> |  |
+
+### GoArgs
+
+The arguments JS passes to Go function `F`: all of them, or all but the first when it is a `context.Context`
+(the engine supplies that one).
+
+<code>F extends (ctx: infer C, ...rest: infer R) =&gt; any</code>
+
+### AsyncOptions
+
+Options for `fn.asyncWith`. @group PocketOne
+
+| Member | Type | |
+|---|---|---|
+| `signal?` | <code><a href="/docs/reference/javascript/pocketbase#abortsignal">AbortSignal</a> &#124; null</code> | Aborts the call: the promise rejects with `signal.reason` and the Go function's context is cancelled. |
+
+### DOMException
+
+An error with a `name`, as in browsers: AbortSignal's reasons are `DOMException`s named `"AbortError"` (code 20)
+and `"TimeoutError"` (code 23).
+
+<code>extends Error</code>
+
+| Member | Type | |
+|---|---|---|
+| `name` | <code>string</code> |  |
+| `message` | <code>string</code> |  |
+| `code` | <code>number</code> |  |
+
+### AbortEvent
+
+The event an AbortSignal's listeners get. @group PocketOne
+
+| Member | Type | |
+|---|---|---|
+| `type` | <code>&#34;abort&#34;</code> |  |
+| `target` | <code><a href="/docs/reference/javascript/pocketbase#abortsignal">AbortSignal</a></code> |  |
+| `currentTarget` | <code><a href="/docs/reference/javascript/pocketbase#abortsignal">AbortSignal</a></code> |  |
+
+### AbortSignal
+
+Says when to stop, as in browsers: pass one to `fn.asyncWith({ signal }, ...)` (or an API that takes `{ signal }`).
+`AbortSignal.timeout(ms)` runs on a Go timer that keeps going after the request is answered, so background work
+can bound its calls where `setTimeout` is refused. It counts against `MaxTimers` until it fires.
+
+```js
+const signal = AbortSignal.any([AbortSignal.timeout(60_000), controller.signal])
+```
+
+| Member | Type | |
+|---|---|---|
+| `aborted` | <code>boolean</code> |  |
+| `reason` | <code>any</code> |  |
+| `onabort` | <code>((this: <a href="/docs/reference/javascript/pocketbase#abortsignal">AbortSignal</a>, ev: <a href="/docs/reference/javascript/pocketbase#abortevent">AbortEvent</a>) =&gt; any) &#124; null</code> |  |
+| `throwIfAborted()` | <code>(): void</code> | Throws `reason` if the signal has aborted. |
+| `addEventListener()` | <code>(type: &#34;abort&#34;, listener: (this: <a href="/docs/reference/javascript/pocketbase#abortsignal">AbortSignal</a>, ev: <a href="/docs/reference/javascript/pocketbase#abortevent">AbortEvent</a>) =&gt; any, options?: boolean &#124; { once?: boolean }): void</code> |  |
+| `removeEventListener()` | <code>(type: &#34;abort&#34;, listener: (this: <a href="/docs/reference/javascript/pocketbase#abortsignal">AbortSignal</a>, ev: <a href="/docs/reference/javascript/pocketbase#abortevent">AbortEvent</a>) =&gt; any): void</code> |  |
+
+### AbortController
+
+Makes a signal and aborts it, as in browsers.
+
+```js
+const c = new AbortController()
+cancelButtonPressed.then(() => c.abort())
+await work.asyncWith({ signal: c.signal })
+```
+
+| Member | Type | |
+|---|---|---|
+| `signal` | <code><a href="/docs/reference/javascript/pocketbase#abortsignal">AbortSignal</a></code> |  |
+| `abort()` | <code>(reason?: any): void</code> | Aborts the signal with `reason` (an `"AbortError"` DOMException by default); later calls do nothing. |
 
 ### Console
 

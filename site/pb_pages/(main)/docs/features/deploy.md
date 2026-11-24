@@ -99,7 +99,7 @@ pocketone logs                         # the last 100 lines, then follow
 3. Under **Scopes**, tick `deploy`. Add `remote` if CI will pass `--restart`.
 4. Click **Create token** and copy it. It's shown only once.
 
-In CI, set `P1_TOKEN` (or `P1_TOKEN_PROD` for the remote named `prod`) to that token, then run
+In CI, set `P1_TOKEN` to that token, then run
 `pocketone deploy --restart`.
 
 ## From an agent

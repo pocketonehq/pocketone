@@ -50,7 +50,7 @@ func Command(ctx context.Context, t *testing.T, dir string, env []string, args .
 
 func baseEnv(t *testing.T) []string {
 	return append(os.Environ(),
-		"P1_CONFIG_DIR="+t.TempDir(), "P1_TOKEN=", "P1_TOKEN_DEFAULT=", "SSH_CONNECTION=", "SSH_TTY=")
+		"P1_CONFIG_DIR="+t.TempDir(), "P1_TOKEN=", "SSH_CONNECTION=", "SSH_TTY=")
 }
 
 // superuser creates the superuser in a data folder (relative to p.Dir) before the first serve.

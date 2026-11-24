@@ -61,7 +61,7 @@ There is no `pocketone.yaml` section, flag or settings screen. Defaults on the r
   is safe (files already in the app's folder count as uploaded, so deploys still send only what changed).
 
 On your machine, the commands use the project's remotes and saved logins from [Remotes](/docs/extensions/remotes). In CI,
-set `P1_TOKEN` (or `P1_TOKEN_<REMOTE>`) instead of signing in.
+set `P1_TOKEN` instead of signing in.
 
 ## Use
 

@@ -13,7 +13,7 @@ Package remotes gives the command named remotes: other PocketBase instances (or 
 	pocketone login prod
 	pocketone deploy prod
 
-Remote names and URLs live in the project's .pocketbase/remotes.json (commit it); secrets live in the user's ~/.config/pocketone/credentials.json (0600), keyed by URL. CI sets P1\_TOKEN or P1\_TOKEN\_\<REMOTE>. The folder is named after [extkit.Command](/pocketone.dev/ext/extkit#Command) (~/.config/pockethost in that build); the variables are PocketOne's (P1\_) in every build.
+Remote names and URLs live in the project's .pocketbase/remotes.json (commit it); secrets live in the user's ~/.config/pocketone/credentials.json (0600), keyed by URL. P1\_TOKEN overrides the saved login (CI sets it). The folder is named after [extkit.Command](/pocketone.dev/ext/extkit#Command) (~/.config/pockethost in that build); the variables are PocketOne's (P1\_) in every build.
 
 The server half is remote/v1's whoami (GET /api/\_c/remote/v1): who the request's token is, its scopes, and which contracts the app offers (deploy/v1, oauth/v1, api-tokens/v1, ...), so clients discover what a remote supports.
 
@@ -155,10 +155,10 @@ DecodeResponse turns a non-2xx response into an [APIError](#apierror) (PocketBas
 ### EnvToken
 
 ```go
-func EnvToken(remoteName string) (token, source string)
+func EnvToken() (token, source string)
 ```
 
-EnvToken returns the CI token for a remote: P1\_TOKEN\_\<NAME> (upper case, other characters as \_), then P1\_TOKEN.
+EnvToken returns the token in P1\_TOKEN, which overrides the saved login for whatever remote a command uses, and the variable's name as its source. Set it for one command (\`P1\_TOKEN=... pocketone deploy staging\`) to use another token for that command only.
 
 ### EnvVar
 

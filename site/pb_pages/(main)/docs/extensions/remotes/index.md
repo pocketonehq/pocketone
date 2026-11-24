@@ -63,8 +63,7 @@ Logins are saved per user, keyed by URL, in `~/.config/pocketone/credentials.jso
 
 | Variable | What it does |
 |---|---|
-| `P1_TOKEN_<REMOTE>` | A token for one remote, for CI. The name is upper case, other characters as `_` (`P1_TOKEN_PROD`). |
-| `P1_TOKEN` | A token for any remote. |
+| `P1_TOKEN` | A token that overrides the saved login, for CI or for one command (`P1_TOKEN=... pocketone deploy staging`). |
 | `P1_CONFIG_DIR` | Where saved logins are kept. |
 
 A token in the environment wins over a saved login. Every PocketOne variable starts with `P1_`, in every build (the

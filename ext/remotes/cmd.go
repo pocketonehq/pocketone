@@ -156,7 +156,7 @@ func remoteCommand() *cobra.Command {
 }
 
 func describeLogin(name string, cr *remoteclient.Credential) string {
-	if tok, src := remoteclient.EnvToken(name); tok != "" {
+	if tok, src := remoteclient.EnvToken(); tok != "" {
 		return src
 	}
 	if cr == nil {

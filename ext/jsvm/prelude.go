@@ -1,6 +1,7 @@
 package jsvm
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -21,9 +22,108 @@ const preludeJS = `
 	const arr = Object.create(Array.prototype)
 	Object.defineProperty(arr, "toJSON", { value: function () { return __goJSON(this) } })
 	Object.defineProperty(arr, "toString", { value: function () { return Array.prototype.join.call(this, ",") } })
+	// DOMException, AbortSignal and AbortController as in browsers (the parts that matter without a DOM).
+	// AbortSignal.timeout runs on a Go timer that outlives the request (__abortAfter), unlike setTimeout.
+	const report = (what, e) => __log(what + " failed: " + ((e && e.stack) || e))
+	const codes = { AbortError: 20, TimeoutError: 23 }
+	class DOMException extends Error {
+		#name
+		constructor(message = "", name = "Error") { super(String(message)); this.#name = String(name) }
+		get name() { return this.#name }
+		get code() { return codes[this.#name] ?? 0 }
+	}
+	const KEY = Symbol()
+	let abort
+	class AbortSignal {
+		#aborted = false
+		#reason = undefined
+		#onabort = null
+		#listeners = []
+		constructor(key) { if (key !== KEY) throw new TypeError("Illegal constructor") }
+		get aborted() { return this.#aborted }
+		get reason() { return this.#reason }
+		get onabort() { return this.#onabort }
+		set onabort(fn) { this.#onabort = typeof fn === "function" ? fn : null }
+		throwIfAborted() { if (this.#aborted) throw this.#reason }
+		addEventListener(type, fn, opts) {
+			if (type !== "abort" || fn == null || this.#aborted) return
+			if (this.#listeners.some((l) => l.fn === fn)) return
+			this.#listeners.push({ fn })
+		}
+		removeEventListener(type, fn) {
+			if (type !== "abort") return
+			const i = this.#listeners.findIndex((l) => l.fn === fn)
+			if (i >= 0) this.#listeners.splice(i, 1)
+		}
+		get [Symbol.toStringTag]() { return "AbortSignal" }
+		static {
+			abort = (s, reason) => {
+				if (s.#aborted) return
+				s.#aborted = true
+				s.#reason = reason === undefined ? new DOMException("This operation was aborted", "AbortError") : reason
+				const event = { type: "abort", target: s, currentTarget: s }
+				const listeners = s.#listeners
+				s.#listeners = []
+				const call = (fn) => {
+					try { typeof fn === "function" ? fn.call(s, event) : fn.handleEvent(event) } catch (e) { report("abort listener", e) }
+				}
+				if (s.#onabort) call(s.#onabort)
+				for (const l of listeners) call(l.fn)
+			}
+		}
+		static abort(reason) { const s = new AbortSignal(KEY); abort(s, reason); return s }
+		static timeout(ms) {
+			ms = Number(ms)
+			if (!(ms >= 0) || ms > Number.MAX_SAFE_INTEGER) throw new TypeError("AbortSignal.timeout: ms must be a non-negative number")
+			const s = new AbortSignal(KEY)
+			__abortAfter(() => abort(s, new DOMException("The operation timed out.", "TimeoutError")), ms)
+			return s
+		}
+		static any(signals) {
+			const s = new AbortSignal(KEY)
+			const list = [...signals]
+			for (const x of list) {
+				if (!(x instanceof AbortSignal)) throw new TypeError("AbortSignal.any: every item must be an AbortSignal")
+				if (x.aborted) { abort(s, x.reason); return s }
+			}
+			const onAbort = (e) => {
+				for (const x of list) x.removeEventListener("abort", onAbort)
+				abort(s, e.target.reason)
+			}
+			for (const x of list) x.addEventListener("abort", onAbort)
+			return s
+		}
+	}
+	class AbortController {
+		#signal = new AbortSignal(KEY)
+		get signal() { return this.#signal }
+		abort(reason) { abort(this.#signal, reason) }
+		get [Symbol.toStringTag]() { return "AbortController" }
+	}
+	hide("DOMException", DOMException)
+	hide("AbortSignal", AbortSignal)
+	hide("AbortController", AbortController)
+
 	const fn = Object.create(Function.prototype)
 	// Any Go function or method can run off the loop: await $app.findRecordById.async("posts", id)
 	Object.defineProperty(fn, "async", { value: function (...args) { return __goAsync(this, args) } })
+	// fn.asyncWith({ signal }, ...args) is fn.async(...args) that the signal can abort: the promise rejects with the
+	// signal's reason, and the Go function's context (if it takes one) is cancelled.
+	Object.defineProperty(fn, "asyncWith", { value: function (opts, ...args) {
+		const signal = opts == null ? undefined : opts.signal
+		if (signal == null) return __goAsync(this, args)
+		if (!(signal instanceof AbortSignal)) throw new TypeError("asyncWith: signal must be an AbortSignal")
+		if (signal.aborted) return Promise.reject(signal.reason)
+		const [p, id] = __goAsync(this, args, true)
+		return new Promise((resolve, reject) => {
+			const onAbort = () => { __goCancel(id, signal.reason); reject(signal.reason) }
+			signal.addEventListener("abort", onAbort)
+			p.then(
+				(v) => { signal.removeEventListener("abort", onAbort); resolve(v) },
+				(e) => { signal.removeEventListener("abort", onAbort); reject(e) },
+			)
+		})
+	} })
 	hide("console", { log: __log, error: __log, warn: __log, info: __log, debug: __log, trace: __log })
 	hide("__protos", [obj, fn, arr])
 	hide("queueMicrotask", function queueMicrotask(cb) {
@@ -133,6 +233,10 @@ func (vm *VM) installPrelude() error {
 	}
 	hidden("__done", nativeDone)
 	hidden("__goAsync", nativeAsync)
+	hidden("__goCancel", nativeCancel)
+	hidden("__abortAfter", func(vm *VM, this JSValue, args []JSValue, ctor bool) JSValue {
+		return vm.setTimerOpts("AbortSignal.timeout", args, false, true)
+	})
 	hidden("__goJSON", nativeJSON)
 	hidden("__goString", nativeString)
 	hidden("__goPrim", func(vm *VM, this JSValue, args []JSValue, ctor bool) JSValue {
@@ -217,6 +321,11 @@ func nativeDone(vm *VM, this JSValue, args []JSValue, ctor bool) JSValue {
 
 // nativeAsync runs a Go function on its own goroutine and returns a promise. Arguments are converted on the loop;
 // the result is converted back on the loop when it is done.
+//
+// A function whose first parameter is a context.Context gets one of its own (JS passes the other arguments, or a Go
+// context as the parent): cancelled when the call this code runs for is given up, when the VM closes, and when JS
+// cancels it with __goCancel. With a third argument true (asyncWith with a signal), it returns [promise, id] for
+// __goCancel instead of the promise.
 func nativeAsync(vm *VM, this JSValue, args []JSValue, ctor bool) JSValue {
 	h := C.avm_handle_of(vm.a, args[0])
 	if h == 0 || vm.handles[h].kind != kindFn {
@@ -229,18 +338,54 @@ func nativeAsync(vm *VM, this JSValue, args []JSValue, ctor bool) JSValue {
 	if vm.asyncInFlight >= vm.cfg.MaxAsync {
 		return vm.throw(fmt.Errorf("too many async Go calls in flight (%d)", vm.cfg.MaxAsync))
 	}
+	abortable := len(args) > 2 && C.JS_ToBool(vm.ctx, args[2]) != 0
 	fn := vm.handles[h].v
+	ft := fn.Type()
 	n := int(C.avm_length(vm.ctx, args[1]))
 	jsArgs := make([]JSValue, n)
 	for i := range jsArgs {
 		jsArgs[i] = C.avm_array_get(vm.ctx, args[1], uint32(i))
 	}
-	in, err := vm.goArgs(fn.Type(), jsArgs)
+	withCtx := ft.NumIn() > 0 && ft.In(0) == contextType
+	var ownerCtx, parent context.Context
+	var in []reflect.Value
+	var err error
+	if withCtx {
+		ownerCtx = vm.ownerCtx(o)
+		parent = ownerCtx
+		rest := jsArgs
+		if !vm.suppliesCtx(ft, jsArgs) {
+			parent = vm.handles[C.avm_handle_of(vm.a, jsArgs[0])].v.Interface().(context.Context)
+			rest = jsArgs[1:]
+		}
+		in, err = vm.goArgsFrom(ft, 1, rest, reflect.Value{}) // in[0] is set below
+	} else {
+		in, err = vm.goArgsFrom(ft, 0, jsArgs)
+	}
 	for _, a := range jsArgs {
 		vm.free_(a)
 	}
 	if err != nil {
 		return vm.throw(err)
+	}
+	cancel := func(error) {}
+	var unlink []func() bool
+	if withCtx {
+		ctx, c := context.WithCancelCause(parent)
+		cancel = c
+		if parent != vm.base {
+			unlink = append(unlink, context.AfterFunc(vm.base, func() { c(context.Cause(vm.base)) }))
+		}
+		if parent != ownerCtx {
+			unlink = append(unlink, context.AfterFunc(ownerCtx, func() { c(context.Cause(ownerCtx)) }))
+		}
+		in[0] = reflect.ValueOf(ctx)
+	}
+	var id uint64
+	if abortable {
+		vm.asyncSeq++
+		id = vm.asyncSeq
+		vm.asyncCancels[id] = cancel
 	}
 	funcs := make([]JSValue, 2)
 	p := C.avm_new_promise(vm.ctx, &funcs[0])
@@ -257,8 +402,15 @@ func nativeAsync(vm *VM, this JSValue, args []JSValue, ctor bool) JSValue {
 			}()
 			out = fn.Call(in)
 		}()
+		for _, u := range unlink {
+			u()
+		}
+		cancel(nil) // done: frees the context
 		vm.post(func() {
 			vm.asyncInFlight--
+			if abortable {
+				delete(vm.asyncCancels, id)
+			}
 			defer vm.free_(resolve)
 			defer vm.free_(reject)
 			if o.cause() != nil {
@@ -281,7 +433,28 @@ func nativeAsync(vm *VM, this JSValue, args []JSValue, ctor bool) JSValue {
 			vm.free_(r)
 		})
 	}()
-	return p
+	if !abortable {
+		return p
+	}
+	arr := C.avm_new_array(vm.ctx)
+	C.avm_array_push(vm.ctx, arr, 0, p)
+	C.avm_array_push(vm.ctx, arr, 1, C.avm_int(vm.ctx, int64(id)))
+	return arr
+}
+
+// nativeCancel cancels the context of the async Go call with id args[0] (from nativeAsync), for an AbortSignal
+// whose reason is args[1]. A call that has finished is left alone.
+func nativeCancel(vm *VM, this JSValue, args []JSValue, ctor bool) JSValue {
+	id := numArg(vm, args[0])
+	if c := vm.asyncCancels[id]; c != nil {
+		delete(vm.asyncCancels, id)
+		reason := "aborted"
+		if len(args) > 1 {
+			reason = vm.goString(args[1])
+		}
+		c(fmt.Errorf("%w: %s", ErrAborted, reason))
+	}
+	return C.avm_undefined()
 }
 
 func nativeJSON(vm *VM, this JSValue, args []JSValue, ctor bool) JSValue {
