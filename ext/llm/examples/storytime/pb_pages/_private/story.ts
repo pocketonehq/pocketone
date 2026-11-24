@@ -45,7 +45,9 @@ export type Tuning = {
   /** each as provider/model: a provider added in Settings → LLM, then its model */
   models: { text: string; idea: string; image: string; speech: string; speechOther: string; align: string; music: string
     /** Set up's chat helper (pb_pages/_private/assist.ts) */
-    assist: string }
+    assist: string
+    /** Set up's step 3: finds the pictures' spots and their theme */
+    plan: string }
   /** the narrator, for the speech model (not speechOther, which reads other languages with its own voice) */
   voice: {
     voice: string // the model's voice id: "default", a built-in speaker, "design" (a voice made from instructions) or "clone"
@@ -63,7 +65,9 @@ export type Tuning = {
    * the prompts mention. ideas: how Inspire me turns knowledge passages into story requests ({count}). pronounce: how words in this
    * field are said, with examples, for the writer's respellings and the pronunciation call.
    */
-  prompts: { write: string; finetune: string; place: string; inspire: string; ideas: string; pronounce: string }
+  prompts: { write: string; finetune: string; place: string; inspire: string; ideas: string; pronounce: string
+    /** Set up's step 3: finding the pictures' spots ({count}), and the theme they share */
+    spots: string; theme: string }
   /** added after every picture's prompt */
   picture: string
   /** added after the music prompt the story gets; seconds of song (it loops) */
@@ -82,6 +86,7 @@ export const DEFAULT_TUNING: Tuning = (() => {
   t.models.text = env.STORY_TEXT_MODEL || t.models.text
   t.models.idea = env.STORY_IDEA_MODEL || env.STORY_TEXT_MODEL || t.models.idea
   t.models.assist = env.STORY_ASSIST_MODEL || env.STORY_TEXT_MODEL || t.models.assist
+  t.models.plan = env.STORY_PLAN_MODEL || env.STORY_TEXT_MODEL || t.models.plan
   t.models.image = env.STORY_IMAGE_MODEL || t.models.image
   t.models.speech = env.STORY_SPEECH_MODEL || t.models.speech
   t.models.speechOther = env.STORY_SPEECH_MODEL_OTHER || t.models.speechOther

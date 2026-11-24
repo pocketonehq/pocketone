@@ -74,7 +74,7 @@
         app.store.title = "Set up · Story Time";
         const data = store({
             loading: true,
-            steps: [], // from GET /admin/assist: { id, title, question, about, fields: [{ path, label, about }] }
+            steps: [], // from GET /admin/assist: { id, title, question, about, view, fields, models }
             at: 0, // the step shown
             busy: false, // a chat turn is out
             saving: false,
@@ -83,19 +83,24 @@
             changed: {}, // path -> true for the fields the last turn changed, highlighted
             chatVersion: 0,
             minutes: 0, // Try a story's length, for its hint (read only inside the hint, so moving the slider redraws only that)
-            trial: null, // the latest trial from /admin/trial: { id, status, minutes, topic, steps, story, error, costUSD }
-            kept: null, // the trial step 2 handed on (Save and next), which step 3 starts from
+            count: 0, // Pictures' count, for its hint
+            // each running step's latest run (/admin/trial?step=) and the run it handed on (Save and next), by view
+            runs: { story: null, pictures: null },
+            kept: { story: null, pictures: null },
             starting: false,
         });
         let v = null; // the values, shared with the settings sections (draft) so unsaved changes carry across
-        const opts = { minutes: 0, topic: "" }; // Try a story's length and topic (empty: it picks); plain, so typing doesn't redraw
+        // what Generate sends (plain, so typing doesn't redraw): Try a story's length and topic (empty: it picks), Pictures' count
+        const opts = { minutes: 0, topic: "", count: 5 };
         let buckets = []; // LLM Search's buckets (not the stories bucket): { name, title, documents, chunks }
+        let fileToken = ""; // shows the superuser the reference picture (setup_files is superusers only)
         const get = (path) => path.split(".").reduce((o, k) => (o == null ? o : o[k]), v);
         const put = (path, value) => {
             const keys = path.split("."), last = keys.pop();
             keys.reduce((o, k) => o[k], v)[last] = value;
         };
         const step = () => data.steps[data.at];
+        const RUNS = ["story", "pictures"]; // the views that make something
         // the step shown, remembered in this browser so a refresh comes back to it
         const STEP_KEY = "storytime-setup-step";
         const remember = () => { try { localStorage.setItem(STEP_KEY, step().id); } catch (_) {} };
@@ -112,20 +117,22 @@
 
         async function load() {
             try {
-                const [tuning, assist, tried] = await Promise.all([send("/admin/tuning"), send("/admin/assist"), send("/admin/trial")]);
+                const [tuning, assist, story, pictures] = await Promise.all([send("/admin/tuning"), send("/admin/assist"),
+                    send("/admin/trial?step=story"), send("/admin/trial?step=pictures")]);
                 v = draft = draft || tuning.values;
                 data.steps = assist.steps;
                 let last = null;
                 try { last = localStorage.getItem(STEP_KEY); } catch (_) {}
                 data.at = Math.max(0, data.steps.findIndex((x) => x.id === last));
                 buckets = tuning.buckets || [];
-                // Try a story starts from the last story's length and topic (kept with it on the server), so a refresh
-                // shows what made it; the settings' default length before the first
-                data.trial = tried.trial;
-                data.kept = tried.kept;
-                opts.minutes = data.minutes = tried.trial ? tried.trial.minutes : v.length.defaultMinutes;
-                opts.topic = tried.trial ? tried.trial.topic : "";
-                if (tried.trial?.status === "running") pollTrial();
+                data.runs = { story: story.run, pictures: pictures.run };
+                data.kept = { story: story.kept, pictures: pictures.kept };
+                // each step starts from what its last run was asked (kept on the server), so a refresh shows what made it
+                opts.minutes = data.minutes = story.run ? story.run.minutes : v.length.defaultMinutes;
+                opts.topic = story.run ? story.run.topic : "";
+                opts.count = data.count = pictures.run ? pictures.run.count : 5;
+                RUNS.forEach((r) => { if (data.runs[r]?.status === "running") poll(r); });
+                fileToken = await app.pb.files.getToken({ requestKey: null });
             } catch (err) {
                 app.checkApiError(err);
                 data.message = { kind: "danger", text: errText(err) };
@@ -162,10 +169,11 @@
             data.saving = true;
             data.message = null;
             try {
-                // a step that tries a story hands it on to the next step, with the settings it was made with
-                if (step().view === "story") {
-                    if (data.trial?.status !== "done") throw new Error("Generate a story first: the next step starts from it.");
-                    data.kept = (await send("/admin/trial", { keep: data.trial.id })).kept;
+                // a step that makes something hands its latest finished run on to the next step
+                const r = step().view;
+                if (RUNS.includes(r)) {
+                    if (data.runs[r]?.status !== "done") throw new Error("Generate first: the next step starts from what this one made.");
+                    data.kept = { ...data.kept, [r]: (await send("/admin/trial", { step: r, keep: data.runs[r].id })).kept };
                 }
                 const out = await send("/admin/tuning", { values: v });
                 v = draft = out.values;
@@ -188,7 +196,7 @@
                     className: data.changed[f.path] ? "storytime-changed" : "" };
                 const input = f.path === "site.title"
                     ? t.input({ type: "text", ...attrs })
-                    : t.textarea({ rows: long ? 18 : f.path.startsWith("prompts.") ? 8 : 3, ...attrs,
+                    : t.textarea({ rows: long ? 18 : f.path.startsWith("prompts.") ? 6 : 3, ...attrs,
                         style: long ? "font-family: var(--monospaceFontFamily, monospace); font-size: 12px; line-height: 1.5;" : "" });
                 return t.div({ className: "col-lg-12" }, field(f.label, input, data.changed[f.path] ? "Just changed by the helper." : null));
             }));
@@ -205,40 +213,47 @@
             return list;
         }
 
-        // ---- Try a story: the text of a story made in the background with the settings on the screen; the screen polls
-        // its log (/admin/trial) while it runs
-        let pollTimer = 0;
-        async function pollTrial() {
-            clearTimeout(pollTimer);
+        // ---- runs: a step that makes something does it in the background with the settings on the screen; the screen
+        // polls its log (/admin/trial?step=) while it runs
+        const pollTimers = {};
+        async function poll(r) {
+            clearTimeout(pollTimers[r]);
             try {
-                const { trial, kept } = await send("/admin/trial");
-                data.kept = kept;
-                const before = data.trial;
+                const { run, kept } = await send(`/admin/trial?step=${r}`);
+                if (data.kept[r]?.id !== kept?.id) data.kept = { ...data.kept, [r]: kept };
+                const before = data.runs[r];
                 // replaced only when it moved on, so open sections of the log stay open
-                if (!before || !trial || before.id !== trial.id || before.status !== trial.status || before.steps.length !== trial.steps.length) {
-                    data.trial = trial;
+                if (!before || !run || before.id !== run.id || before.status !== run.status || before.steps.length !== run.steps.length) {
+                    data.runs = { ...data.runs, [r]: run };
                 }
-                if (trial && trial.status === "running" && app.utils.isActivePath("#/storytime/setup", false)) {
-                    pollTimer = setTimeout(pollTrial, 1200);
+                if (run && run.status === "running" && app.utils.isActivePath("#/storytime/setup", false)) {
+                    pollTimers[r] = setTimeout(() => poll(r), 1200);
                 }
             } catch (err) {
                 data.message = { kind: "danger", text: errText(err) };
             }
         }
 
-        async function generate() {
+        async function generate(r) {
             data.starting = true;
             data.message = null;
             opened.clear();
             try {
-                const { trial } = await send("/admin/trial", { values: v, minutes: opts.minutes, topic: opts.topic });
-                data.trial = trial;
-                pollTimer = setTimeout(pollTrial, 800);
+                const body = r === "pictures" ? { step: r, values: v, count: opts.count }
+                    : { step: r, values: v, minutes: opts.minutes, topic: opts.topic };
+                const { run } = await send("/admin/trial", body);
+                data.runs = { ...data.runs, [r]: run };
+                pollTimers[r] = setTimeout(() => poll(r), 800);
             } catch (err) {
                 data.message = { kind: "danger", text: errText(err) };
             }
             data.starting = false;
         }
+
+        const generateButton = (r, first) => t.button({ type: "button", className: () => `btn ${data.starting ? "loading" : ""}`,
+            disabled: () => data.starting || data.runs[r]?.status === "running", onclick: () => generate(r) },
+            t.i({ className: "ri-magic-line", ariaHidden: true }),
+            t.span({ className: "txt" }, () => (data.runs[r] ? "Generate again" : first)));
 
         const usd = (n) => (window.pocketone?.llm ? window.pocketone.llm.usd(n) : "$" + n.toFixed(4));
         // which parts of the log are open, kept across redraws: "step index/part index"
@@ -271,12 +286,18 @@
                 t.div({ className: "col-md-6" }, field("Topic",
                     t.input({ type: "text", placeholder: "Empty: it picks one, as Tell me a story does", value: opts.topic,
                         oninput: (e) => (opts.topic = e.target.value) }))),
-                t.div({ className: "col-lg-12" },
-                    t.button({ type: "button", className: () => `btn ${data.starting ? "loading" : ""}`,
-                        disabled: () => data.starting || data.trial?.status === "running", onclick: generate },
-                        t.i({ className: "ri-quill-pen-line", ariaHidden: true }),
-                        t.span({ className: "txt" }, () => (data.trial ? "Generate again" : "Generate a story")))),
+                t.div({ className: "col-lg-12" }, generateButton("story", "Generate a story")),
             );
+        }
+
+        function countView() {
+            return t.div({ className: "grid" },
+                t.div({ className: "col-md-6" }, field("Pictures",
+                    t.div({ className: "flex", style: "align-items: center; gap: 10px; padding: 6px 0;" },
+                        t.input({ type: "range", min: "1", max: "20", step: "1", value: opts.count, style: "flex: 1;",
+                            oninput: (e) => { opts.count = data.count = Number(e.target.value); } })),
+                    () => `${data.count} picture${data.count === 1 ? "" : "s"}.`)),
+                t.div({ className: "col-lg-12" }, generateButton("pictures", "Plan the pictures")));
         }
 
         function partView(key, p) {
@@ -287,9 +308,10 @@
                 t.pre({ className: "storytime-pre" }, p.text));
         }
 
-        function trialView() {
-            const x = data.trial;
-            if (!x) return t.p({ className: "txt-hint" }, "No story tried yet.");
+        // a run's log, step by step, then what it made
+        function runView(r) {
+            const x = data.runs[r];
+            if (!x) return t.p({ className: "txt-hint" }, "Nothing generated yet.");
             const cards = x.steps.map((st, i) => t.div({ className: "storytime-step" },
                 t.div({ className: "flex", style: "gap: 8px; align-items: baseline;" },
                     t.strong(null, st.step),
@@ -298,12 +320,16 @@
                 ...st.parts.map((p, j) => partView(`${i}/${j}`, p))));
             if (x.status === "running") cards.push(t.div({ className: "storytime-step txt-hint" }, t.span({ className: "loader sm" }), " Working on the next step…"));
             if (x.status === "failed") cards.push(t.div({ className: "alert danger" }, t.div({ className: "content" }, x.error)));
-            const st = x.story;
-            if (st) cards.push(storyCard(x));
+            if (r === "story" && x.story) cards.push(storyCard(x));
+            if (r === "pictures" && x.status === "done") cards.push(picturesCard(x));
             return t.div(null, ...cards);
         }
 
-        // a finished trial's story, and whether it's the one handed on to the next step
+        const handedOn = (r, x) => t.div({ className: "txt-hint txt-sm" }, () => data.kept[r]?.id === x.id
+            ? `Handed on to the next step (made ${new Date(x.started).toLocaleString()}).`
+            : "Not handed on yet: Save and next hands this one on.");
+
+        // a finished story, and whether it's the one handed on to the next step
         function storyCard(x) {
             const st = x.story;
             const words = st.body.split(/\s+/).filter(Boolean).length;
@@ -312,16 +338,38 @@
                 t.h5({ className: "m-b-xs" }, st.title),
                 t.div({ className: "txt-hint txt-sm m-b-sm" }, `${words} words (about ${asked} asked) · ${usd(x.costUSD)} in all`),
                 ...st.body.split(/\n\s*\n/).map((para) => t.p({ className: "m-b-sm", style: "white-space: pre-wrap;" }, para.trim())),
-                t.div({ className: "txt-hint txt-sm" }, () => data.kept?.id === x.id
-                    ? `Handed on to the next step (made ${new Date(x.started).toLocaleString()}).`
-                    : "Not handed on yet: Save and next hands this one on."));
+                handedOn("story", x));
+        }
+
+        // the pictures' plan: the reference picture and its vibe, then each spot
+        function picturesCard(x) {
+            const src = x.image ? `/api/files/setup_files/${x.image.id}/${encodeURIComponent(x.image.file)}?token=${fileToken}` : "";
+            return t.div({ className: "storytime-step storytime-story" },
+                t.h5({ className: "m-b-xs" }, `Pictures for "${x.storyTitle}"`),
+                t.div({ className: "txt-hint txt-sm m-b-sm" }, `${x.spots.length} spots · ${usd(x.costUSD)} in all`),
+                src ? t.img({ src, alt: "The reference picture", style: "width: 100%; border-radius: var(--baseRadius, 8px);" }) : null,
+                t.p({ className: "m-t-sm" }, t.strong(null, "Vibe: "), x.vibe),
+                t.ol(null, ...x.spots.map((s) => t.li({ className: "m-b-xs" },
+                    t.span({ className: s.found ? "" : "txt-danger" }, `"${s.quote}"`, s.found ? "" : " (not found in the story)"),
+                    t.div({ className: "txt-hint" }, s.shows)))),
+                handedOn("pictures", x));
         }
 
         // a step with nothing yet: what the step before handed on
         function emptyView() {
+            const before = data.steps[data.at - 1];
+            const r = before && RUNS.includes(before.view) ? before.view : null;
             return t.div(null,
-                t.p({ className: "txt-hint" }, "Received from step 2:"),
-                () => (data.kept ? storyCard(data.kept) : t.p(null, "Nothing yet: generate a story in step 2 and Save and next.")));
+                t.p({ className: "txt-hint" }, `Received from step ${data.at}:`),
+                () => (r && data.kept[r] ? (r === "story" ? storyCard(data.kept[r]) : picturesCard(data.kept[r]))
+                    : t.p(null, `Nothing yet: generate in step ${data.at} and Save and next.`)));
+        }
+
+        // what a pictures step starts from: the story step 2 handed on
+        function storyFrom() {
+            return t.div({ className: "txt-hint txt-sm m-b-sm" }, () => data.kept.story
+                ? `For "${data.kept.story.story.title}", the story step 2 handed on.`
+                : "No story yet: generate one in step 2 and Save and next.");
         }
 
         // the models this step runs, each picked here (saved with Save and next; Generate and the chat use them at once)
@@ -347,6 +395,9 @@
             const s = step();
             input = t.textarea({ rows: 3, placeholder: "Say what you want; Enter sends, Shift+Enter for a new line",
                 onkeydown: (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); say(); } } });
+            const main = s.view === "story" ? t.div({ className: "col-lg-7" }, lengthView(), t.hr(), () => runView("story"))
+                : s.view === "pictures" ? t.div({ className: "col-lg-7" }, storyFrom(), countView(), t.hr(), () => runView("pictures"))
+                : t.div({ className: "col-lg-7" }, fieldsView);
             return t.div({ className: "grid" },
                 t.div({ className: "col-lg-12" },
                     stepTabs(),
@@ -354,14 +405,10 @@
                     t.p({ className: "txt-hint m-t-0" }, s.about,
                         s.fields.length ? " Tell the helper what you want; it fills the fields, and you can edit them too. Nothing is saved until Save and next." : ""),
                     modelsView()),
-                s.view === "empty"
-                    ? t.div({ className: "col-lg-12" }, emptyView())
-                    : s.view === "story"
-                    ? t.div({ className: "col-lg-7" }, lengthView(), t.hr(), () => trialView())
-                    : t.div({ className: "col-lg-7" }, fieldsView),
+                s.view === "empty" ? t.div({ className: "col-lg-12" }, emptyView()) : main,
                 s.view === "empty" ? null : t.div({ className: "col-lg-5" },
                     t.div({ className: "storytime-chat" },
-                        s.view === "story" ? fieldsView : null,
+                        RUNS.includes(s.view) ? fieldsView : null,
                         chatView,
                         input,
                         t.div({ className: "flex" },

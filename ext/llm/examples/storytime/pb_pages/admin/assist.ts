@@ -1,6 +1,7 @@
 // POST /admin/assist {step, values, chat}: one chat turn of the Set up screen's helper (_private/assist.ts). values is
 // the settings as on the screen (saved or not); chat is [{role: "user" | "assistant", text}], the latest message last.
-// A step shown with a story (Try a story) also sends the helper the story tried last (_private/trial.ts).
+// A step that shows something beside its fields (a story, the pictures' plan) sends the helper that too
+// (_private/trial.ts context).
 // Answers {edits: [{field, value}], reply, costUSD, model}: new values for the step's fields the message was about. Nothing
 // is saved. GET /admin/assist lists the steps. Superusers only (admin/+middleware.ts); the cost is recorded (kind assist).
 export function get(ctx: any) {
@@ -18,8 +19,7 @@ export async function post(ctx: any) {
     const assist = ctx.resolve('assist')
     // a step that shows a story beside its fields: the helper reads the story tried last
     const shown = assist.STEPS.find((x: any) => x.id === step)
-    const tried = shown && shown.view === 'story' ? ctx.resolve('trial').storyText() : ''
-    const context = shown && shown.view === 'story' ? (tried ? `The story written last with these settings:\n\n${tried}` : 'No story has been tried yet.') : ''
+    const context = shown ? ctx.resolve('trial').context(shown.view) : ''
     const out = await assist.assist(t, step, t, chat.map((c: any) => ({ role: c.role === 'assistant' ? 'assistant' : 'user', text: String(c.text || '') })), context)
     const usd = story.record(ctx.app, 'assist', out.result)
     return ctx.res.json(200, { edits: out.edits, reply: out.reply, model: out.result.model, costUSD: usd })

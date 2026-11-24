@@ -45,6 +45,7 @@ pb_migrations/1763800004_samples.js     samples: audio samples the dashboard pla
 pb_migrations/1763800005_voices.js      voices: recordings a cloned narrator imitates (superusers only)
 pb_migrations/1763800006_stories_log.js   log and attempts: each story's step-by-step log (hidden) and how many times it was tried
 pb_migrations/1763800007_costs_usage.js   usage on costs: what each call used (tokens, seconds), for what a story's steps use
+pb_migrations/1763800008_setup_files.js   setup_files: what Set up's steps make that's too big for $kv (step 3's reference picture; superusers only)
 pb_hooks/admin_plugins.pb.js            registers the dashboard screen (a superuser UI extension)
 pb_admin_ext/storytime/main.js          Story Time in the dashboard's top bar: Set up (step by step, with a chat helper) and the settings, with Sample buttons
 pb_pages/
@@ -60,8 +61,8 @@ pb_pages/
   admin/stories.ts     POST /admin/stories: adds told stories missing from the stories bucket (superusers only)
   admin/assist.ts      GET /admin/assist: Set up's steps; POST {step, values, chat}: one chat turn's edits to the step's fields (superusers only)
   _private/assist.ts   Set up's steps (each owns a few settings fields) and the helper's one structured call
-  admin/trial.ts       POST /admin/trial {values, minutes, topic?}: starts Try a story; GET: its log so far (superusers only)
-  _private/trial.ts    Try a story: a story's text written in the background, each step's inputs and outputs kept in $kv
+  admin/trial.ts       POST /admin/trial {step, ...}: starts a Set up step's run (a story, the pictures' plan); GET ?step=: its log so far (superusers only)
+  _private/trial.ts    Set up's runs, in the background, each step's inputs and outputs kept in $kv
   view.ts              POST /view {id}: counts a listen (the player sends it after 10 seconds heard)
   story.ts             POST /story {prompt?, minutes?}: saves the record, starts making it (no prompt: it picks the topic)
   story/[id].ets       progress while it's made, then the player (scrubber, space to pause, arrows to skip 10 s)
@@ -112,15 +113,22 @@ plain-words or pronunciation passes: those come later, as steps of their own. Th
 ("it reads file names out loud"): it reads the story and rewrites the **Fine-tuning** notes (`prompts.finetune`).
 Generate again to see the difference. A trial with no step finished in 3 minutes is reported as stalled.
 
+Step 3, **Pictures**, starts from the story step 2 handed on. Pick how many pictures (1 to 20) and **Plan the
+pictures**: one call finds that many of the story's most important spots (each a quote from the story, checked to be
+there word for word, and what the picture shows), a second draws the one theme they share (the vibe), and the picture
+model paints one reference picture from it (kept in the superusers-only `setup_files` collection). It stops before the
+story's own pictures. The two instructions (**Finding the spots**, with `{count}`, and **The theme**) are settings
+the chat helper edits; the answers' shapes are the app's, shown in the log.
+
 Each step shows the models it runs, picked right there (saved with **Save and next**; Generate and the chat use them
 at once): step 1 its chat helper (`models.assist`, also on the settings' Models page), step 2 the topic picker, the
-writer and the helper, step 3 the picture model.
+writer and the helper, step 3 the planner (`models.plan`), the picture model and the helper.
 
 The wizard is a debugger you can walk back and forth through: the steps are tabs, any one opens without saving or
 generating anything, and the screen comes back to the step you were on after a refresh. **Save and next** on step 2
-saves the settings and hands the story on (`POST /admin/trial {keep}`, kept in `$kv` as `storytime/wizard/story`):
-step 3 starts from it until step 2 hands on another, so a change in an earlier step reaches the later ones when you
-hand it on again. Step 3 is empty for now and shows what it received.
+saves the settings and hands what it made on (`POST /admin/trial {step, keep}`, kept in `$kv` as
+`storytime/wizard/<step>`): the next step starts from it until it's handed on again, so a change in an earlier step
+reaches the later ones when you hand it on again. Step 4 is empty for now and shows what it received.
 
 **Story Time** in the PocketBase dashboard's top bar (`/_/`) holds what shapes the app: the front page's title and caption, the story lengths (shortest and longest, the default, the narrator's words per minute, pictures per minute, the most pictures), the narrator (voice,
 instructions, seed, speed), the writing, picture-choosing and Inspire me prompts, how words are said (**Pronunciation**), what's added to each picture and music

@@ -1,31 +1,27 @@
-// Set up's "Try a story" (step 2): a story's text made with the screen's settings (saved or not) in the background,
-// every step written to $kv as it finishes (what went in, what came out: story.ts's Trace), so the screen can poll it
-// and show the whole log. One trial at a time: a new one replaces the last, and the old one stops writing when it
-// notices.
+// Set up's runs: the steps that make something (step 2 writes a story, step 3 plans its pictures) do it in the
+// background with the screen's settings (saved or not), every step written to $kv as it finishes (what went in, what
+// came out: story.ts's Trace), so the screen can poll it and show the whole log. One run per wizard step at a time: a new
+// one replaces the last, and the old one stops writing when it notices. Save and next hands a finished run on
+// (keep): the next step starts from it until it's handed on again.
 //
 // This is the wizard's own workflow, not story.make's: the writer gets only the preamble and the fine-tuning as its
 // system prompt, the request (and what the knowledge buckets hold about it) as its prompt, and answers {title, body}.
 // Nothing else: no rules about length or shape, no plain-words or pronunciation passes. Those come back later, each as
-// its own step after an interesting story is written.
+// its own step.
 import type { Tuning, TraceStep } from './story'
 
-const KEY = 'storytime/trial'
-/** The trial step 2 handed on (Save and next): what step 3 starts from, until step 2 hands on another. */
-const KEPT_KEY = 'storytime/wizard/story'
-
-export type Trial = {
+/** A wizard step's run. Each step adds its own fields: the story's minutes, topic and story; the pictures' count, the
+ * story they're for, the spots, the vibe and the reference picture. */
+export type Run = {
   id: string
   status: 'running' | 'done' | 'failed'
   started: string
   /** when a step last finished (or it started) */
   updated: string
-  minutes: number
-  /** what was asked: a topic, or "" for the app to pick one */
-  topic: string
   steps: TraceStep[]
-  story?: Draft
   error?: string
   costUSD: number
+  [field: string]: any
 }
 
 /** What the writer answers: a title and the story's text. */
@@ -37,14 +33,20 @@ const DRAFT_SCHEMA = {
   required: ['title', 'body'],
 }
 
+// where each step's latest run and handed-on run live (step 2's keys are the ones it had before step 3 existed)
+const runKey = (step: string) => (step === 'story' ? 'storytime/trial' : `storytime/trial/${step}`)
+const keptKey = (step: string) => `storytime/wizard/${step}`
+
+export const STEPS_THAT_RUN = ['story', 'pictures']
+
 class Superseded extends Error {}
 
-/** A trial with no step finished for this long has stalled (a model or search call that never answered). */
+/** A run with no step finished for this long has stalled (a model or search call that never answered). */
 const STALLED_MS = 3 * 60_000
 
-/** The latest trial, running or finished; null before the first. One that stalled shows as failed. */
-export function current(): Trial | null {
-  const x: Trial | null = $kv.get(KEY)
+/** A step's latest run, running or finished; null before the first. One that stalled shows as failed. */
+export function current(step: string): Run | null {
+  const x: Run | null = $kv.get(runKey(step))
   if (x && x.status === 'running' && Date.now() - new Date(x.updated || x.started).getTime() > STALLED_MS) {
     x.status = 'failed'
     x.error = `Stalled: nothing answered for ${STALLED_MS / 60_000} minutes after "${x.steps.length ? x.steps[x.steps.length - 1].step : 'starting'}". Try again.`
@@ -52,30 +54,54 @@ export function current(): Trial | null {
   return x
 }
 
-/** The stored trial as it is (current() reports a stalled one as failed without storing that). */
-const stored = (): Trial | null => $kv.get(KEY)
-
-/** Starts a trial (not awaited: it runs after the request answers) and returns it as it starts. */
-export function start(story: any, app: any, t: Tuning, minutes: number, topic: string): Trial {
-  const now = new Date().toISOString()
-  const trial: Trial = { id: $security.randomString(12), status: 'running', started: now, updated: now, minutes, topic,
-    steps: [], costUSD: 0 }
-  $kv.set(KEY, trial)
-  run(story, app, t, trial.id, minutes, topic)
-  return trial
+/** The run a step handed on, or null. */
+export function kept(step: string): Run | null {
+  return $kv.get(keptKey(step))
 }
 
-async function run(story: any, app: any, t: Tuning, id: string, minutes: number, asked: string) {
-  /** Changes the stored trial, unless a newer one replaced it. */
-  const update = (change: (x: Trial) => void) => {
-    const now = stored()
-    if (!now || now.id !== id) throw new Superseded()
-    change(now)
-    now.updated = new Date().toISOString()
-    $kv.set(KEY, now)
+/** Hands a step's latest run on to the next step, if it's the one asked for and it finished; returns it, or null. */
+export function keep(step: string, id: string): Run | null {
+  const x = current(step)
+  if (!x || x.id !== id || x.status !== 'done') return null
+  $kv.set(keptKey(step), x)
+  return x
+}
+
+type Work = (trace: (s: TraceStep) => void, update: (change: (x: Run) => void) => void) => Promise<void>
+
+/** Starts a step's run with its own fields (not awaited: work runs after the request answers); returns it as it starts. */
+function begin(step: string, fields: { [k: string]: any }, work: Work): Run {
+  const key = runKey(step)
+  const now = new Date().toISOString()
+  const run: Run = { ...fields, id: $security.randomString(12), status: 'running', started: now, updated: now, steps: [], costUSD: 0 }
+  $kv.set(key, run)
+  /** Changes the stored run, unless a newer one replaced it. */
+  const update = (change: (x: Run) => void) => {
+    const x: Run | null = $kv.get(key)
+    if (!x || x.id !== run.id) throw new Superseded()
+    change(x)
+    x.updated = new Date().toISOString()
+    $kv.set(key, x)
   }
   const trace = (s: TraceStep) => update((x) => { x.steps.push(s); x.costUSD += s.costUSD || 0 })
-  try {
+  work(trace, update).then(() => update((x) => { x.status = 'done' })).catch((err: any) => {
+    if (err instanceof Superseded) return
+    try {
+      update((x) => { x.status = 'failed'; x.error = err.message })
+    } catch (_) {
+      // superseded meanwhile
+    }
+  })
+  return run
+}
+
+const secs = (t0: number) => Math.round((Date.now() - t0) / 100) / 10
+
+// ---- step 2: write a story
+
+/** Writes a story's text (step 2). */
+export function startStory(story: any, app: any, t: Tuning, minutes: number, asked: string): Run {
+  return begin('story', { minutes, topic: asked }, async (trace, update) => {
     // the topic: given, or (with knowledge buckets) picked from them and checked against the stories told; with neither,
     // the writer gets no topic
     let topic = asked
@@ -117,35 +143,114 @@ async function run(story: any, app: any, t: Tuning, id: string, minutes: number,
       ...prompt.map((p) => ({ label: `Prompt: ${p.label}`, text: p.text })),
       { label: 'Answer', text: JSON.stringify(result.data, null, 2) }] })
     const draft: Draft = { title: String(result.data.title).trim(), body: String(result.data.body).trim() }
-    update((x) => { x.status = 'done'; x.story = draft })
-  } catch (err: any) {
-    if (err instanceof Superseded) return
-    try {
-      update((x) => { x.status = 'failed'; x.error = err.message })
-    } catch (_) {
-      // superseded meanwhile
-    }
+    update((x) => { x.story = draft })
+  })
+}
+
+/** What a step's chat helper reads beside its fields: the story written last (step 2), or the story step 2 handed on
+ * with the latest picture plan (step 3). */
+export function context(view: string): string {
+  if (view === 'story') {
+    const x = current('story')
+    return x && x.story ? `The story written last with these settings:\n\nTitle: ${x.story.title}\n\n${x.story.body}` : 'No story has been tried yet.'
   }
+  if (view === 'pictures') {
+    const s = kept('story'), p = current('pictures')
+    const storyPart = s && s.story ? `The story:\n\nTitle: ${s.story.title}\n\n${s.story.body}` : 'No story yet.'
+    const plan = p && p.spots ? `The pictures planned last:\n${p.spots.map((x: Spot, i: number) => `${i + 1}. at "${x.quote}": ${x.shows}`).join('\n')}` +
+      (p.vibe ? `\n\nTheir theme (the reference picture's prompt): ${p.vibe}` : '') : 'No pictures planned yet.'
+    return `${storyPart}\n\n${plan}`
+  }
+  return ''
 }
 
-/** The trial step 2 handed on, or null. */
-export function kept(): Trial | null {
-  return $kv.get(KEPT_KEY)
+// ---- step 3: where the pictures go, their shared vibe, and one reference picture
+
+const SPOTS_SCHEMA = {
+  type: 'object',
+  properties: {
+    pictures: {
+      type: 'array',
+      description: 'The pictures, in story order',
+      items: {
+        type: 'object',
+        properties: {
+          quote: { type: 'string', description: 'A few words copied exactly from the story, where this picture appears' },
+          shows: { type: 'string', description: 'What the picture shows' },
+        },
+        required: ['quote', 'shows'],
+      },
+    },
+  },
+  required: ['pictures'],
 }
 
-/** Hands the latest trial on to the next step, if it's the one asked for and it finished; returns it, or null. */
-export function keep(id: string): Trial | null {
-  const x = current()
-  if (!x || x.id !== id || x.status !== 'done') return null
-  $kv.set(KEPT_KEY, x)
-  return x
+const THEME_SCHEMA = {
+  type: 'object',
+  properties: { vibe: { type: 'string', description: 'The overall vibe, as the prompt for one reference picture' } },
+  required: ['vibe'],
 }
 
-const secs = (t0: number) => Math.round((Date.now() - t0) / 100) / 10
+/** A picture's place: a quote from the story, whether it's really there, and what the picture shows. */
+export type Spot = { quote: string; shows: string; found: boolean }
 
-/** The last trial's story as the chat helper reads it, or "" when there's none. */
-export function storyText(): string {
-  const x = current()
-  if (!x || !x.story) return ''
-  return `Title: ${x.story.title}\n\n${x.story.body}`
+const squash = (x: string) => x.replace(/\s+/g, ' ').trim().toLowerCase()
+
+/** Plans the pictures for the story step 2 handed on (step 3): the most important spots, their shared vibe, and a
+ * reference picture painted from it. Stops before the story's pictures. */
+export function startPictures(story: any, app: any, t: Tuning, count: number): Run {
+  const from = kept('story')
+  if (!from || !from.story) throw new Error('no story yet: generate one in step 2 and Save and next')
+  const draft: Draft = from.story
+  return begin('pictures', { count, storyId: from.id, storyTitle: draft.title }, async (trace, update) => {
+    // 1. the spots
+    let t0 = Date.now()
+    const system = t.prompts.spots.replace(/\{count\}/g, String(count)).trim()
+    const prompt = `${draft.title}\n\n${draft.body}`
+    const planned = await $llm.text.completeAsync({ model: t.models.plan, reasoning: 'off', maxTokens: 6000, temperature: 0.7,
+      system, prompt, schema: SPOTS_SCHEMA })
+    let usd = story.record(app, 'sample-plan', planned)
+    // what the model wrote back: each quote should be in the story, word for word
+    const body = squash(draft.body)
+    const spots: Spot[] = planned.data.pictures.map((p: any) => ({ quote: String(p.quote).trim(), shows: String(p.shows).trim(),
+      found: body.includes(squash(String(p.quote))) }))
+    trace({ step: 'Finding the spots', model: planned.model, costUSD: usd, seconds: secs(t0), parts: [
+      { label: 'System: Finding the spots (settings)', text: system },
+      { label: 'Prompt: the story from step 2', text: prompt },
+      { label: 'Answer shape', text: JSON.stringify(SPOTS_SCHEMA, null, 2) },
+      { label: 'Answer', text: JSON.stringify(planned.data, null, 2) },
+      { label: `Checked: ${spots.filter((x) => x.found).length} of ${spots.length} quotes are in the story`,
+        text: spots.map((x, i) => `${x.found ? '✓' : '✗'} ${i + 1}. "${x.quote}"`).join('\n') }] })
+    update((x) => { x.spots = spots })
+
+    // 2. the theme they share
+    t0 = Date.now()
+    const themeSystem = t.prompts.theme.trim()
+    const themePrompt = spots.map((x, i) => `${i + 1}. ${x.shows}`).join('\n')
+    const themed = await $llm.text.completeAsync({ model: t.models.plan, reasoning: 'off', maxTokens: 2000, temperature: 0.7,
+      system: themeSystem, prompt: themePrompt, schema: THEME_SCHEMA })
+    usd = story.record(app, 'sample-plan', themed)
+    const vibe = String(themed.data.vibe).trim()
+    trace({ step: 'The theme', model: themed.model, costUSD: usd, seconds: secs(t0), parts: [
+      { label: 'System: The theme (settings)', text: themeSystem },
+      { label: 'Prompt: what each picture shows', text: themePrompt },
+      { label: 'Answer shape', text: JSON.stringify(THEME_SCHEMA, null, 2) },
+      { label: 'Answer', text: JSON.stringify(themed.data, null, 2) }] })
+    update((x) => { x.vibe = vibe })
+
+    // 3. the reference picture, painted from the vibe
+    t0 = Date.now()
+    const call = { model: t.models.image, prompt: vibe, aspectRatio: '16:9' }
+    const painted = await $llm.image.generateAsync(call)
+    usd = story.record(app, 'sample-picture', painted)
+    const f = painted.files[0]
+    const r = new Record(app.findCollectionByNameOrId('setup_files'))
+    r.set('step', 'pictures')
+    r.set('file', f.data ? $llm.file(f) : await $llm.fileAsync(f))
+    app.save(r)
+    const image = { id: r.id, file: r.getString('file') }
+    trace({ step: 'The reference picture', model: painted.model, costUSD: usd, seconds: secs(t0), parts: [
+      { label: 'Sent to the picture model', text: JSON.stringify(call, null, 2) }] })
+    update((x) => { x.image = image })
+  })
 }

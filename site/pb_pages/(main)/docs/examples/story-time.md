@@ -98,7 +98,9 @@ it, and the writer's call. The writer gets only your preamble and fine-tuning, t
 answers with a title and the story. Tell the helper what you'd change about the story, and it rewrites the
 **Fine-tuning** notes the writer gets after the preamble; generate again to see the difference. **Save and next**
 hands the story on to the next step, and the steps are tabs you can open in any order without generating anything
-again. Each step shows the models it uses (the chat helper, the topic picker, the writer, the pictures) and lets you
+again. Step 3, **Pictures**, finds the most important spots in that story for as many pictures as you ask for (1 to 20) and
+what each shows, draws one theme from them, and paints one reference picture with that vibe, so every later picture
+can follow it. Each step shows the models it uses (the chat helper, the topic picker, the writer, the pictures) and lets you
 pick them there. More steps are coming.
 
 | Part | What you set | Sample |

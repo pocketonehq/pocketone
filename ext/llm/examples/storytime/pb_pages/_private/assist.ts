@@ -10,9 +10,9 @@ export type StepField = {
   about: string
 }
 
-/** view: how the screen shows the step: its fields, (story) a story to try beside them, which the helper reads too, or
- * (empty) nothing yet but what the step before handed on */
-export type Step = { id: string; title: string; question: string; about: string; view: 'fields' | 'story' | 'empty'; fields: StepField[]
+/** view: how the screen shows the step: its fields, (story) a story to try beside them, which the helper reads too,
+ * (pictures) the pictures' plan and reference beside them, or (empty) nothing yet but what the step before handed on */
+export type Step = { id: string; title: string; question: string; about: string; view: 'fields' | 'story' | 'pictures' | 'empty'; fields: StepField[]
   /** the models the step runs, each picked on its screen (a settings path, its label, and the kind of model) */
   models: StepModel[] }
 
@@ -59,13 +59,32 @@ export const STEPS: Step[] = [
     ],
   },
   {
-    id: 'step3',
-    title: 'Step 3',
+    id: 'pictures',
+    title: 'Pictures',
+    question: 'Generate, then tell me what you\'d change about where the pictures go or their look.',
+    about: 'Finds the most important spots in the story step 2 handed on for this many pictures and what each shows, ' +
+      'draws one theme from them, and paints one reference picture with that vibe. It stops before the story\'s pictures.',
+    view: 'pictures',
+    fields: [
+      { path: 'prompts.spots', label: 'Finding the spots',
+        about: 'The instructions for the model that reads the story and picks where its pictures go and what each shows. ' +
+          '{count} is how many pictures; keep it. The answer\'s shape (a quote from the story and what the picture shows) ' +
+          'is the app\'s, so never describe it here.' },
+      { path: 'prompts.theme', label: 'The theme',
+        about: 'The instructions for the model that reads every planned picture and describes the one visual theme they ' +
+          'share (style, palette, light, setting, recurring characters), painted as the reference picture. Asking for a ' +
+          'different look for the pictures means this field.' },
+    ],
+    models: [{ path: 'models.plan', label: 'Planning', kind: 'text' }, { path: 'models.image', label: 'Pictures', kind: 'image' }, HELPER],
+  },
+  {
+    id: 'step4',
+    title: 'Step 4',
     question: '',
-    about: 'Nothing here yet. It starts from the story step 2 handed on.',
+    about: 'Nothing here yet. It starts from what step 3 handed on.',
     view: 'empty',
     fields: [],
-    models: [{ path: 'models.image', label: 'Pictures', kind: 'image' }],
+    models: [],
   },
 ]
 
