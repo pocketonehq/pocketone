@@ -25027,6 +25027,28 @@ declare namespace url {
 // -------------------------------------------------------------------
 
 /**
+ * The arguments JS passes to Go function `F`: all of them, or all but the first when it is a `context.Context`
+ * (the engine supplies that one).
+ *
+ * @group PocketOne
+ */
+type GoArgs<F> = F extends (ctx: infer C, ...rest: infer R) => any
+  ? 0 extends 1 & C
+    ? Parameters<F> // a first parameter typed any isn't a context
+    : [C] extends [context.Context]
+      ? [context.Context] extends [C]
+        ? R | Parameters<F>
+        : Parameters<F>
+      : Parameters<F>
+  : Parameters<F>;
+
+/** Options for `fn.asyncWith`. @group PocketOne */
+interface AsyncOptions {
+  /** Aborts the call: the promise rejects with `signal.reason` and the Go function's context is cancelled. */
+  signal?: AbortSignal | null;
+}
+
+/**
  * Every Go function and method has an `.async` twin: it runs off the app's JS loop and returns a promise, so the app
  * serves other requests while it waits.
  *
@@ -25035,13 +25057,109 @@ declare namespace url {
  * await sleep.async(100)
  * ```
  *
+ * A Go function whose first parameter is a `context.Context` gets one from the engine (pass the other arguments):
+ * it is cancelled when the request or hook the call runs for is given up (its client left, `AwaitLimit` passed),
+ * and when the call's `AbortSignal` aborts (`asyncWith`).
+ *
  * Only Go functions have it at runtime; on a JS function it's undefined.
  *
  * @group PocketOne
  */
 interface Function {
-  async<A extends any[], R>(this: (...args: A) => R, ...args: A): Promise<Awaited<R>>;
+  async<F extends (...args: any[]) => any>(this: F, ...args: GoArgs<F>): Promise<Awaited<ReturnType<F>>>;
+  /**
+   * `.async` that an `AbortSignal` can stop: when it aborts, the promise rejects with `signal.reason` (a
+   * `DOMException` named `"TimeoutError"` for `AbortSignal.timeout`, `"AbortError"` for `controller.abort()`) and
+   * the Go function's context is cancelled. A signal that has already aborted rejects without calling Go. A Go
+   * function that takes no context runs on to its end; only its promise is let go.
+   *
+   * ```js
+   * const text = await fetchPage.asyncWith({ signal: AbortSignal.timeout(30_000) }, url)
+   * ```
+   */
+  asyncWith<F extends (...args: any[]) => any>(
+    this: F,
+    options: AsyncOptions | undefined | null,
+    ...args: GoArgs<F>
+  ): Promise<Awaited<ReturnType<F>>>;
 }
+
+/**
+ * An error with a `name`, as in browsers: AbortSignal's reasons are `DOMException`s named `"AbortError"` (code 20)
+ * and `"TimeoutError"` (code 23).
+ *
+ * @group PocketOne
+ */
+interface DOMException extends Error {
+  readonly name: string;
+  readonly message: string;
+  readonly code: number;
+}
+/** @group PocketOne */
+declare var DOMException: {
+  prototype: DOMException;
+  new (message?: string, name?: string): DOMException;
+};
+
+/** The event an AbortSignal's listeners get. @group PocketOne */
+interface AbortEvent {
+  readonly type: "abort";
+  readonly target: AbortSignal;
+  readonly currentTarget: AbortSignal;
+}
+
+/**
+ * Says when to stop, as in browsers: pass one to `fn.asyncWith({ signal }, ...)` (or an API that takes `{ signal }`).
+ * `AbortSignal.timeout(ms)` runs on a Go timer that keeps going after the request is answered, so background work
+ * can bound its calls where `setTimeout` is refused. It counts against `MaxTimers` until it fires.
+ *
+ * ```js
+ * const signal = AbortSignal.any([AbortSignal.timeout(60_000), controller.signal])
+ * ```
+ *
+ * @group PocketOne
+ */
+interface AbortSignal {
+  readonly aborted: boolean;
+  readonly reason: any;
+  onabort: ((this: AbortSignal, ev: AbortEvent) => any) | null;
+  /** Throws `reason` if the signal has aborted. */
+  throwIfAborted(): void;
+  addEventListener(type: "abort", listener: (this: AbortSignal, ev: AbortEvent) => any, options?: boolean | { once?: boolean }): void;
+  removeEventListener(type: "abort", listener: (this: AbortSignal, ev: AbortEvent) => any): void;
+}
+/** @group PocketOne */
+declare var AbortSignal: {
+  prototype: AbortSignal;
+  /** A signal that has already aborted with `reason` (an `"AbortError"` DOMException by default). */
+  abort(reason?: any): AbortSignal;
+  /** A signal that aborts with a `"TimeoutError"` DOMException after `ms` milliseconds. */
+  timeout(ms: number): AbortSignal;
+  /** A signal that aborts when any of `signals` does, with its reason. */
+  any(signals: Iterable<AbortSignal>): AbortSignal;
+};
+
+/**
+ * Makes a signal and aborts it, as in browsers.
+ *
+ * ```js
+ * const c = new AbortController()
+ * cancelButtonPressed.then(() => c.abort())
+ * await work.asyncWith({ signal: c.signal })
+ * ```
+ *
+ * @group PocketOne
+ */
+interface AbortController {
+  readonly signal: AbortSignal;
+  /** Aborts the signal with `reason` (an `"AbortError"` DOMException by default); later calls do nothing. */
+  abort(reason?: any): void;
+}
+/** @group PocketOne */
+declare var AbortController: {
+  prototype: AbortController;
+  new (): AbortController;
+};
 
 /**
  * Runs `callback(...args)` once after `ms` milliseconds (at least 1), as its own task. A timer set while a request is
