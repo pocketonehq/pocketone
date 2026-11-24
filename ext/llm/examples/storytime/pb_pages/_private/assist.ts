@@ -10,8 +10,9 @@ export type StepField = {
   about: string
 }
 
-/** view: how the screen shows the step: its fields, or (story) a story to try beside them, which the helper reads too */
-export type Step = { id: string; title: string; question: string; about: string; view: 'fields' | 'story'; fields: StepField[] }
+/** view: how the screen shows the step: its fields, (story) a story to try beside them, which the helper reads too, or
+ * (empty) nothing yet but what the step before handed on */
+export type Step = { id: string; title: string; question: string; about: string; view: 'fields' | 'story' | 'empty'; fields: StepField[] }
 
 export const STEPS: Step[] = [
   {
@@ -48,6 +49,14 @@ export const STEPS: Step[] = [
           'overlap and drops what they take back. Point at what in the story was wrong only to make a note clear; a note ' +
           'is about every story, not this one.' },
     ],
+  },
+  {
+    id: 'step3',
+    title: 'Step 3',
+    question: '',
+    about: 'Nothing here yet. It starts from the story step 2 handed on.',
+    view: 'empty',
+    fields: [],
   },
 ]
 

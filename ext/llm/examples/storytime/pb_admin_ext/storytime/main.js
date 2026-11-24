@@ -84,6 +84,7 @@
             chatVersion: 0,
             minutes: 0, // Try a story's length, for its hint (read only inside the hint, so moving the slider redraws only that)
             trial: null, // the latest trial from /admin/trial: { id, status, minutes, topic, steps, story, error, costUSD }
+            kept: null, // the trial step 2 handed on (Save and next), which step 3 starts from
             starting: false,
         });
         let v = null; // the values, shared with the settings sections (draft) so unsaved changes carry across
@@ -95,6 +96,15 @@
             keys.reduce((o, k) => o[k], v)[last] = value;
         };
         const step = () => data.steps[data.at];
+        // the step shown, remembered in this browser so a refresh comes back to it
+        const STEP_KEY = "storytime-setup-step";
+        const remember = () => { try { localStorage.setItem(STEP_KEY, step().id); } catch (_) {} };
+        function go(i) {
+            data.at = i;
+            data.message = null;
+            data.chatVersion++;
+            remember();
+        }
         const chat = () => {
             const s = step();
             return (chats[s.id] = chats[s.id] || [{ role: "assistant", text: s.question }]);
@@ -105,6 +115,9 @@
                 const [tuning, assist] = await Promise.all([send("/admin/tuning"), send("/admin/assist")]);
                 v = draft = draft || tuning.values;
                 data.steps = assist.steps;
+                let last = null;
+                try { last = localStorage.getItem(STEP_KEY); } catch (_) {}
+                data.at = Math.max(0, data.steps.findIndex((x) => x.id === last));
                 buckets = tuning.buckets || [];
                 opts.minutes = data.minutes = v.length.defaultMinutes;
                 pollTrial();
@@ -144,10 +157,15 @@
             data.saving = true;
             data.message = null;
             try {
+                // a step that tries a story hands it on to the next step, with the settings it was made with
+                if (step().view === "story") {
+                    if (data.trial?.status !== "done") throw new Error("Generate a story first: the next step starts from it.");
+                    data.kept = (await send("/admin/trial", { keep: data.trial.id })).kept;
+                }
                 const out = await send("/admin/tuning", { values: v });
                 v = draft = out.values;
-                if (data.at < data.steps.length - 1) data.at++;
-                else data.message = { kind: "success", text: "Saved. That's every step so far: the next ones (knowledge, research, the story) are coming." };
+                if (data.at < data.steps.length - 1) go(data.at + 1);
+                else data.message = { kind: "success", text: "Saved. That's every step so far." };
                 data.version++;
                 data.chatVersion++;
             } catch (err) {
@@ -188,7 +206,8 @@
         async function pollTrial() {
             clearTimeout(pollTimer);
             try {
-                const { trial } = await send("/admin/trial");
+                const { trial, kept } = await send("/admin/trial");
+                data.kept = kept;
                 const before = data.trial;
                 // replaced only when it moved on, so open sections of the log stay open
                 if (!before || !trial || before.id !== trial.id || before.status !== trial.status || before.steps.length !== trial.steps.length) {
@@ -275,15 +294,37 @@
             if (x.status === "running") cards.push(t.div({ className: "storytime-step txt-hint" }, t.span({ className: "loader sm" }), " Working on the next step…"));
             if (x.status === "failed") cards.push(t.div({ className: "alert danger" }, t.div({ className: "content" }, x.error)));
             const st = x.story;
-            if (st) {
-                const words = st.body.split(/\s+/).filter(Boolean).length;
-                const asked = Math.round(x.minutes * v.length.wordsPerMinute);
-                cards.push(t.div({ className: "storytime-step storytime-story" },
-                    t.h5({ className: "m-b-xs" }, st.title),
-                    t.div({ className: "txt-hint txt-sm m-b-sm" }, `${words} words (about ${asked} asked) · ${usd(x.costUSD)} in all`),
-                    ...st.body.split(/\n\s*\n/).map((para) => t.p({ className: "m-b-sm", style: "white-space: pre-wrap;" }, para.trim()))));
-            }
+            if (st) cards.push(storyCard(x));
             return t.div(null, ...cards);
+        }
+
+        // a finished trial's story, and whether it's the one handed on to the next step
+        function storyCard(x) {
+            const st = x.story;
+            const words = st.body.split(/\s+/).filter(Boolean).length;
+            const asked = Math.round(x.minutes * v.length.wordsPerMinute);
+            return t.div({ className: "storytime-step storytime-story" },
+                t.h5({ className: "m-b-xs" }, st.title),
+                t.div({ className: "txt-hint txt-sm m-b-sm" }, `${words} words (about ${asked} asked) · ${usd(x.costUSD)} in all`),
+                ...st.body.split(/\n\s*\n/).map((para) => t.p({ className: "m-b-sm", style: "white-space: pre-wrap;" }, para.trim())),
+                t.div({ className: "txt-hint txt-sm" }, () => data.kept?.id === x.id
+                    ? `Handed on to the next step (made ${new Date(x.started).toLocaleString()}).`
+                    : "Not handed on yet: Save and next hands this one on."));
+        }
+
+        // a step with nothing yet: what the step before handed on
+        function emptyView() {
+            return t.div(null,
+                t.p({ className: "txt-hint" }, "Received from step 2:"),
+                () => (data.kept ? storyCard(data.kept) : t.p(null, "Nothing yet: generate a story in step 2 and Save and next.")));
+        }
+
+        // the steps, each a tab: any one opens without saving or generating anything
+        function stepTabs() {
+            return t.div({ className: "flex", style: "gap: 6px; flex-wrap: wrap; margin-bottom: 10px;" },
+                ...data.steps.map((x, i) => t.button({ type: "button",
+                    className: i === data.at ? "btn sm" : "btn sm transparent secondary", onclick: () => go(i) },
+                    t.span({ className: "txt" }, `${i + 1}. ${x.title}`))));
         }
 
         function stepView() {
@@ -292,12 +333,16 @@
                 onkeydown: (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); say(); } } });
             return t.div({ className: "grid" },
                 t.div({ className: "col-lg-12" },
+                    stepTabs(),
                     t.h4({ className: "m-b-xs" }, `Step ${data.at + 1} of ${data.steps.length}: ${s.title}`),
-                    t.p({ className: "txt-hint m-t-0" }, s.about, " Tell the helper what you want; it fills the fields, and you can edit them too. Nothing is saved until Next.")),
-                s.view === "story"
+                    t.p({ className: "txt-hint m-t-0" }, s.about,
+                        s.fields.length ? " Tell the helper what you want; it fills the fields, and you can edit them too. Nothing is saved until Save and next." : "")),
+                s.view === "empty"
+                    ? t.div({ className: "col-lg-12" }, emptyView())
+                    : s.view === "story"
                     ? t.div({ className: "col-lg-7" }, lengthView(), t.hr(), () => trialView())
                     : t.div({ className: "col-lg-7" }, fieldsView),
-                t.div({ className: "col-lg-5" },
+                s.view === "empty" ? null : t.div({ className: "col-lg-5" },
                     t.div({ className: "storytime-chat" },
                         s.view === "story" ? fieldsView : null,
                         chatView,
@@ -313,7 +358,7 @@
                 t.div({ className: "col-lg-12" },
                     t.div({ className: "flex" },
                         t.button({ type: "button", className: "btn transparent secondary", disabled: () => data.at === 0 || data.saving,
-                            onclick: () => { data.at--; data.message = null; data.chatVersion++; } }, t.span({ className: "txt" }, "Back")),
+                            onclick: () => go(data.at - 1) }, t.span({ className: "txt" }, "Back")),
                         t.div({ className: "m-r-auto" }),
                         t.button({ type: "button", className: () => `btn expanded-lg ${data.saving ? "loading" : ""}`, disabled: () => data.saving || data.busy,
                             onclick: next }, t.span({ className: "txt" }, "Save and next"), t.i({ className: "ri-arrow-right-line", ariaHidden: true })))),

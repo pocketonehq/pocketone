@@ -10,6 +10,8 @@
 import type { Tuning, TraceStep } from './story'
 
 const KEY = 'storytime/trial'
+/** The trial step 2 handed on (Save and next): what step 3 starts from, until step 2 hands on another. */
+const KEPT_KEY = 'storytime/wizard/story'
 
 export type Trial = {
   id: string
@@ -124,6 +126,19 @@ async function run(story: any, app: any, t: Tuning, id: string, minutes: number,
       // superseded meanwhile
     }
   }
+}
+
+/** The trial step 2 handed on, or null. */
+export function kept(): Trial | null {
+  return $kv.get(KEPT_KEY)
+}
+
+/** Hands the latest trial on to the next step, if it's the one asked for and it finished; returns it, or null. */
+export function keep(id: string): Trial | null {
+  const x = current()
+  if (!x || x.id !== id || x.status !== 'done') return null
+  $kv.set(KEPT_KEY, x)
+  return x
 }
 
 const secs = (t0: number) => Math.round((Date.now() - t0) / 100) / 10

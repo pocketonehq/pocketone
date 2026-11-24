@@ -110,8 +110,13 @@ only the preamble and the fine-tuning, its prompt is the request ("Write a story
 with what the knowledge holds about it, and it answers `{title, body}`. No rules about the answer's shape, no
 plain-words or pronunciation passes: those come later, as steps of their own. Then tell the helper what you'd change
 ("it reads file names out loud"): it reads the story and rewrites the **Fine-tuning** notes (`prompts.finetune`).
-Generate again to see the difference. A trial with no step finished in 3 minutes is reported as stalled. The later
-steps are still to come.
+Generate again to see the difference. A trial with no step finished in 3 minutes is reported as stalled.
+
+The wizard is a debugger you can walk back and forth through: the steps are tabs, any one opens without saving or
+generating anything, and the screen comes back to the step you were on after a refresh. **Save and next** on step 2
+saves the settings and hands the story on (`POST /admin/trial {keep}`, kept in `$kv` as `storytime/wizard/story`):
+step 3 starts from it until step 2 hands on another, so a change in an earlier step reaches the later ones when you
+hand it on again. Step 3 is empty for now and shows what it received.
 
 **Story Time** in the PocketBase dashboard's top bar (`/_/`) holds what shapes the app: the front page's title and caption, the story lengths (shortest and longest, the default, the narrator's words per minute, pictures per minute, the most pictures), the narrator (voice,
 instructions, seed, speed), the writing, picture-choosing and Inspire me prompts, how words are said (**Pronunciation**), what's added to each picture and music
