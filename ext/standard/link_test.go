@@ -21,7 +21,6 @@ import (
 func TestLinkSignsInThroughOAuth(t *testing.T) {
 	t.Setenv("P1_CONFIG_DIR", t.TempDir())
 	t.Setenv("P1_TOKEN", "")
-	t.Setenv("P1_TOKEN_DEFAULT", "")
 	t.Chdir(t.TempDir()) // app1's project folder: link writes .pocketbase/remotes.json here
 
 	app1, _ := newApp(t, standard.New(), nil)

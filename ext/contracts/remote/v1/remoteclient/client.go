@@ -63,7 +63,7 @@ func Open(dir, name string) (*Client, error) {
 		return nil, err
 	}
 	c := &Client{Remote: r, HTTP: NewHTTPClient()}
-	if tok, src := EnvToken(r.Name); tok != "" {
+	if tok, src := EnvToken(); tok != "" {
 		c.Token, c.TokenSource = tok, src
 		return c, nil
 	}

@@ -3453,7 +3453,7 @@ pocketone logs                         # the last 100 lines, then follow
 3. Under **Scopes**, tick `deploy`. Add `remote` if CI will pass `--restart`.
 4. Click **Create token** and copy it. It's shown only once.
 
-In CI, set `P1_TOKEN` (or `P1_TOKEN_PROD` for the remote named `prod`) to that token, then run
+In CI, set `P1_TOKEN` to that token, then run
 `pocketone deploy --restart`.
 
 ## From an agent
@@ -3536,7 +3536,7 @@ How a command is named and read:
 - **Output:** JSON, so you can pipe it to `jq`. A stream (`remote logs`) prints one JSON line per entry until Ctrl-C.
 - **Errors:** if the app doesn't offer the contract, the command says so ("this remote doesn't offer restore/v1").
 
-In CI, set `P1_TOKEN` (or `P1_TOKEN_PROD` for one remote) to an [API token](https://pocketone.dev/docs/extensions/api-tokens) instead of
+In CI, set `P1_TOKEN` to an [API token](https://pocketone.dev/docs/extensions/api-tokens) instead of
 signing in. [Remotes](https://pocketone.dev/docs/extensions/remotes) covers remotes and saved logins.
 
 ## From a script: REST
@@ -14355,7 +14355,7 @@ What it adds to `pb_hooks` and page code: [API Tokens JavaScript API](https://po
 | [OAuth](https://pocketone.dev/docs/extensions/api-tokens/oauth) (in Tokens) | Its access tokens are API tokens, issued with the client's id, the granted scopes and, when asked for, an audience. They show up under Settings → API tokens and can be revoked there. The OAuth server needs Tokens on the app. |
 | [MCP](https://pocketone.dev/docs/extensions/mcp) | An agent's OAuth sign-in to `/mcp` is an API token bound to `/mcp` that never expires; revoke it to disconnect the agent. Tool calls run as the token's owner. A full-access token's calls hold every registered scope; a token limited to scopes on the consent page has its calls checked like requests with those scopes (`WithScopes`). |
 | [Deploy](https://pocketone.dev/docs/extensions/deploy) | Registers `deploy` and `deploy:read`; a `deploy` token is what CI uses. |
-| [Remotes](https://pocketone.dev/docs/extensions/remotes) | `pocketone login` takes a pasted API token when the remote has no OAuth server. In CI, put a token in `P1_TOKEN` (or `P1_TOKEN_<REMOTE>`). remote/v1's whoami (`/api/_c/remote/v1`) reports a token's id and scopes, whatever its scopes. |
+| [Remotes](https://pocketone.dev/docs/extensions/remotes) | `pocketone login` takes a pasted API token when the remote has no OAuth server. In CI, put a token in `P1_TOKEN`. remote/v1's whoami (`/api/_c/remote/v1`) reports a token's id and scopes, whatever its scopes. |
 | [Multisite](https://pocketone.dev/docs/extensions/multisite) | It's a standard member, so every instance gets its own tokens, routes and screen; reconfigure it on the host's set with `set.APITokens = apitokens.New(apitokens.Config{...})`. With Pocker, per instance, `extensions: {api-tokens: {enabled: false}}` turns it off and `collections: [...]` picks who may own tokens. |
 
 ### Building on Tokens
@@ -15976,7 +15976,7 @@ There is no `pocketone.yaml` section, flag or settings screen. Defaults on the r
   is safe (files already in the app's folder count as uploaded, so deploys still send only what changed).
 
 On your machine, the commands use the project's remotes and saved logins from [Remotes](https://pocketone.dev/docs/extensions/remotes). In CI,
-set `P1_TOKEN` (or `P1_TOKEN_<REMOTE>`) instead of signing in.
+set `P1_TOKEN` instead of signing in.
 
 ## Use
 
@@ -19166,8 +19166,7 @@ Logins are saved per user, keyed by URL, in `~/.config/pocketone/credentials.jso
 
 | Variable | What it does |
 |---|---|
-| `P1_TOKEN_<REMOTE>` | A token for one remote, for CI. The name is upper case, other characters as `_` (`P1_TOKEN_PROD`). |
-| `P1_TOKEN` | A token for any remote. |
+| `P1_TOKEN` | A token that overrides the saved login, for CI or for one command (`P1_TOKEN=... pocketone deploy staging`). |
 | `P1_CONFIG_DIR` | Where saved logins are kept. |
 
 A token in the environment wins over a saved login. Every PocketOne variable starts with `P1_`, in every build (the
@@ -32464,7 +32463,7 @@ Package remotes gives the command named remotes: other PocketBase instances (or 
 	pocketone login prod
 	pocketone deploy prod
 
-Remote names and URLs live in the project's .pocketbase/remotes.json (commit it); secrets live in the user's ~/.config/pocketone/credentials.json (0600), keyed by URL. CI sets P1\_TOKEN or P1\_TOKEN\_\<REMOTE>. The folder is named after [extkit.Command](/pocketone.dev/ext/extkit#Command) (~/.config/pockethost in that build); the variables are PocketOne's (P1\_) in every build.
+Remote names and URLs live in the project's .pocketbase/remotes.json (commit it); secrets live in the user's ~/.config/pocketone/credentials.json (0600), keyed by URL. P1\_TOKEN overrides the saved login (CI sets it). The folder is named after [extkit.Command](/pocketone.dev/ext/extkit#Command) (~/.config/pockethost in that build); the variables are PocketOne's (P1\_) in every build.
 
 The server half is remote/v1's whoami (GET /api/\_c/remote/v1): who the request's token is, its scopes, and which contracts the app offers (deploy/v1, oauth/v1, api-tokens/v1, ...), so clients discover what a remote supports.
 
@@ -32606,10 +32605,10 @@ DecodeResponse turns a non-2xx response into an [APIError](#apierror) (PocketBas
 ### EnvToken
 
 ```go
-func EnvToken(remoteName string) (token, source string)
+func EnvToken() (token, source string)
 ```
 
-EnvToken returns the CI token for a remote: P1\_TOKEN\_\<NAME> (upper case, other characters as \_), then P1\_TOKEN.
+EnvToken returns the token in P1\_TOKEN, which overrides the saved login for whatever remote a command uses, and the variable's name as its source. Set it for one command (\`P1\_TOKEN=... pocketone deploy staging\`) to use another token for that command only.
 
 ### EnvVar
 

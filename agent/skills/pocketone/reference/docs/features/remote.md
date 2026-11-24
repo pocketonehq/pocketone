@@ -42,7 +42,7 @@ How a command is named and read:
 - **Output:** JSON, so you can pipe it to `jq`. A stream (`remote logs`) prints one JSON line per entry until Ctrl-C.
 - **Errors:** if the app doesn't offer the contract, the command says so ("this remote doesn't offer restore/v1").
 
-In CI, set `P1_TOKEN` (or `P1_TOKEN_PROD` for one remote) to an [API token](https://pocketone.dev/docs/extensions/api-tokens) instead of
+In CI, set `P1_TOKEN` to an [API token](https://pocketone.dev/docs/extensions/api-tokens) instead of
 signing in. [Remotes](https://pocketone.dev/docs/extensions/remotes) covers remotes and saved logins.
 
 ## From a script: REST
