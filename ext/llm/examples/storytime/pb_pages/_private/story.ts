@@ -173,8 +173,8 @@ const WRITE_RULES = `How to write it:
 - "title" is the story's title, and "topic" its subject in a short phrase.
 - "look" describes, for an illustrator, what recurs through the story's pictures (a place, a person with their dress and era, an object), so every picture can show it the same way.`
 
-/** The writer's system prompt, piece by piece (the debugger shows each): the preamble, the fine-tuning, the app's rules,
- * the pronunciation note. */
+/** The writer's system prompt, piece by piece (the debugger shows each): the preamble, the fine-tuning, the app's rules.
+ * Nothing about pronunciation: that's a pass over the finished text (pronounce). */
 export function writerParts(t: Tuning, minutes: number): TracePart[] {
   const vars = {
     minutes: `${minutes} minute${minutes === 1 ? '' : 's'}`,
@@ -188,7 +188,6 @@ export function writerParts(t: Tuning, minutes: number): TracePart[] {
     { label: 'Preamble', text: fill(t.prompts.write, vars).trim() },
     ...(finetune ? [{ label: 'Fine-tuning', text: `Notes from trying stories, to follow:\n${finetune}` }] : []),
     { label: 'Rules the app adds', text: fill(WRITE_RULES, vars) },
-    { label: 'Pronunciation note', text: sayNote(t) },
   ]
 }
 
@@ -211,26 +210,18 @@ const WRITE_SCHEMA = {
     topic: { type: 'string' },
     look: { type: 'string' },
     sentences: { type: 'array', items: { type: 'string' } },
-    say: {
-      type: 'array',
-      items: { type: 'object', properties: { term: { type: 'string' }, spoken: { type: 'string' } }, required: ['term', 'spoken'] },
-    },
   },
-  required: ['title', 'language', 'topic', 'look', 'sentences', 'say'],
+  required: ['title', 'language', 'topic', 'look', 'sentences'],
 }
 
 // ---- a cloned voice takes no instructions (its delivery comes from the recording), so how a word is said has to be in
-// the text it reads: the writer lists the words a narrator could get wrong with a respelling, the voice and the aligner
-// read the respelled sentences, and the captions keep the written words
-
-/** Told to the writer after the profile's prompt: list the words to respell, as the settings say words are said. */
-const sayNote = (t: Tuning) => 'In "say", list each word in the story a narrator could say wrong, one word each, ' +
-  'exactly as written in the sentences, with how to spell it so a text-to-speech voice says it right. Leave out ordinary ' +
-  `words; an empty list is fine. How words are said: ${t.prompts.pronounce}`
+// the text it reads: a pass over the finished story (pronounce) respells the words a narrator could get wrong, the voice
+// and the aligner read the respelled sentences, and the captions keep the written words. The writer is told nothing
+// about it.
 
 export type Say = { term: string; spoken: string }
 
-/** The writer's respellings worth using: one written word each, said differently from how it is written. */
+/** Respellings worth using (a model's answer): one written word each, said differently from how it is written. */
 export function sayList(list: any): Say[] {
   const out: Say[] = []
   for (const x of Array.isArray(list) ? list : []) {
@@ -258,24 +249,23 @@ const PRONOUNCE_SCHEMA = {
 }
 
 /**
- * The respellings for a story: the writer's list, plus how the odd-looking words it left out are said (one small call;
- * a word read as written comes back unchanged and is dropped).
+ * The respellings for a finished story: how its odd-looking words are said (one small call, as the settings' Pronunciation
+ * says; a word read as written comes back unchanged and is dropped).
  */
-async function pronounce(t: Tuning, sentences: string[], say: Say[], trace?: Trace): Promise<{ say: Say[]; result?: any }> {
-  const ask_ = oddWords(sentences).filter((w) => !say.some((x) => x.term === w))
-  const listed = { label: 'The writer listed', text: say.length ? say.map((x) => `${x.term} → ${x.spoken}`).join('\n') : 'none' }
+async function pronounce(t: Tuning, sentences: string[], trace?: Trace): Promise<{ say: Say[]; result?: any }> {
+  const ask_ = oddWords(sentences)
   if (!ask_.length) {
-    trace?.({ step: 'Pronunciation', parts: [listed, { label: 'Odd-looking words it left out', text: 'none, so no call' }] })
-    return { say }
+    trace?.({ step: 'Pronunciation', parts: [{ label: 'Odd-looking words (acronyms, names with capitals inside)', text: 'none, so no call' }] })
+    return { say: [] }
   }
   const t0 = Date.now()
   const system = 'You tell a narrator how to say words. For each word, answer how to spell it so a text-to-speech voice says ' +
     `it right; a word read as written comes back unchanged. ${t.prompts.pronounce}`
   const result = await ask(t.models.text, { system, prompt: ask_.join('\n'), schema: PRONOUNCE_SCHEMA, temperature: 0 })
-  trace?.({ step: 'Pronunciation', ...callInfo(result, t0), parts: [listed,
-    { label: 'Odd-looking words it left out, asked about', text: ask_.join('\n') },
+  trace?.({ step: 'Pronunciation', ...callInfo(result, t0), parts: [
+    { label: 'Odd-looking words (acronyms, names with capitals inside), asked about', text: ask_.join('\n') },
     { label: 'System', text: system }, { label: 'Answer', text: pretty(result.data) }] })
-  return { say: sayList([...say, ...(result.data.words || [])]), result }
+  return { say: sayList(result.data.words), result }
 }
 
 const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -644,12 +634,11 @@ export async function write(t: Tuning, prompt: string, minutes: number, trace?: 
     topic: String(written.topic || ''),
     look: String(written.look || ''),
     sentences: (written.sentences || []).map((s: any) => String(s).replace(/\s+/g, ' ').trim()).filter(Boolean),
-    say: sayList(written.say),
   }
   if (story.sentences.length < 5) throw new Error(`the story came back too short: ${story.sentences.length} sentences, ${JSON.stringify(written).slice(0, 300)}`)
   const spoken = await speakableSentences(t, story.sentences, trace)
   story.sentences = spoken.sentences
-  const said = await pronounce(t, story.sentences, story.say || [], trace)
+  const said = await pronounce(t, story.sentences, trace)
   story.say = said.say.filter((x) => story.sentences.some((s) => respell(s, [x]) !== s))
   return { story, result, fixes: spoken.result, said: said.result, searched: known.found }
 }

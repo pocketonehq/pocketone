@@ -106,7 +106,7 @@ way a listener's story is (no voice, pictures or music), and every step shows as
 what came out, word for word: picking the topic (every passage drawn at random, with its text and whether it was kept
 or why not, the ideas from the kept ones, the told stories nearest each, the pick and why), the knowledge search (every
 match with its text, and whether it went to the writer or why not), the writer's prompt piece by piece (preamble, fine-tuning, the rules the
-app adds, the pronunciation note, the request and knowledge) and its answer, the plain-words check and pronunciation,
+app adds, the request and knowledge) and its answer, the plain-words check and pronunciation,
 each with its model, time and cost. Then tell the helper what you'd change ("it reads file names out loud"): it reads
 the story and rewrites the **Fine-tuning** notes (`prompts.finetune`), which the writer gets right after the preamble.
 Generate again to see the difference. A trial with no step finished in 3 minutes is reported as stalled. The later
