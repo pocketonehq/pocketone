@@ -4,10 +4,26 @@
 // sends the signed-in superuser's token with each call.
 (() => {
     const GROUP = "Story Time";
+    // each part of the settings is its own entry in the sidebar, all on one route (#/settings/storytime/<id>)
+    const SECTIONS = [
+        { id: "front", title: "Front page", icon: "ri-home-4-line" },
+        { id: "knowledge", title: "Knowledge", icon: "ri-book-2-line" },
+        { id: "length", title: "Story length", icon: "ri-timer-line" },
+        { id: "mix", title: "Mix", icon: "ri-equalizer-line" },
+        { id: "narrator", title: "Narrator", icon: "ri-mic-line" },
+        { id: "writing", title: "Writing the story", icon: "ri-quill-pen-line" },
+        { id: "pronunciation", title: "Pronunciation", icon: "ri-character-recognition-line" },
+        { id: "pictures", title: "Choosing the pictures", icon: "ri-image-line" },
+        { id: "music", title: "Music", icon: "ri-music-2-line" },
+        { id: "inspire", title: "Inspire me", icon: "ri-lightbulb-line" },
+        { id: "models", title: "Models and budget", icon: "ri-money-dollar-circle-line" },
+    ];
     app.store.settingsNavGroups[GROUP] = [
         ...(app.store.settingsNavGroups[GROUP] || []),
-        { href: "#/settings/storytime", icon: "ri-moon-clear-line", label: "Settings" },
+        ...SECTIONS.map((x) => ({ href: `#/settings/storytime/${x.id}`, icon: x.icon, label: x.title })),
     ];
+    // the values being edited, kept while moving between sections so unsaved changes aren't lost; replaced on save
+    let draft = null;
 
     const send = (path, body) => app.pb.send(path, body ? { method: "POST", body, requestKey: null } : { requestKey: null });
     const errText = (err) => err?.response?.message || err?.message || String(err);
@@ -37,8 +53,12 @@
         return t.div(null, t.div({ className: "field" }, t.label({}, label), input), hint ? t.div({ className: "field-help" }, hint) : null);
     }
 
-    app.routes.superuserOnly("#/settings/storytime", () => {
-        app.store.title = "Story Time";
+    // the old single page opens the first section
+    app.routes.superuserOnly("#/settings/storytime", () => { window.location.replace(`#/settings/storytime/${SECTIONS[0].id}`); });
+    SECTIONS.forEach((section) => app.routes.superuserOnly(`#/settings/storytime/${section.id}`, () => page(section)));
+
+    function page(section) {
+        app.store.title = `${section.title} · Story Time`;
         const data = store({
             loading: true,
             saving: false,
@@ -132,14 +152,16 @@
         async function load() {
             try {
                 const out = await send("/admin/tuning");
-                v = out.values;
+                const kept = !!draft;
+                v = draft = draft || out.values;
                 data.voices = out.voices || [];
                 data.clips = out.clips || [];
                 data.buckets = out.buckets || [];
                 data.stories = out.stories || null;
-                data.knowledge = [...((out.values.knowledge && out.values.knowledge.buckets) || [])];
+                data.knowledge = [...((v.knowledge && v.knowledge.buckets) || [])];
                 data.spent = out.spentToday || 0;
                 data.estimate = out.estimate || null;
+                if (kept) estimateSoon(); // the saved estimate doesn't know the unsaved changes
                 data.version++;
             } catch (err) {
                 app.checkApiError(err);
@@ -153,7 +175,8 @@
             data.message = null;
             try {
                 const out = await send("/admin/tuning", reset ? { reset: true } : { values: v });
-                v = out.values;
+                v = draft = out.values;
+                data.knowledge = [...((v.knowledge && v.knowledge.buckets) || [])];
                 data.version++;
                 data.message = { kind: "success", text: reset ? "Defaults put back." : "Saved. New stories use it." };
             } catch (err) {
@@ -191,7 +214,8 @@
                 data.message = null;
                 try {
                     const out = await send("/admin/import", JSON.parse(await file.text()));
-                    v = out.values;
+                    v = draft = out.values;
+                    data.knowledge = [...((v.knowledge && v.knowledge.buckets) || [])];
                     await refreshClips();
                     data.clipChoice = "";
                     data.voiceChoice = "";
@@ -258,9 +282,10 @@
             );
         }
 
+        // block is one section's fields; only the open section's is drawn
         function block(title, about, ...children) {
-            return t.details({ className: "accordion", open: true },
-                t.summary(null, t.span({ className: "txt" }, title)),
+            if (title !== section.title) return null;
+            return t.div(null,
                 about ? t.p({ className: "m-t-0 txt-hint" }, about) : null,
                 t.div({ className: "grid" }, ...children));
         }
@@ -572,9 +597,9 @@
         function form() {
             return t.div({ className: "grid" },
                 t.div({ className: "col-lg-12" }, t.p({ className: "m-t-0" },
-                    "How ", t.a({ href: "/", target: "_blank" }, "Story Time"), " makes its stories. Sample tries a piece with what's on this page, ",
-                    "saved or not; new stories use what's saved.")),
-                t.div({ className: "col-lg-12 accordions" },
+                    "How ", t.a({ href: "/", target: "_blank" }, "Story Time"), " makes its stories. Sample tries a piece with what's on these pages, ",
+                    "saved or not; new stories use what's saved. Changes carry across the sections until you save.")),
+                t.div({ className: "col-lg-12" },
                     block("Front page", "What the front page says. The title's last word is highlighted.",
                         t.div({ className: "col-md-6" }, field("Title", text("site.title"))),
                         t.div({ className: "col-md-6" }, field("Prompt placeholder", text("site.placeholder"))),
@@ -690,7 +715,8 @@
                 t.header({ className: "page-header" },
                     t.nav({ className: "breadcrumbs" },
                         t.div({ className: "breadcrumb-item" }, "Settings"),
-                        t.div({ className: "breadcrumb-item" }, "Story Time"))),
+                        t.div({ className: "breadcrumb-item" }, "Story Time"),
+                        t.div({ className: "breadcrumb-item" }, section.title))),
                 t.div({ className: "wrapper m-b-base" }, () => {
                     data.version; // redraw when the values are replaced
                     if (data.loading) return t.div({ className: "block txt-center" }, t.span({ className: "loader lg" }));
@@ -700,5 +726,5 @@
                 t.footer({ className: "page-footer" }, app.components.credits()),
             ),
         );
-    });
+    }
 })();
