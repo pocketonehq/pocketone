@@ -86,10 +86,13 @@
         const area = (path, rows = 4) => t.textarea({ rows, value: get(path) ?? "", onchange: (e) => put(path, e.target.value),
             style: "font-family: var(--monospaceFontFamily, monospace); font-size: 12px; line-height: 1.5;" });
 
-        // a model field: a searchable list of the kind's models with their prices (ext/llm's dashboard helper), or a
-        // plain box when that isn't loaded. A change works out the story's cost again.
+        // a model field: a searchable list of the kind's models with their prices and what each would cost for this
+        // field's part of a story, cheapest first (ext/llm's dashboard helper), or a plain box when that isn't loaded. A
+        // change works out the story's cost again.
         const modelField = (path, kind) => window.pocketone?.llm
-            ? window.pocketone.llm.select({ kind, value: () => get(path), onchange: (id) => { put(path, id); estimateSoon(); } })
+            ? window.pocketone.llm.select({ kind, value: () => get(path), onchange: (id) => { put(path, id); estimateSoon(); },
+                // each model also shows what its part of a story costs on it (the work from the estimate's jobs)
+                job: () => data.estimate?.jobs?.[path]?.meters || null, per: "a story" })
             : t.input({ type: "text", value: get(path) ?? "", onchange: (e) => { put(path, e.target.value); estimateSoon(); } });
 
         // estimateSoon asks again what a story costs with the models on the page (unsaved), a moment after the last change

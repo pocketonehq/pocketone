@@ -44,6 +44,7 @@ pb_migrations/1763800002_costs.js       costs: each model call's cost, for the d
 pb_migrations/1763800004_samples.js     samples: audio samples the dashboard plays
 pb_migrations/1763800005_voices.js      voices: recordings a cloned narrator imitates (superusers only)
 pb_migrations/1763800006_stories_log.js   log and attempts: each story's step-by-step log (hidden) and how many times it was tried
+pb_migrations/1763800007_costs_usage.js   usage on costs: what each call used (tokens, seconds), for what a story's steps use
 pb_hooks/admin_plugins.pb.js            registers the dashboard screen (a superuser UI extension)
 pb_admin_ext/storytime/main.js          Settings → Story Time in the dashboard: the settings, with Sample buttons
 pb_pages/
@@ -124,7 +125,10 @@ cost, since the settings can change.
   enjoy something from our archives." and turns the form off, and `POST /story` and `POST /inspire` answer 429 with the
   same message. A story already being made finishes.
 - **What a story costs:** under the models on the settings screen, each one picked from a searchable list of what the
-  providers in Settings → LLM offer, cheapest first, with its price. Below them is what a story at the default length
+  providers in Settings → LLM offer, with its price and what its part of a story would cost on it ("≈ $0.0012 a
+  story"), cheapest first. That part is the same work for every model of the field: the tokens the text steps read and
+  write (averaged from finished stories' calls, which `costs` records with their usage, or else worked out from the
+  story's shape), the story's minutes of audio, its pictures, the song's seconds (the estimate's `jobs`). Below them is what a story at the default length
   costs with those models, step by step: the average of the finished stories made with that model (each step's cost per
   minute, per picture or per story, from `costs`), or when there are none, the model's list price times the story's
   shape (its words at about 1.4 tokens each, its minutes of audio, its pictures at 1 megapixel each, the song's

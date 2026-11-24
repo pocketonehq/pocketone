@@ -135,8 +135,11 @@ look cheaper than it is.
 
 Settings → LLM lists every model of each kind across your providers under **Models**, searchable and cheapest first.
 Other dashboard screens use the same pieces through `window.pocketone.llm`: `select({ kind, value, onchange })` is a
-searchable dropdown of a kind's models with their prices (Story Time's settings use it), `browser({ kinds?, kind? })`
-the whole list, and `models(kind)`, `prices(model)`, `priceText(model)` and `rank(model)` the data underneath.
+searchable dropdown of a kind's models with their prices (Story Time's settings use it). Give it the work the model is
+for, `job: () => ({ "1M input tokens": 0.006, "1M output tokens": 0.002 })` (how much of each price unit the work uses)
+and `per: "a story"`, and each model also shows what that work costs on it ("≈ $0.0012 a story", "≥" when it lists only
+one side of the tokens), cheapest first. `browser({ kinds?, kind? })` is the whole list, and `models(kind)`,
+`prices(model)`, `priceText(model)`, `rank(model)` and `costFor(model, job)` the data underneath.
 
 **Errors** have a code: `not_configured` (no providers yet), `unknown_model` (no model named, or no provider by that
 name), `not_supported` (that provider type doesn't do this kind), `provider` (the provider's own error, its message

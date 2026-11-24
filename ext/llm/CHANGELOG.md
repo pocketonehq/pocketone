@@ -13,6 +13,7 @@ renames the section to that version ([Changelogs](../../docs/extensions.md#chang
 
 ### Added
 
+- The dashboard's model dropdown (`window.pocketone.llm.select`) takes the work a model is picked for (`job`, in price units, and `per`) and shows what that work costs on each model, cheapest first; `llm.costFor(model, job)` works it out.
 - Limits in Settings → LLM, checked before every call: the whole app, each signed-in user, each guest, or all guests together, at most so many US dollars, output tokens, input tokens or calls a UTC day or month, optionally for one kind or one model. A used-up limit refuses the call with code `limit` (429), naming the limit and when it resets ([Limits](docs/guides/limits.md)).
 - `$llm.for(e)`: the same API as `$llm`, with every call counted for the request's signed-in user, or else its guest (a signed cookie, by IP until the browser sends it back), so per-user and per-guest limits apply. Pass a page's `ctx` or a route's `e`.
 - Every call is recorded in the `_llm_calls` collection (kind, model, whom it was for, tokens, seconds, cost, and which limit refused it); Settings → LLM shows today's and this month's spend. Rows are kept 13 months; a music or video job's cost is filled in once the job is done ([Spend and the ledger](docs/guides/spend.md)).

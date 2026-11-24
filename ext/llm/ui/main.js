@@ -70,25 +70,65 @@
         return v == null ? Infinity : v;
     };
 
+    // costFor is what a model charges for a job, in dollars: job is how much of each meter the work uses, in the llm
+    // contracts' price units ({ "1M input tokens": 0.006, "1M output tokens": 0.002 } is 6,000 tokens in and 2,000 out;
+    // { second: 60 } is a minute of audio). Listed prices first; a model with none for the job's meters is priced at its
+    // measured rate when that meter is in the job. null: the model's prices don't cover this job (or it lists none).
+    llm.costFor = (m, job) => {
+        if (!job) return null;
+        const prices = m.prices || [];
+        const pick = (source) => {
+            let usd = 0, any = false;
+            for (const p of prices) {
+                if ((source === "measured") !== (p.source === "measured")) continue;
+                const n = job[p.unit];
+                if (n == null) continue;
+                usd += p.usd * n;
+                any = true;
+            }
+            return any ? usd : null;
+        };
+        return pick("listed") ?? pick("measured");
+    };
+
+    // partialFor is true when a model's listed prices cover only part of a text job: it lists an input price or an
+    // output price but not both, so costFor leaves the other side out and the cost is at least what it says.
+    llm.partialFor = (m, job) => {
+        if (!job || job["1M input tokens"] == null || job["1M output tokens"] == null) return false;
+        const has = (u) => (m.prices || []).some((p) => p.unit === u && p.source !== "measured");
+        return has("1M input tokens") !== has("1M output tokens") && !has("1M tokens");
+    };
+
     // label is what a model is called: its name, else its id.
     llm.label = (m) => m.name || m.id.slice(m.id.indexOf("/") + 1);
 
     // select is a searchable dropdown of kind's models, each with its prices and a line of its description; value() is
     // the chosen provider/model and onchange(id) gets a new one. A value no provider lists (a provider not reachable
-    // now) stays as it is.
-    llm.select = ({ kind, value, onchange, required = true }) => {
+    // now) stays as it is. job() (optional) is the work the model is picked for, as costFor takes it, and per names it
+    // ("a story"): each model then also shows what that work costs on it ("≈ $0.0012 a story"), and the list is sorted
+    // by that, cheapest first; a model that lists only one side of a text job's tokens shows "≥" and comes after the
+    // fully priced ones, and models whose prices don't cover the job come last.
+    llm.select = ({ kind, value, onchange, required = true, job = null, per = "a call" }) => {
         const state = store({ models: null, error: "", value: value() });
         llm.models(kind).then((ms) => { state.models = ms.slice().sort((a, b) => llm.rank(a) - llm.rank(b) || a.id.localeCompare(b.id)); })
             .catch((err) => { state.error = err?.response?.message || err?.message || String(err); state.models = []; });
         return t.div({ className: "llm-model-select" }, () => {
             const current = state.value;
-            const ms = state.models || [];
+            const work = job ? job() : null;
+            const cost = new Map((state.models || []).map((m) => [m.id, llm.costFor(m, work)]));
+            const partial = new Map((state.models || []).map((m) => [m.id, llm.partialFor(m, work)]));
+            // fully priced models first, cheapest first; then those priced on one side only; then unknown
+            const key = (m) => (cost.get(m.id) == null ? 2 : partial.get(m.id) ? 1 : 0);
+            const ms = work ? (state.models || []).slice().sort((a, b) => key(a) - key(b)
+                || (cost.get(a.id) ?? Infinity) - (cost.get(b.id) ?? Infinity) || llm.rank(a) - llm.rank(b) || a.id.localeCompare(b.id))
+                : state.models || [];
             const options = ms.map((m) => ({
                 value: m.id,
                 selected: m.id,
                 label: () => t.div({ className: "llm-model-option" },
                     t.div(null, t.strong(null, llm.label(m)), " ", t.span({ className: "txt-hint" }, m.id)),
-                    t.div({ className: "txt-sm" }, llm.priceText(m), m.size ? ` · ${m.size}` : ""),
+                    t.div({ className: "txt-sm" }, work ? t.strong(null, cost.get(m.id) == null ? `cost ${per} unknown · `
+                        : `${partial.get(m.id) ? "≥" : "≈"} ${llm.usd(cost.get(m.id))} ${per} · `) : null, llm.priceText(m), m.size ? ` · ${m.size}` : ""),
                     m.description ? t.div({ className: "txt-sm txt-hint llm-model-desc" }, m.description) : null),
             }));
             if (current && !ms.some((m) => m.id === current)) options.unshift({ value: current, label: current });

@@ -337,6 +337,7 @@ export function record(app: any, kind: string, result: any, story = ''): number 
   r.set('model', result.model)
   r.set('micro_usd', m)
   r.set('story', story)
+  r.set('usage', result.usage) // tokens and seconds, for what each step uses (jobs)
   app.save(r)
   return m / 1e6
 }
@@ -1033,7 +1034,16 @@ export type EstimatePart = {
   stories?: number // how many stories it's the average of
   note?: string // listed: what the list price was multiplied by
 }
-export type StoryEstimate = { minutes: number; pictures: number; usd: number; complete: boolean; parts: EstimatePart[] }
+/**
+ * What one model field's work in a story comes to, in the llm contracts' price units ("1M input tokens": 0.006 is 6,000
+ * tokens), so the settings screen can price every model of that kind for the same work. method says where it's from:
+ * stories (the average of what finished stories' calls used, per minute, scaled to this length) or shape (worked out
+ * from the story's length).
+ */
+export type Job = { meters: { [unit: string]: number }; method: 'stories' | 'shape'; stories?: number }
+export type StoryEstimate = { minutes: number; pictures: number; usd: number; complete: boolean; parts: EstimatePart[]
+  /** each model field's work in one story, by its settings path (models.text, models.speech...) */
+  jobs: { [field: string]: Job } }
 
 /** The steps a story costs money in: the costs collection's kind, the model kind, and what the cost grows with. */
 const COST_STEPS: { kind: string; label: string; modelKind: string; model: (t: Tuning) => string; per: 'minute' | 'picture' | 'story' }[] = [
@@ -1129,5 +1139,71 @@ export async function estimateStory(app: any, t: Tuning): Promise<StoryEstimate>
     parts.push(usd === null ? { step: s.label, model, usd: null, method: 'unknown' } : { step: s.label, model, usd, method: 'listed', note })
   }
   const known = parts.filter((p) => p.usd !== null)
-  return { minutes, pictures, usd: known.reduce((a, p) => a + (p.usd as number), 0), complete: known.length === parts.length, parts }
+  return { minutes, pictures, usd: known.reduce((a, p) => a + (p.usd as number), 0), complete: known.length === parts.length, parts,
+    jobs: storyJobs(app, t, made, picking) }
+}
+
+/** The tokens a text step reads and writes in a story of storyTokens, worked out from the story's shape. */
+const TEXT_SHAPE: { [kind: string]: (storyTokens: number) => [number, number] } = {
+  write: (n) => [3000 + n * 3, n * 3], // the story, its speakable rewrite, the pronunciations
+  place: (n) => [1000 + Math.round(n * 1.5), 800], // the timed transcript in, the pictures out
+  inspire: () => [6000, 1500], // passages in, candidates and a pick out
+}
+
+/**
+ * Each model field's work in one story at the default length (see Job). The text steps (writing, placing the pictures,
+ * picking the story) use what finished stories' calls actually used, whichever model made them, per minute of story,
+ * when the costs rows have it (they record usage from now on); otherwise the story's shape. Audio is the story's
+ * minutes, pictures its picture count at about a megapixel each, the song its length.
+ */
+function storyJobs(app: any, t: Tuning, made: Map<string, { minutes: number; pictures: number }>, picking: boolean): { [field: string]: Job } {
+  const { minutes, pictures } = storyLength(t)
+  const words = minutes * t.length.wordsPerMinute
+  const storyTokens = Math.round(words * TOKENS_PER_WORD)
+
+  // measured: per text step, each finished story's tokens in and out per minute
+  const seen: { [kind: string]: Map<string, [number, number]> } = {}
+  for (const c of app.findRecordsByFilter('costs', "story != '' && (kind = 'write' || kind = 'place' || kind = 'inspire')", '', 0, 0)) {
+    const st = made.get(c.getString('story'))
+    const u = JSON.parse(c.getString('usage') || 'null')
+    if (!st || !u || !(u.inputTokens || u.outputTokens)) continue
+    const k = c.getString('kind')
+    const m = (seen[k] = seen[k] || new Map())
+    const per = k === 'inspire' ? 1 : st.minutes
+    const [i, o] = m.get(c.getString('story')) || [0, 0]
+    m.set(c.getString('story'), [i + (u.inputTokens || 0) / per, o + (u.outputTokens || 0) / per])
+  }
+  const text = (kinds: string[]): Job => {
+    let input = 0, output = 0, stories = Infinity, measuredAll = true
+    for (const k of kinds) {
+      const m = seen[k]
+      const scale = k === 'inspire' ? 1 : minutes
+      if (m && m.size) {
+        let si = 0, so = 0
+        for (const [i, o] of m.values()) { si += i; so += o }
+        input += (si / m.size) * scale
+        output += (so / m.size) * scale
+        stories = Math.min(stories, m.size)
+      } else {
+        const [i, o] = TEXT_SHAPE[k](storyTokens)
+        input += i
+        output += o
+        measuredAll = false
+      }
+    }
+    const meters = { '1M input tokens': input / 1e6, '1M output tokens': output / 1e6, '1M tokens': (input + output) / 1e6 }
+    return measuredAll ? { meters, method: 'stories', stories } : { meters, method: 'shape' }
+  }
+  const seconds = minutes * 60
+  const speech: Job = { meters: { second: seconds, '1K characters': (words * 6) / 1000 }, method: 'shape' }
+  const jobs: { [field: string]: Job } = {
+    'models.text': text(['write', 'place']),
+    'models.speech': speech,
+    'models.speechOther': speech,
+    'models.align': { meters: { second: seconds }, method: 'shape' },
+    'models.image': { meters: { image: pictures, megapixel: pictures }, method: 'shape' },
+    'models.music': { meters: { second: t.music.seconds }, method: 'shape' },
+  }
+  if (picking) jobs['models.idea'] = text(['inspire'])
+  return jobs
 }
