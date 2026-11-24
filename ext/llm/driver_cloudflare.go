@@ -68,9 +68,9 @@ func (d *cloudflareDriver) complete(ctx context.Context, model string, in textv1
 	return chatComplete(ctx, d.c, req, onDelta)
 }
 
-func (d *cloudflareDriver) image(ctx context.Context, model string, in imagev1.GenerateInput, edit []llmc.File) (imagev1.Result, error) {
-	if len(edit) > 0 {
-		return imagev1.Result{}, d.no("image edits yet")
+func (d *cloudflareDriver) image(ctx context.Context, model string, in imagev1.GenerateInput) (imagev1.Result, error) {
+	if len(in.References) > 0 {
+		return imagev1.Result{}, d.no("reference images")
 	}
 	w, h := sizeWH(in.Size)
 	out := imagev1.Result{}

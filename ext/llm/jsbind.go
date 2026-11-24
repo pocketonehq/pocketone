@@ -250,7 +250,6 @@ var jsPrelude = `(() => {
     }),
     image: Object.freeze({
       generateAsync: (o) => callAsync("image", "generate", o),
-      editAsync: (o) => callAsync("image", "edit", o),
       modelsAsync: modelsAsync("image"),
     }),
     speech: Object.freeze({

@@ -112,6 +112,8 @@ const (
 	FeatureVoiceDesign  = "voice design"      // speaks in a voice described in words
 	FeatureVoices       = "built-in voices"   // has named voices to pick from
 	FeatureLyrics       = "lyrics"            // sings given lyrics
+	// FeatureReferenceImages is an image model that draws from pictures it's given (llm.image/v1's References).
+	FeatureReferenceImages = "reference images"
 )
 
 // ModelInfo is one model, as each contract's models operation lists it. Every field past Kinds is optional: a provider

@@ -65,9 +65,9 @@ func (d *openAIDriver) complete(ctx context.Context, model string, in textv1.Com
 	return chatComplete(ctx, d.c, chatRequest(model, in, reasoningEffort), onDelta)
 }
 
-func (d *openAIDriver) image(ctx context.Context, model string, in imagev1.GenerateInput, edit []llmc.File) (imagev1.Result, error) {
-	if len(edit) > 0 {
-		return imagev1.Result{}, d.no("image edits yet")
+func (d *openAIDriver) image(ctx context.Context, model string, in imagev1.GenerateInput) (imagev1.Result, error) {
+	if len(in.References) > 0 {
+		return imagev1.Result{}, d.no("reference images")
 	}
 	r, err := d.c.Images(ctx, oai.ImageRequest{Model: model, Prompt: in.Prompt, N: in.N, Size: in.Size, Extra: in.Options})
 	if err != nil {

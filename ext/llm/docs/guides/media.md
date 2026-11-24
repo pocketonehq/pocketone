@@ -28,7 +28,20 @@ page.Set("picture", f)
 ```
 
 `n` asks for several, `size` (`"1024x768"`) or `aspectRatio` (`"16:9"`) shapes them, as the model allows.
-`$llm.image.editAsync({ model, prompt, images: [file] })` changes pictures you give it (on OpenRouter).
+`references: [file]` gives the model pictures to draw from: one to change as the prompt says, or one whose style and
+characters a new scene keeps. Paint an anchor picture first and pass it with every other picture, and they share one
+look:
+
+```ts
+const anchor = (await $llm.image.generateAsync({ model, prompt: "a red fox in a blue scarf, watercolor" })).files[0]
+const next = await $llm.image.generateAsync({ model, references: [anchor],
+  prompt: "Same style and characters as the reference. Show the fox asleep under the stars." })
+```
+
+Only models whose listing has the feature `reference images` take them (`$llm.image.modelsAsync()`, each model's
+`features`): on Vultr `qwen-image-2.1` (up to 10; evaluation only, under the Qwen Research License) and `minimax-h3`
+(up to 9, a still at a time), and OpenRouter's image models that read images. Cloudflare and other OpenAI-compatible
+APIs answer `not_supported`.
 
 ## Speech
 

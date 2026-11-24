@@ -146,15 +146,15 @@ type imageService struct{ r *router }
 
 var _ imagev1.Image = imageService{}
 
-func (s imageService) run(ctx context.Context, a extkit.Auth, op string, in imagev1.GenerateInput, edit []llmc.File) (imagev1.Result, error) {
+func (s imageService) Generate(ctx context.Context, a extkit.Auth, in imagev1.GenerateInput) (imagev1.Result, error) {
 	if strings.TrimSpace(in.Prompt) == "" {
 		return imagev1.Result{}, badInput("give a prompt")
 	}
-	t, err := s.r.begin(ctx, a, llmc.KindImage, op, in.Model, &in)
+	t, err := s.r.begin(ctx, a, llmc.KindImage, "generate", in.Model, &in)
 	if err != nil {
 		return imagev1.Result{}, err
 	}
-	res, err := t.d.image(ctx, t.model, in, edit)
+	res, err := t.d.image(ctx, t.model, in)
 	res.Model = t.ref()
 	if res.Files == nil {
 		res.Files = []llmc.File{}
@@ -164,17 +164,6 @@ func (s imageService) run(ctx context.Context, a extkit.Auth, op string, in imag
 	}
 	s.r.fillCost(ctx, t, &res.Usage, used{files: len(res.Files)})
 	return res, nil
-}
-
-func (s imageService) Generate(ctx context.Context, a extkit.Auth, in imagev1.GenerateInput) (imagev1.Result, error) {
-	return s.run(ctx, a, "generate", in, nil)
-}
-
-func (s imageService) Edit(ctx context.Context, a extkit.Auth, in imagev1.EditInput) (imagev1.Result, error) {
-	if len(in.Images) == 0 {
-		return imagev1.Result{}, badInput("give the images to edit")
-	}
-	return s.run(ctx, a, "edit", in.GenerateInput, in.Images)
 }
 
 func (s imageService) Models(ctx context.Context, _ extkit.Auth, in llmc.ModelsInput) (llmc.Models, error) {

@@ -76,10 +76,12 @@ type LlmAPI = {
     modelsAsync(opts?: LlmModelsOpts): Promise<LlmModels>
   }
   image: {
-    /** Makes pictures from a prompt: n of them, at a size or aspect ratio the provider supports. */
-    generateAsync(opts: { model: string; prompt: string; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any> }): Promise<{ files: LlmFile[]; model: string; usage: LlmUsage }>
-    /** Changes pictures by a prompt (providers that edit: OpenRouter, OpenAI-compatible). */
-    editAsync(opts: { model: string; prompt: string; images: LlmFile[]; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any> }): Promise<{ files: LlmFile[]; model: string; usage: LlmUsage }>
+    /**
+     * Makes pictures from a prompt: n of them, at a size or aspect ratio the provider supports. references are pictures
+     * it draws from: one to change, or one whose style and characters a new scene keeps. Only models with the feature
+     * "reference images" take them (Vultr, OpenRouter).
+     */
+    generateAsync(opts: { model: string; prompt: string; references?: LlmFile[]; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any> }): Promise<{ files: LlmFile[]; model: string; usage: LlmUsage }>
     /** This kind's models across the providers in Settings → LLM (or one: { provider }), as provider/model. */
     modelsAsync(opts?: LlmModelsOpts): Promise<LlmModels>
   }
@@ -240,7 +242,7 @@ type LlmLedgerCall = {
 /** A billable call on its way to a provider, as $llm.onCall handlers see it. */
 type LlmCallEvent = {
   kind: "text" | "image" | "speech" | "transcribe" | "align" | "music" | "video" | "embed"
-  /** The operation: "complete", "stream", "generate", "edit", "speak", "transcribe", "align", "create" or "embed". */
+  /** The operation: "complete", "stream", "generate", "speak", "transcribe", "align", "create" or "embed". */
   op: string
   /** "provider/model"; change it to send the call to another model. */
   model: string

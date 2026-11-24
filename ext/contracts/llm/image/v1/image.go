@@ -1,4 +1,4 @@
-// Package imagev1 is the llm.image/v1 contract: a model makes pictures from a prompt, or changes pictures it's given.
+// Package imagev1 is the llm.image/v1 contract: a model makes pictures from a prompt, and from reference pictures.
 //
 // A wire contract at /api/_c/llm.image/v1. In pb_hooks it's $llm.image.
 package imagev1
@@ -19,14 +19,10 @@ import (
 //contract:scope llm
 //contract:js hooks
 type Image interface {
-	// Generate makes pictures from a prompt.
+	// Generate makes pictures from a prompt, and from the reference pictures it's given.
 	//
 	//op: POST generate
 	Generate(ctx context.Context, a extkit.Auth, in GenerateInput) (Result, error)
-	// Edit changes the pictures it's given as the prompt says.
-	//
-	//op: POST edit
-	Edit(ctx context.Context, a extkit.Auth, in EditInput) (Result, error)
 	// Models lists the image models of every provider in Settings → LLM.
 	//
 	//op: GET models scope=llm:read
@@ -40,14 +36,12 @@ type GenerateInput struct {
 	N      int    `json:"n,omitempty"`    // how many (default 1)
 	Size   string `json:"size,omitempty"` // "1024x1024"
 	// AspectRatio is "16:9", "1:1"... for models that take one instead of a size.
-	AspectRatio string      `json:"aspectRatio,omitempty"`
-	Options     llm.Options `json:"options,omitempty"`
-}
-
-// EditInput is what to change, and the pictures to change.
-type EditInput struct {
-	GenerateInput
-	Images []llm.File `json:"images"`
+	AspectRatio string `json:"aspectRatio,omitempty"`
+	// References are pictures the model draws from: one to change as the prompt says, or one whose style and
+	// characters a new scene keeps ("same style and characters; show them ..."). Only a model whose ModelInfo lists
+	// llm.FeatureReferenceImages takes them; any other answers not_supported or the provider's own error.
+	References []llm.File  `json:"references,omitempty"`
+	Options    llm.Options `json:"options,omitempty"`
 }
 
 // Result is the pictures made.

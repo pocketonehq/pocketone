@@ -89,7 +89,7 @@ while a model works; there are no blocking versions to reach for. Each call name
 | `$llm.text.completeAsync({ model, system?, prompt \| messages, schema?, maxTokens?, temperature?, stop?, reasoning?, enrich?, options? })` | Answers: `{ text, data, reasoning, stopReason, model, usage, passages }`. With `schema`, `data` is the parsed JSON. With `enrich` (RAG: buckets to search, `["help"]`), the best passages from them are sent after the prompt and listed in `passages` ([LLM Search](../llm-search/README.md)). |
 | `$llm.text.streamAsync(opts, onText, onReasoning?)` | The same, calling `onText` with each piece as it's written (`false` stops it). |
 | `$llm.text.count(text \| messages)` | About how many tokens (four characters each). Local, so not async. |
-| `$llm.image.generateAsync({ model, prompt, n?, size?, aspectRatio? })`, `editAsync({ ..., images })` | Pictures: `{ files, model, usage }`. |
+| `$llm.image.generateAsync({ model, prompt, references?, n?, size?, aspectRatio? })` | Pictures: `{ files, model, usage }`. `references` are pictures to draw from, on models with the feature `reference images`. |
 | `$llm.speech.speakAsync({ model, text, voice?, format?, speed?, instructions?, reference? })`, `voicesAsync(model)` | Audio: `{ file, model, usage }`. `reference: { audio, text? }` reads in the voice of that clip (voice cloning). |
 | `$llm.transcribe.transcribeAsync({ model, audio, language?, prompt? })` | Text from audio: `{ text, language, model, usage }`. |
 | `$llm.align.alignAsync({ model, audio, text, mode?, language? })` | When each line and word of `text` is said in `audio`: `{ duration, lines, words, unaligned, model, usage }`, in seconds. For captions timed to a voice. |
@@ -153,9 +153,9 @@ What each provider type covers:
 
 | | Text | Pictures | Speech | Transcription | Music | Video | Embeddings |
 |---|---|---|---|---|---|---|---|
-| `vultr` | yes | yes | yes, with voices and cloning | yes | yes (job) | yes (job) | yes |
+| `vultr` | yes | yes (and references) | yes, with voices and cloning | yes | yes (job) | yes (job) | yes |
 | `cloudflare` | yes | yes | yes | yes | | | yes |
-| `openrouter` | yes | yes (and edits) | yes, with voices and cloning | yes | | yes (job) | yes |
+| `openrouter` | yes | yes (and references) | yes, with voices and cloning | yes | | yes (job) | yes |
 | `openai` | yes | yes | yes | yes | | | yes |
 
 An `openai` provider's model list names only ids, so each model's kind is guessed from its name (`whisper` is

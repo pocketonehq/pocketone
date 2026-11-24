@@ -8,11 +8,13 @@ renames the section to that version ([Changelogs](../../docs/extensions.md#chang
 
 ### Upgrading
 
+- `$llm.image.editAsync({ ..., images })` and llm.image/v1's `edit` operation (`EditInput`, `onLlmImageEdit`) are gone: call `generateAsync({ ..., references: images })` (`POST /api/_c/llm.image/v1/generate` with `references`).
 - Guest calls (`$llm.for(e)` for a visitor who isn't signed in) are refused until Settings → LLM has a limit for all guests together. An app that answers visitors who aren't signed in adds one there (say $1 a day) after upgrading. Plain `$llm` calls aren't guest calls and aren't affected.
 - A failed `$llm` call's `err.message` no longer starts with its code (`provider: `, `unknown_model: `...). Code that matched on that text checks `err.code` instead.
 
 ### Added
 
+- Reference images: `$llm.image.generateAsync({ ..., references: [file] })` draws from the pictures given, to change one or to keep a story's characters and style across its pictures. On Vultr (`qwen-image-2.1`, and `minimax-h3`, now listed as an image model too) and OpenRouter. Models that take them list the feature `reference images` (`llm.FeatureReferenceImages`), so an app offers references only then.
 - The dashboard's model dropdown (`window.pocketone.llm.select`) takes the work a model is picked for (`job`, in price units, and `per`) and shows what that work costs on each model, cheapest first; `llm.costFor(model, job)` works it out.
 - Limits in Settings → LLM, checked before every call: the whole app, each signed-in user, each guest, or all guests together, at most so many US dollars, output tokens, input tokens or calls a UTC day or month, optionally for one kind or one model. A used-up limit refuses the call with code `limit` (429), naming the limit and when it resets ([Limits](docs/guides/limits.md)).
 - `$llm.for(e)`: the same API as `$llm`, with every call counted for the request's signed-in user, or else its guest (a signed cookie, by IP until the browser sends it back), so per-user and per-guest limits apply. Pass a page's `ctx` or a route's `e`.

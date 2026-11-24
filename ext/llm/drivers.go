@@ -27,7 +27,7 @@ type driver interface {
 	models(ctx context.Context) ([]llmc.ModelInfo, error)
 	// complete answers; onDelta, when set, gets the text and reasoning as they're written (false stops it).
 	complete(ctx context.Context, model string, in textv1.CompleteInput, onDelta func(text, reasoning string) bool) (textv1.CompleteResult, error)
-	image(ctx context.Context, model string, in imagev1.GenerateInput, edit []llmc.File) (imagev1.Result, error)
+	image(ctx context.Context, model string, in imagev1.GenerateInput) (imagev1.Result, error)
 	speak(ctx context.Context, model string, in speechv1.SpeakInput) (speechv1.Result, error)
 	voices(ctx context.Context, model string) ([]speechv1.Voice, error)
 	transcribe(ctx context.Context, model string, in transcribev1.TranscribeInput) (transcribev1.Result, error)
@@ -78,7 +78,7 @@ func (u unsupported) no(what string) error {
 func (u unsupported) complete(context.Context, string, textv1.CompleteInput, func(string, string) bool) (textv1.CompleteResult, error) {
 	return textv1.CompleteResult{}, u.no("text")
 }
-func (u unsupported) image(context.Context, string, imagev1.GenerateInput, []llmc.File) (imagev1.Result, error) {
+func (u unsupported) image(context.Context, string, imagev1.GenerateInput) (imagev1.Result, error) {
 	return imagev1.Result{}, u.no("images")
 }
 func (u unsupported) speak(context.Context, string, speechv1.SpeakInput) (speechv1.Result, error) {

@@ -39,6 +39,7 @@ func (d *vultrDriver) models(ctx context.Context) ([]llmc.ModelInfo, error) {
 		info := llmc.ModelInfo{ID: m.ID, Name: m.Name, Description: m.Description, Reasoning: m.Reasoning != nil,
 			Size: sizeOf(m.HuggingFace, m.ID)}
 		video := slices.ContainsFunc(m.Outputs, func(o vultr.Output) bool { return o.Type == "video" })
+		references := slices.ContainsFunc(m.Inputs, func(in vultr.Input) bool { return in.Type == "image" && in.Supported.References != nil })
 		for _, in := range m.Inputs {
 			info.Inputs = append(info.Inputs, in.Type)
 			if in.Supported.MaxContext != nil && in.Type == "text" {
@@ -50,9 +51,13 @@ func (d *vultrDriver) models(ctx context.Context) ([]llmc.ModelInfo, error) {
 			if o.Type == "audio" {
 				k = llmc.KindMusic
 			}
-			// a model that makes video is a video model, though it can make a still too
-			if k == "" || (k == llmc.KindImage && video) {
+			// a model that makes video is a video model, though it can make a still too; it's an image model as well
+			// when it draws stills from reference images (minimax-h3)
+			if k == "" || (k == llmc.KindImage && video && !references) {
 				continue
+			}
+			if k == llmc.KindImage && references {
+				addFeature(&info, llmc.FeatureReferenceImages)
 			}
 			info.Kinds = append(info.Kinds, k)
 			for _, pr := range o.Pricing {
@@ -151,15 +156,25 @@ func (d *vultrDriver) complete(ctx context.Context, model string, in textv1.Comp
 	return chatComplete(ctx, d.c, chatRequest(model, in, reasoningEffort), onDelta)
 }
 
-func (d *vultrDriver) image(ctx context.Context, model string, in imagev1.GenerateInput, edit []llmc.File) (imagev1.Result, error) {
-	if len(edit) > 0 {
-		return imagev1.Result{}, d.no("image edits yet")
-	}
-	req := oai.ImageRequest{Model: model, Prompt: in.Prompt, N: in.N, Size: in.Size, ResponseFormat: "b64_json", Extra: in.Options}
+func (d *vultrDriver) image(ctx context.Context, model string, in imagev1.GenerateInput) (imagev1.Result, error) {
+	extra := map[string]any{}
 	if in.AspectRatio != "" {
-		req.Extra = merge(map[string]any{"aspect_ratio": in.AspectRatio}, in.Options)
+		extra["aspect_ratio"] = in.AspectRatio
 	}
-	r, err := d.c.Images(ctx, req)
+	// references go as OpenAI's JSON edit shape on /images/edits, each a data: URL (or its https URL). Only a model
+	// with reference editing takes them (its image input lists references); any other answers a 400 naming "images".
+	path := "images/generations"
+	if len(in.References) > 0 {
+		path = "images/edits"
+		images := make([]any, 0, len(in.References))
+		for _, f := range in.References {
+			images = append(images, map[string]any{"image_url": dataURL(f)})
+		}
+		extra["images"] = images
+	}
+	req := oai.ImageRequest{Model: model, Prompt: in.Prompt, N: in.N, Size: in.Size, ResponseFormat: "b64_json",
+		Extra: merge(extra, in.Options)}
+	r, err := d.c.ImagesAt(ctx, path, req)
 	if err != nil {
 		return imagev1.Result{}, err
 	}
