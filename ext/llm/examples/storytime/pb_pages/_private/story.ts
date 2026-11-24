@@ -170,7 +170,6 @@ const WRITE_RULES = `How to write it:
 - Every sentence is read aloud by a narrator: no symbols, code, URLs, file paths or abbreviations a narrator can't say naturally; say what they are in plain words.
 - Write in the language the request is written in, unless it asks for another; "language" is that language's ISO 639-1 code ("en", "es", "ja").
 - "title" is the story's title, and "topic" its subject in a short phrase.
-- "sentences" is the story, one sentence per item, in order: each a single sentence of at most about 30 words, shown as a caption while it's read, never a paragraph.
 - "look" describes, for an illustrator, what recurs through the story's pictures (a place, a person with their dress and era, an object), so every picture can show it the same way.`
 
 const writePrompt = (t: Tuning, minutes: number) => {
