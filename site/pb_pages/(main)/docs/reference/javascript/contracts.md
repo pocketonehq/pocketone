@@ -331,7 +331,7 @@ refuse.
 onLlmImageGenerate(handler: (e: contracts.CallEvent<contracts.llm.image.v1.GenerateInput>) => void): void
 ```
 
-Generate makes pictures from a prompt.
+Generate makes pictures from a prompt, and from the reference pictures it's given.
 
 Runs on every generate call to llm.image/v1, from any surface (HTTP, Go, MCP, the CLI): change e.input, or throw to
 refuse.
@@ -339,21 +339,6 @@ refuse.
 | Parameter | Type | |
 |---|---|---|
 | `handler` | `(e: contracts.CallEvent<contracts.llm.image.v1.GenerateInput>) => void` |  |
-
-### onLlmImageEdit()
-
-```ts
-onLlmImageEdit(handler: (e: contracts.CallEvent<contracts.llm.image.v1.EditInput>) => void): void
-```
-
-Edit changes the pictures it's given as the prompt says.
-
-Runs on every edit call to llm.image/v1, from any surface (HTTP, Go, MCP, the CLI): change e.input, or throw to
-refuse.
-
-| Parameter | Type | |
-|---|---|---|
-| `handler` | `(e: contracts.CallEvent<contracts.llm.image.v1.EditInput>) => void` |  |
 
 ### onLlmImageModels()
 
@@ -802,6 +787,23 @@ refuse.
 | Parameter | Type | |
 |---|---|---|
 | `handler` | `(e: contracts.CallEvent<contracts.llm.search.v1.SearchInput>) => void` |  |
+
+### onLlmSearchSample()
+
+```ts
+onLlmSearchSample(handler: (e: contracts.CallEvent<contracts.llm.search.v1.SampleInput>) => void): void
+```
+
+Sample returns chunks picked at random from the buckets named: material to draw from ("surprise me", a topic
+nobody asked about), not matches. No query, no embedding, so it costs nothing. Like Search without a viewer, it
+may return any chunk, a followed record's included.
+
+Runs on every sample call to llm.search/v1, from any surface (HTTP, Go, MCP, the CLI): change e.input, or throw to
+refuse.
+
+| Parameter | Type | |
+|---|---|---|
+| `handler` | `(e: contracts.CallEvent<contracts.llm.search.v1.SampleInput>) => void` |  |
 
 ### onLlmSpeechSpeak()
 
@@ -1481,21 +1483,8 @@ GenerateInput is what to draw.
 | `n` | `number` | how many (default 1) |
 | `size` | `string` | "1024x1024" |
 | `aspectRatio` | `string` | AspectRatio is "16:9", "1:1"... for models that take one instead of a size. |
+| `references` | `Array<LlmFile>` | References are pictures the model draws from: one to change as the prompt says, or one whose style and characters a new scene keeps ("same style and characters; show them ..."). Only a model whose ModelInfo lists llm.FeatureReferenceImages takes them; any other answers not_supported or the provider's own error. |
 | `options` | `Record<string, any>` |  |
-
-### contracts.llm.image.v1.EditInput
-
-EditInput is what to change, and the pictures to change.
-
-| Member | Type | |
-|---|---|---|
-| `model` | `string` |  |
-| `prompt` | `string` |  |
-| `n` | `number` |  |
-| `size` | `string` |  |
-| `aspectRatio` | `string` |  |
-| `options` | `Record<string, any>` |  |
-| `images` | `Array<LlmFile>` |  |
 
 ### contracts.llm.image.v1.LlmModelsInput
 
@@ -1771,6 +1760,17 @@ SearchInput is a query.
 | `prefix` | `string` | Prefix keeps matches from documents whose name starts with it. |
 | `viewer` | `Viewer \| null` |  |
 
+### contracts.llm.search.v1.SampleInput
+
+SampleInput is where to draw random chunks from.
+
+| Member | Type | |
+|---|---|---|
+| `buckets` | `Array<string>` | Buckets are drawn from together; none draws from every bucket. Bucket is one more. |
+| `bucket` | `string` |  |
+| `count` | `number` | default 5, at most 50 |
+| `prefix` | `string` | Prefix keeps chunks from documents whose name starts with it. |
+
 ### contracts.llm.search.v1.Viewer
 
 Viewer is who a search is for. Matches from records they can't view (the collection's view rule, as PocketBase
@@ -1792,7 +1792,8 @@ SpeakInput is what to say and how.
 | `voice` | `string` |  |
 | `format` | `string` | Format is the audio format: mp3 (default), wav, opus, flac, pcm, as the provider allows. |
 | `speed` | `number` |  |
-| `instructions` | `string` | Instructions describe the delivery ("slow and calm, a bedtime voice"), for models that take them. |
+| `instructions` | `string` | Instructions describe the delivery ("slow and calm, a bedtime voice"), for models that take them. Not with a Reference: a cloned voice takes its delivery from the clip. |
+| `reference` | `VoiceReference \| null` | Reference clones a voice: the model reads Text in the voice of this clip. Leave Voice empty (or the model's clone voice, Voices' Mode "clone"). Models that clone list a voice with that mode; a provider that doesn't clone refuses the call with llm.ErrNotSupported. Nothing is saved at the provider: send the clip with every call. |
 | `options` | `Record<string, any>` |  |
 
 ### contracts.llm.speech.v1.VoicesInput
@@ -1808,6 +1809,24 @@ VoicesInput names the model whose voices to list.
 | Member | Type | |
 |---|---|---|
 | `provider` | `string` |  |
+
+### contracts.llm.speech.v1.VoiceReference
+
+VoiceReference is a clip of the voice to imitate.
+
+| Member | Type | |
+|---|---|---|
+| `audio` | `LlmFile` | Audio is the clip, with its data: a short, clean recording (10 to 30 seconds) read the way the model should speak. Its Name's extension (me.wav) or Type tells the provider the format. |
+| `text` | `string` | Text is what the clip says, word for word. Optional, but most models match the voice more closely with it. |
+
+### contracts.llm.speech.v1.LlmFile
+
+| Member | Type | |
+|---|---|---|
+| `name` | `string` |  |
+| `type` | `string` |  |
+| `data` | `any` |  |
+| `url` | `string` |  |
 
 ### contracts.llm.text.v1.CompleteInput
 

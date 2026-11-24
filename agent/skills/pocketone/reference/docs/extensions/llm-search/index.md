@@ -129,6 +129,8 @@ const found = await $llm.search.searchAsync({ buckets: "docs", query: "install o
 // found.results[0].url → "/docs/install#macos"
 ```
 
+**Drawing at random.** `$llm.search.sample({ buckets?, count?, prefix? })` returns chunks picked at random from the buckets named, in the same shape as search results (no score): material to draw from, for a "surprise me" or a topic nobody has asked about. Nothing is embedded, so it's local and free.
+
 **Searching.** `await $llm.search.searchAsync({ query, buckets?, limit?, prefix?, viewer? })` returns the best chunks across
 the buckets named (every bucket when none are): `{ results: [{ bucket, document, text, heading, startLine, endLine,
 record, url, score }], model, usage }`; `url` links to where the passage is published, for a web page or a server folder
@@ -178,6 +180,7 @@ Generated from the `pocketone` binary and the contracts this extension provides.
 | [remove](https://pocketone.dev/docs/contracts/llm.search/v1#remove) | `pocketone remote llm search remove --bucket <value> --sources <a,b>` | `POST /api/_c/llm.search/v1/remove` | `llm_search_remove` |
 | [documents](https://pocketone.dev/docs/contracts/llm.search/v1#documents) | `pocketone remote llm search documents --bucket <value> --source <value> --prefix <value>` | `GET /api/_c/llm.search/v1/documents` | `llm_search_documents` |
 | [search](https://pocketone.dev/docs/contracts/llm.search/v1#search) | `pocketone remote llm search --buckets <a,b> --bucket <value> --query <value> --limit <n> --prefix <value> --viewer <json>` | `POST /api/_c/llm.search/v1/search` | `llm_search_search` |
+| [sample](https://pocketone.dev/docs/contracts/llm.search/v1#sample) | `pocketone remote llm search sample --buckets <a,b> --bucket <value> --count <n> --prefix <value>` | `POST /api/_c/llm.search/v1/sample` | `llm_search_sample` |
 
 ## Integrations
 

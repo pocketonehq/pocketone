@@ -153,9 +153,9 @@ func (r *router) catalog(ctx context.Context, p Provider, fresh bool) ([]llmc.Mo
 	if err != nil {
 		return nil, err
 	}
-	ms, err := d.models(ctx)
+	ms, err := within(ctx, target{p: p, d: d}, limitList, d.models)
 	if err != nil {
-		return nil, providerError(p, err)
+		return nil, err
 	}
 	for i := range ms {
 		ms[i].Provider, ms[i].Type = p.Name, p.Type
@@ -179,6 +179,7 @@ func (r *router) models(ctx context.Context, kind string, in llmc.ModelsInput) (
 		return llmc.Models{}, err
 	}
 	out := llmc.Models{Models: []llmc.ModelInfo{}}
+	measured := r.measured(kind)
 	var firstErr error
 	for _, p := range s.Providers {
 		if in.Provider != "" && p.Name != in.Provider {
@@ -196,6 +197,9 @@ func (r *router) models(ctx context.Context, kind string, in llmc.ModelsInput) (
 				continue
 			}
 			m.ID = p.Name + "/" + m.ID
+			if mp, ok := measured[m.ID]; ok {
+				m.Prices = append(slices.Clone(m.Prices), mp) // a copy: m.Prices is the cached list's
+			}
 			out.Models = append(out.Models, m)
 		}
 	}
@@ -216,7 +220,8 @@ func providerError(p Provider, err error) error {
 		return err
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return &extkit.Error{Code: "timeout", Status: 504, Message: p.Name + ": the provider didn't answer in time"}
+		return &extkit.Error{Code: llmc.ErrTimeout.Code, Status: llmc.ErrTimeout.Status,
+			Message: p.Name + ": the provider didn't answer before the caller's deadline"}
 	}
 	if errors.Is(err, context.Canceled) {
 		return err

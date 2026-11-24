@@ -42,10 +42,8 @@ func (d *cloudflareDriver) models(ctx context.Context) ([]llmc.ModelInfo, error)
 		if k == "" {
 			continue
 		}
-		info := llmc.ModelInfo{ID: m.ID, Description: m.Description, Kinds: []string{k}}
-		for _, p := range m.Prices() {
-			info.Prices = append(info.Prices, llmc.Price{Unit: p.Unit, USD: p.Price})
-		}
+		info := llmc.ModelInfo{ID: m.ID, Description: m.Description, Kinds: []string{k}, Size: sizeOf(m.ID)}
+		info.Prices = cloudflarePrices(m.Prices())
 		if v, ok := m.Properties["context_window"]; ok {
 			info.ContextTokens, _ = strconv.Atoi(strings.Trim(string(v), `"`))
 		}
@@ -59,20 +57,20 @@ func (d *cloudflareDriver) models(ctx context.Context) ([]llmc.ModelInfo, error)
 
 func (d *cloudflareDriver) complete(ctx context.Context, model string, in textv1.CompleteInput, onDelta func(string, string) bool) (textv1.CompleteResult, error) {
 	req := chatRequest(model, in, reasoningEffort)
-	if onDelta != nil && req.ResponseFormat != nil {
+	if req.ResponseFormat != nil {
 		// Workers AI's JSON mode doesn't stream: answer whole, then send it as one piece
-		r, err := chatComplete(ctx, d.c, req, nil)
-		if err == nil {
+		r, err := chatWhole(ctx, d.c, req)
+		if err == nil && onDelta != nil {
 			onDelta(r.Text, r.Reasoning)
 		}
 		return r, err
 	}
-	return chatComplete(ctx, d.c, req, onDelta)
+	return chatComplete(ctx, d.c, req, idleText(TypeCloudflare), onDelta)
 }
 
-func (d *cloudflareDriver) image(ctx context.Context, model string, in imagev1.GenerateInput, edit []llmc.File) (imagev1.Result, error) {
-	if len(edit) > 0 {
-		return imagev1.Result{}, d.no("image edits yet")
+func (d *cloudflareDriver) image(ctx context.Context, model string, in imagev1.GenerateInput) (imagev1.Result, error) {
+	if len(in.References) > 0 {
+		return imagev1.Result{}, d.no("reference images")
 	}
 	w, h := sizeWH(in.Size)
 	out := imagev1.Result{}
@@ -87,6 +85,9 @@ func (d *cloudflareDriver) image(ctx context.Context, model string, in imagev1.G
 }
 
 func (d *cloudflareDriver) speak(ctx context.Context, model string, in speechv1.SpeakInput) (speechv1.Result, error) {
+	if in.Reference != nil {
+		return speechv1.Result{}, d.no("voice cloning")
+	}
 	f, err := d.c.Speech(ctx, cloudflare.SpeechRequest{Model: model, Text: in.Text, Voice: in.Voice, Encoding: in.Format, Extra: in.Options})
 	if err != nil {
 		return speechv1.Result{}, err
@@ -104,4 +105,32 @@ func (d *cloudflareDriver) transcribe(ctx context.Context, model string, in tran
 
 func (d *cloudflareDriver) embed(ctx context.Context, model string, in embedv1.EmbedInput) (embedv1.Result, error) {
 	return oaiEmbed(ctx, d.c.Client, model, in)
+}
+
+// cloudflarePrices are a model's prices in the contract's units. Live-stream prices ("(websocket)") are left out; a
+// price that can't be put in those units ("per step") leaves the model with none, since the others alone would make
+// it look cheaper than it is.
+func cloudflarePrices(ps []cloudflare.Price) []llmc.Price {
+	info := llmc.ModelInfo{}
+	for _, p := range ps {
+		unit := strings.ToLower(strings.TrimSpace(p.Unit))
+		switch {
+		case strings.Contains(unit, "websocket"):
+		case unit == "per m input tokens":
+			addPrice(&info, llmc.UnitInputTokens, p.Price)
+		case unit == "per m cached input tokens":
+			addPrice(&info, llmc.UnitCachedTokens, p.Price)
+		case unit == "per m output tokens":
+			addPrice(&info, llmc.UnitOutputTokens, p.Price)
+		case unit == "per 1k characters":
+			addPrice(&info, llmc.UnitCharacters, p.Price)
+		case unit == "per audio minute":
+			addPrice(&info, llmc.UnitSecond, p.Price/60)
+		case unit == "per 512 by 512 tile":
+			addPrice(&info, llmc.UnitMegapixel, p.Price/(512*512/1e6))
+		default:
+			return nil
+		}
+	}
+	return info.Prices
 }

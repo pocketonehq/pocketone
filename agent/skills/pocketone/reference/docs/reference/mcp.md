@@ -94,8 +94,7 @@ A PocketOne app serves MCP at `/mcp` ([MCP](https://pocketone.dev/docs/extension
 
 | Tool | What it does | Reads only | Token scope | Arguments |
 |---|---|---|---|---|
-| `llm_image_generate` | Makes pictures from a prompt. |  | `llm` | `model` (string), `prompt` (string), `n` (int), `size` (string), `aspectRatio` (string), `options` (json) |
-| `llm_image_edit` | Changes the pictures it's given as the prompt says. |  | `llm` | `GenerateInput` (json), `images` (json) |
+| `llm_image_generate` | Makes pictures from a prompt, and from the reference pictures it's given. |  | `llm` | `model` (string), `prompt` (string), `n` (int), `size` (string), `aspectRatio` (string), `references` (json), `options` (json) |
 | `llm_image_models` | Lists the image models of every provider in Settings → LLM. | yes | `llm:read` | `provider` (string) |
 
 ## llm.ledger/v1
@@ -145,6 +144,7 @@ A PocketOne app serves MCP at `/mcp` ([MCP](https://pocketone.dev/docs/extension
 | `llm_search_remove` | Takes sources out of a bucket, with their documents. |  | `search` | `bucket` (string), `sources` (strings) |
 | `llm_search_documents` | Lists a bucket's documents (or one source's), by source and name. | yes | `search:read` | `bucket` (string), `source` (string), `prefix` (string) |
 | `llm_search_search` | Returns the chunks that best match a query across the buckets named, best first. |  | `search:read` | `buckets` (strings), `bucket` (string), `query` (string), `limit` (int), `prefix` (string), `viewer` (json) |
+| `llm_search_sample` | Returns chunks picked at random from the buckets named: material to draw from ("surprise me", a topic nobody asked about), not matches. |  | `search:read` | `buckets` (strings), `bucket` (string), `count` (int), `prefix` (string) |
 
 ## llm.speech/v1
 
@@ -152,7 +152,7 @@ A PocketOne app serves MCP at `/mcp` ([MCP](https://pocketone.dev/docs/extension
 
 | Tool | What it does | Reads only | Token scope | Arguments |
 |---|---|---|---|---|
-| `llm_speech_speak` | Reads the text aloud and returns the audio. |  | `llm` | `model` (string), `text` (string), `voice` (string), `format` (string), `speed` (float), `instructions` (string), `options` (json) |
+| `llm_speech_speak` | Reads the text aloud and returns the audio. |  | `llm` | `model` (string), `text` (string), `voice` (string), `format` (string), `speed` (float), `instructions` (string), `reference` (json), `options` (json) |
 | `llm_speech_voices` | Lists a model's voices, when the provider says. |  | `llm:read` | `model` (string) |
 | `llm_speech_models` | Lists the speech models of every provider in Settings → LLM. | yes | `llm:read` | `provider` (string) |
 

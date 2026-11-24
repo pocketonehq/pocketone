@@ -41,9 +41,23 @@ type SpeakInput struct {
 	// Format is the audio format: mp3 (default), wav, opus, flac, pcm, as the provider allows.
 	Format string  `json:"format,omitempty"`
 	Speed  float64 `json:"speed,omitempty"`
-	// Instructions describe the delivery ("slow and calm, a bedtime voice"), for models that take them.
-	Instructions string      `json:"instructions,omitempty"`
-	Options      llm.Options `json:"options,omitempty"`
+	// Instructions describe the delivery ("slow and calm, a bedtime voice"), for models that take them. Not with a
+	// Reference: a cloned voice takes its delivery from the clip.
+	Instructions string `json:"instructions,omitempty"`
+	// Reference clones a voice: the model reads Text in the voice of this clip. Leave Voice empty (or the model's
+	// clone voice, Voices' Mode "clone"). Models that clone list a voice with that mode; a provider that doesn't clone
+	// refuses the call with llm.ErrNotSupported. Nothing is saved at the provider: send the clip with every call.
+	Reference *VoiceReference `json:"reference,omitempty"`
+	Options   llm.Options     `json:"options,omitempty"`
+}
+
+// VoiceReference is a clip of the voice to imitate.
+type VoiceReference struct {
+	// Audio is the clip, with its data: a short, clean recording (10 to 30 seconds) read the way the model should
+	// speak. Its Name's extension (me.wav) or Type tells the provider the format.
+	Audio llm.File `json:"audio"`
+	// Text is what the clip says, word for word. Optional, but most models match the voice more closely with it.
+	Text string `json:"text,omitempty"`
 }
 
 // Result is the audio.
@@ -69,4 +83,26 @@ type Voice struct {
 	Name     string `json:"name,omitempty"`
 	Language string `json:"language,omitempty"`
 	Gender   string `json:"gender,omitempty"`
+	// Mode is how the voice is made, when the provider says: "builtin" (a speaker the model has), "design" (a new
+	// voice described in Instructions) or "clone" (the voice of a Reference clip). A model with a "clone" voice
+	// clones.
+	Mode        string `json:"mode,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+// Voice modes, in Voice.Mode.
+const (
+	ModeBuiltin = "builtin"
+	ModeDesign  = "design"
+	ModeClone   = "clone"
+)
+
+// Clones reports whether a model's voices include a clone voice, so a Reference works with it.
+func (l VoiceList) Clones() bool {
+	for _, v := range l.Voices {
+		if v.Mode == ModeClone {
+			return true
+		}
+	}
+	return false
 }

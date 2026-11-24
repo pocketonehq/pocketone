@@ -740,3 +740,32 @@ func TestPartialAndResume(t *testing.T) {
 		t.Fatalf("after resuming: %+v", l.Sources[0])
 	}
 }
+
+// Sample draws chunks at random from the buckets named, without embedding anything.
+func TestSample(t *testing.T) {
+	app, fe, s := setup(t)
+	_, _ = s.Ensure(ctx, extkit.Internal, searchv1.EnsureInput{Name: "kb"})
+	_, _ = s.Ensure(ctx, extkit.Internal, searchv1.EnsureInput{Name: "other"})
+	add(t, s, "kb", "lighthouse.md", guide)
+	add(t, s, "other", "owl.md", "# Owl\n\nThe old owl watches the fox from the tower.")
+	drain(t, app)
+	before := fe.embedded()
+	r, err := s.Sample(ctx, extkit.Internal, searchv1.SampleInput{Bucket: "kb", Count: 10})
+	if err != nil || len(r.Results) != 3 || fe.embedded() != before {
+		t.Fatalf("sample kb: %+v %v (embedded %d -> %d)", r, err, before, fe.embedded())
+	}
+	for _, x := range r.Results {
+		if x.Bucket != "kb" || x.Document != "lighthouse.md" || x.Text == "" || x.Score != 0 {
+			t.Fatalf("a sampled chunk: %+v", x)
+		}
+	}
+	if r, _ := s.Sample(ctx, extkit.Internal, searchv1.SampleInput{Count: 1}); len(r.Results) != 1 {
+		t.Fatalf("count: %+v", r)
+	}
+	if r, _ := s.Sample(ctx, extkit.Internal, searchv1.SampleInput{Prefix: "owl", Count: 10}); len(r.Results) != 1 || r.Results[0].Bucket != "other" {
+		t.Fatalf("prefix: %+v", r)
+	}
+	if _, err := s.Sample(ctx, extkit.Internal, searchv1.SampleInput{Bucket: "nope"}); err == nil {
+		t.Fatal("an unknown bucket was sampled")
+	}
+}

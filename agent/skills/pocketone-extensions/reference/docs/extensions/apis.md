@@ -107,8 +107,7 @@ Its own API under `/api/_c/deploy/v1/`: see [deploy/v1](https://pocketone.dev/do
 
 | Endpoint | What it does | Token scope | Input |
 |---|---|---|---|
-| `POST /api/_c/llm.image/v1/generate` | Makes pictures from a prompt. | `llm` | `model` (string), `prompt` (string), `n` (int), `size` (string), `aspectRatio` (string), `options` (json) |
-| `POST /api/_c/llm.image/v1/edit` | Changes the pictures it's given as the prompt says. | `llm` | `GenerateInput` (json), `images` (json) |
+| `POST /api/_c/llm.image/v1/generate` | Makes pictures from a prompt, and from the reference pictures it's given. | `llm` | `model` (string), `prompt` (string), `n` (int), `size` (string), `aspectRatio` (string), `references` (json), `options` (json) |
 | `GET /api/_c/llm.image/v1/models` | Lists the image models of every provider in Settings → LLM. | `llm:read` | `provider` (string) |
 
 ## llm.ledger/v1
@@ -159,6 +158,7 @@ Its own API under `/api/_c/deploy/v1/`: see [deploy/v1](https://pocketone.dev/do
 | `POST /api/_c/llm.search/v1/remove` | Takes sources out of a bucket, with their documents. | `search` | `bucket` (string), `sources` (strings) |
 | `GET /api/_c/llm.search/v1/documents` | Lists a bucket's documents (or one source's), by source and name. | `search:read` | `bucket` (string), `source` (string), `prefix` (string) |
 | `POST /api/_c/llm.search/v1/search` | Returns the chunks that best match a query across the buckets named, best first. | `search:read` | `buckets` (strings), `bucket` (string), `query` (string), `limit` (int), `prefix` (string), `viewer` (json) |
+| `POST /api/_c/llm.search/v1/sample` | Returns chunks picked at random from the buckets named: material to draw from ("surprise me", a topic nobody asked about), not matches. | `search:read` | `buckets` (strings), `bucket` (string), `count` (int), `prefix` (string) |
 
 ## llm.speech/v1
 
@@ -166,7 +166,7 @@ Its own API under `/api/_c/deploy/v1/`: see [deploy/v1](https://pocketone.dev/do
 
 | Endpoint | What it does | Token scope | Input |
 |---|---|---|---|
-| `POST /api/_c/llm.speech/v1/speak` | Reads the text aloud and returns the audio. | `llm` | `model` (string), `text` (string), `voice` (string), `format` (string), `speed` (float), `instructions` (string), `options` (json) |
+| `POST /api/_c/llm.speech/v1/speak` | Reads the text aloud and returns the audio. | `llm` | `model` (string), `text` (string), `voice` (string), `format` (string), `speed` (float), `instructions` (string), `reference` (json), `options` (json) |
 | `POST /api/_c/llm.speech/v1/voices` | Lists a model's voices, when the provider says. | `llm:read` | `model` (string) |
 | `GET /api/_c/llm.speech/v1/models` | Lists the speech models of every provider in Settings → LLM. | `llm:read` | `provider` (string) |
 

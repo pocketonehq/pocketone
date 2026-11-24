@@ -60,7 +60,7 @@ Every page below in one file: https://pocketone.dev/llms-full.txt
 ## How-to guides
 
 - [Starter kits](https://pocketone.dev/docs/starters): The Pages starter kits - from a one-page site to sign-in, realtime, a docs site and an ask-your-docs app - and how to start an app from one.
-- [Example apps](https://pocketone.dev/docs/examples): PocketOne apps you can try live and read end to end - Bedtime Story and the Pages starter kits - what each does and how it's built.
+- [Example apps](https://pocketone.dev/docs/examples): Complete PocketOne apps to start from - the Pages starter kits - what each does and how it's built.
 - [Update pages live with htmx](https://pocketone.dev/docs/extensions/pages/htmx): Use HTMX with Pages: route organization, HTML fragments without layouts, shared partials, forms, and realtime updates.
 - [Use a custom domain](https://pocketone.dev/docs/extensions/pages/speedruns/custom-domain-fly-cloudflare): Step-by-step process to configure DNS records, SSL certificates, and domain verification between Fly.io and Cloudflare. Includes specific settings for A/AAAA records, CNAME verification, and SSL/TLS encryption modes.
 - [Let users sign in with Google](https://pocketone.dev/docs/extensions/pages/speedruns/google-oauth2): Set up Google OAuth2 sign-in for a PocketOne app with the auth plugin.
@@ -103,11 +103,11 @@ Every page below in one file: https://pocketone.dev/llms-full.txt
 - [llm.align/v1](https://pocketone.dev/docs/contracts/llm.align/v1): Forced alignment: audio and the exact words spoken in it in, the time of every line and word out.
 - [llm.chat/v1](https://pocketone.dev/docs/contracts/llm.chat/v1): Stored conversations with a language model: start a chat, send to it, read its history, find and forget chats by the app's own meta.
 - [llm.embed/v1](https://pocketone.dev/docs/contracts/llm.embed/v1): Turn texts into vectors for search by meaning: texts in, one vector each out.
-- [llm.image/v1](https://pocketone.dev/docs/contracts/llm.image/v1): Make pictures from a prompt, or change pictures you give it; they come back as files.
+- [llm.image/v1](https://pocketone.dev/docs/contracts/llm.image/v1): Make pictures from a prompt, and from reference pictures you give it; they come back as files.
 - [llm.ledger/v1](https://pocketone.dev/docs/contracts/llm.ledger/v1): What an app's model calls used and cost, from the ledger every llm.* call leaves, and how much of each limit is left.
 - [llm.music/v1](https://pocketone.dev/docs/contracts/llm.music/v1): Make music from a prompt and lyrics, as a job: start it, follow it, fetch its files (or wait for them).
 - [llm.search/v1](https://pocketone.dev/docs/contracts/llm.search/v1): RAG knowledge bases (buckets) with hybrid search: sources (files, folders, zips, pages, Git repositories, collections) kept current, one embedding model per app.
-- [llm.speech/v1](https://pocketone.dev/docs/contracts/llm.speech/v1): Read text aloud: text in, an audio file out, in a voice the model offers.
+- [llm.speech/v1](https://pocketone.dev/docs/contracts/llm.speech/v1): Read text aloud: text in, an audio file out, in a voice the model offers or one cloned from a clip.
 - [llm.text/v1](https://pocketone.dev/docs/contracts/llm.text/v1): Ask a language model: a prompt or a conversation in, text (or JSON matching a schema) out, whole or streamed.
 - [llm.transcribe/v1](https://pocketone.dev/docs/contracts/llm.transcribe/v1): Write down what's said in audio: an audio file in, text out.
 - [llm.video/v1](https://pocketone.dev/docs/contracts/llm.video/v1): Make video from a prompt (and a first frame), as a job: start it, follow it, fetch its files (or wait for them).
@@ -263,7 +263,7 @@ Every page below in one file: https://pocketone.dev/llms-full.txt
 - [llm/align/v1](https://pocketone.dev/docs/reference/go/llm/align/v1): Package alignv1 is the llm.align/v1 contract: forced alignment.
 - [llm/chat/v1](https://pocketone.dev/docs/reference/go/llm/chat/v1): Package chatv1 is the llm.chat/v1 contract: stored conversations with the app's language model.
 - [llm/embed/v1](https://pocketone.dev/docs/reference/go/llm/embed/v1): Package embedv1 is the llm.embed/v1 contract: a model turns texts into vectors, for search by meaning.
-- [llm/image/v1](https://pocketone.dev/docs/reference/go/llm/image/v1): Package imagev1 is the llm.image/v1 contract: a model makes pictures from a prompt, or changes pictures it's given.
+- [llm/image/v1](https://pocketone.dev/docs/reference/go/llm/image/v1): Package imagev1 is the llm.image/v1 contract: a model makes pictures from a prompt, and from reference pictures.
 - [llm/ledger/v1](https://pocketone.dev/docs/reference/go/llm/ledger/v1): Package ledgerv1 is the llm.ledger/v1 contract: what an app's model calls have used and cost, read from the ledger every llm.* call leaves (the provider's own record of each call), and how much of each limit is left.
 - [llm/music/v1](https://pocketone.dev/docs/reference/go/llm/music/v1): Package musicv1 is the llm.music/v1 contract: a model makes music from a prompt (and lyrics).
 - [llm/search/v1](https://pocketone.dev/docs/reference/go/llm/search/v1): Package searchv1 is the llm.search/v1 contract: named buckets of content an app searches.
@@ -486,7 +486,6 @@ Every page below in one file: https://pocketone.dev/llms-full.txt
 ## Optional
 
 - [PocketBase compatibility](https://pocketone.dev/docs/compatibility): Live results of PocketBase's own test suite, unmodified, run against PocketOne's core on every core change and daily.
-- [Bedtime Story](https://pocketone.dev/docs/examples/bedtime-story): One topic told slowly and in depth, read aloud with pictures and music - the six steps, the player, the guards and the tuning screen in the dashboard.
 - [New in PocketOne](https://pocketone.dev/docs/features): Everything PocketOne adds to PocketBase, side by side with what PocketBase gives you. All built into the pocketone binary.
 - [Pages: sites in TSX, TypeScript or EJS](https://pocketone.dev/docs/features/sites): Server-rendered pages in TSX, JSX, TypeScript, EJS or Markdown, straight from a pb_pages folder next to your data. esbuild is built in, so there's no Node, no npm install and no build step.
 - [Advanced installation](https://pocketone.dev/docs/guides/advanced-installation): Install PocketOne off the usual path - the install script's settings, Windows without Scoop, a release zip, or building it from source.

@@ -71,7 +71,7 @@ func streamStart(app core.App, kind, opts string) (string, error) {
 		if !ok {
 			return "", llmc.ErrNotConfigured
 		}
-		s, err = t.Stream(subjectCtx(opts), extkit.Internal, in)
+		s, err = t.Stream(subjectCtx(context.Background(), opts), extkit.Internal, in)
 	case "chat":
 		var in chatv1.SendInput
 		if err := json.Unmarshal([]byte(opts), &in); err != nil {
@@ -81,14 +81,14 @@ func streamStart(app core.App, kind, opts string) (string, error) {
 		if !ok {
 			return "", errNoChat
 		}
-		s, err = c.SendStream(subjectCtx(opts), extkit.Internal, in)
+		s, err = c.SendStream(subjectCtx(context.Background(), opts), extkit.Internal, in)
 	default:
 		return "", fmt.Errorf("$llm: no stream kind %q", kind)
 	}
 	if err != nil {
 		return "", err
 	}
-	ctx, cancel := context.WithCancel(subjectCtx(opts)) // the answer's own calls count for the same subject
+	ctx, cancel := context.WithCancel(subjectCtx(context.Background(), opts)) // the answer's own calls count for the same subject
 	js := &jsStream{ch: make(chan textv1.Chunk, 1024), cancel: cancel, used: time.Now()}
 	b := make([]byte, 12)
 	_, _ = rand.Read(b)
@@ -186,21 +186,31 @@ func streamStop(id string) {
 // streamPrelude is the JS side: it reads a stream until it ends, calling onText and onReasoning on the VM. It returns
 // the whole answer; when onText says stop, the text so far with stopReason "cancelled".
 const streamPrelude = `
-  const readStream = async (id, onText, onReasoning) => {
-    let text = "";
-    for (;;) {
-      const r = J(await n.streamNext.async(id));
-      for (const p of r.pieces) {
-        if (p.reasoning && onReasoning && onReasoning(p.reasoning) === false) { n.streamStop(id); return { text, stopReason: "cancelled" }; }
-        if (p.text) {
-          text += p.text;
-          if (onText && onText(p.text) === false) { n.streamStop(id); return { text, stopReason: "cancelled" }; }
+  const readStream = async (kind, o, onText, onReasoning) => {
+    const { signal, ...rest } = o ?? {};
+    signal?.throwIfAborted();
+    const id = n.streamStart(kind, S(rest));
+    const stop = () => n.streamStop(id);
+    signal?.addEventListener("abort", stop);
+    try {
+      let text = "";
+      for (;;) {
+        let r;
+        try { r = J(await n.streamNext.asyncWith({ signal }, id)); } catch (err) { throw signal?.aborted ? err : clean(err); }
+        for (const p of r.pieces) {
+          if (p.reasoning && onReasoning && onReasoning(p.reasoning) === false) { stop(); return { text, stopReason: "cancelled" }; }
+          if (p.text) {
+            text += p.text;
+            if (onText && onText(p.text) === false) { stop(); return { text, stopReason: "cancelled" }; }
+          }
+        }
+        if (r.done) {
+          if (r.error) throw clean(new Error(r.error));
+          return r.result || { text, stopReason: "cancelled" };
         }
       }
-      if (r.done) {
-        if (r.error) throw clean(new Error(r.error));
-        return r.result || { text, stopReason: "cancelled" };
-      }
+    } finally {
+      signal?.removeEventListener("abort", stop);
     }
   };
 `

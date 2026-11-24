@@ -74,28 +74,16 @@ Returns `Promise<LlmModels>`.
 ### $llm.image.generateAsync()
 
 ```ts
-$llm.image.generateAsync(opts: { model: string; prompt: string; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any> }): Promise<{ files: LlmFile[]; model: string; usage: LlmUsage }>
+$llm.image.generateAsync(opts: { model: string; prompt: string; references?: LlmFile[]; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any>; signal?: AbortSignal }): Promise<{ files: LlmFile[]; model: string; usage: LlmUsage }>
 ```
 
-Makes pictures from a prompt: n of them, at a size or aspect ratio the provider supports.
+Makes pictures from a prompt: n of them, at a size or aspect ratio the provider supports. references are pictures
+it draws from: one to change, or one whose style and characters a new scene keeps. Only models with the feature
+"reference images" take them (Vultr, OpenRouter).
 
 | Parameter | Type | |
 |---|---|---|
-| `opts` | `{ model: string; prompt: string; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any> }` |  |
-
-Returns `Promise<{ files: LlmFile[]; model: string; usage: LlmUsage }>`.
-
-### $llm.image.editAsync()
-
-```ts
-$llm.image.editAsync(opts: { model: string; prompt: string; images: LlmFile[]; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any> }): Promise<{ files: LlmFile[]; model: string; usage: LlmUsage }>
-```
-
-Changes pictures by a prompt (providers that edit: OpenRouter, OpenAI-compatible).
-
-| Parameter | Type | |
-|---|---|---|
-| `opts` | `{ model: string; prompt: string; images: LlmFile[]; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any> }` |  |
+| `opts` | `{ model: string; prompt: string; references?: LlmFile[]; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any>; signal?: AbortSignal }` |  |
 
 Returns `Promise<{ files: LlmFile[]; model: string; usage: LlmUsage }>`.
 
@@ -118,30 +106,30 @@ Returns `Promise<LlmModels>`.
 ### $llm.speech.speakAsync()
 
 ```ts
-$llm.speech.speakAsync(opts: { model: string; text: string; voice?: string; format?: string; speed?: number; instructions?: string; options?: Record<string, any> }): Promise<{ file: LlmFile; model: string; usage: LlmUsage }>
+$llm.speech.speakAsync(opts: { model: string; text: string; voice?: string; format?: string; speed?: number; instructions?: string; reference?: { audio: LlmFile; text?: string }; options?: Record<string, any>; signal?: AbortSignal }): Promise<{ file: LlmFile; model: string; usage: LlmUsage }>
 ```
 
-Reads text aloud in a voice, as an audio file.
+reference clones a voice: the text is read in the voice of that clip (leave voice and instructions out). Providers that don't clone refuse it.
 
 | Parameter | Type | |
 |---|---|---|
-| `opts` | `{ model: string; text: string; voice?: string; format?: string; speed?: number; instructions?: string; options?: Record<string, any> }` |  |
+| `opts` | `{ model: string; text: string; voice?: string; format?: string; speed?: number; instructions?: string; reference?: { audio: LlmFile; text?: string }; options?: Record<string, any>; signal?: AbortSignal }` |  |
 
 Returns `Promise<{ file: LlmFile; model: string; usage: LlmUsage }>`.
 
 ### $llm.speech.voicesAsync()
 
 ```ts
-$llm.speech.voicesAsync(model: string): Promise<{ id: string; name?: string; language?: string; gender?: string }[]>
+$llm.speech.voicesAsync(model: string): Promise<{ id: string; name?: string; language?: string; gender?: string; mode?: "builtin" | "design" | "clone"; description?: string }[]>
 ```
 
-The voices a speech model offers.
+A model clones when one of its voices has mode "clone".
 
 | Parameter | Type | |
 |---|---|---|
 | `model` | `string` |  |
 
-Returns `Promise<{ id: string; name?: string; language?: string; gender?: string }[]>`.
+Returns `Promise<{ id: string; name?: string; language?: string; gender?: string; mode?: "builtin" | "design" | "clone"; description?: string }[]>`.
 
 ### $llm.speech.modelsAsync()
 
@@ -162,14 +150,14 @@ Returns `Promise<LlmModels>`.
 ### $llm.transcribe.transcribeAsync()
 
 ```ts
-$llm.transcribe.transcribeAsync(opts: { model: string; audio: LlmFile; language?: string; prompt?: string; options?: Record<string, any> }): Promise<{ text: string; language?: string; model: string; usage: LlmUsage }>
+$llm.transcribe.transcribeAsync(opts: { model: string; audio: LlmFile; language?: string; prompt?: string; options?: Record<string, any>; signal?: AbortSignal }): Promise<{ text: string; language?: string; model: string; usage: LlmUsage }>
 ```
 
 Writes down what's said in a recording.
 
 | Parameter | Type | |
 |---|---|---|
-| `opts` | `{ model: string; audio: LlmFile; language?: string; prompt?: string; options?: Record<string, any> }` |  |
+| `opts` | `{ model: string; audio: LlmFile; language?: string; prompt?: string; options?: Record<string, any>; signal?: AbortSignal }` |  |
 
 Returns `Promise<{ text: string; language?: string; model: string; usage: LlmUsage }>`.
 
@@ -194,14 +182,14 @@ Forced alignment: when each line and word of a known text is said in its audio (
 ### $llm.align.alignAsync()
 
 ```ts
-$llm.align.alignAsync(opts: { model: string; audio: LlmFile; text: string; mode?: "speech" | "lyrics"; language?: string; options?: Record<string, any> }): Promise<{ duration: number lines: { index: number; text: string; start: number; end: number; score: number; certain: boolean; tag?: string }[] words: { line: number; text: string; start: number; end: number; score: number }[] unaligned?: { line: number; text: string; reason: string }[] model: string usage: LlmUsage }>
+$llm.align.alignAsync(opts: { model: string; audio: LlmFile; text: string; mode?: "speech" | "lyrics"; language?: string; options?: Record<string, any>; signal?: AbortSignal }): Promise<{ duration: number lines: { index: number; text: string; start: number; end: number; score: number; certain: boolean; tag?: string }[] words: { line: number; text: string; start: number; end: number; score: number }[] unaligned?: { line: number; text: string; reason: string }[] model: string usage: LlmUsage }>
 ```
 
 When each line and word of text is said in audio.
 
 | Parameter | Type | |
 |---|---|---|
-| `opts` | `{ model: string; audio: LlmFile; text: string; mode?: "speech" \| "lyrics"; language?: string; options?: Record<string, any> }` |  |
+| `opts` | `{ model: string; audio: LlmFile; text: string; mode?: "speech" \| "lyrics"; language?: string; options?: Record<string, any>; signal?: AbortSignal }` |  |
 
 Returns `Promise<{ duration: number lines: { index: number; text: string; start: number; end: number; score: number; certain: boolean; tag?: string }[] words: { line: number; text: string; start: number; end: number; score: number }[] unaligned?: { line: number; text: string; reason: string }[] model: string usage: LlmUsage }>`.
 
@@ -226,14 +214,14 @@ Music is a job: createAsync with wait ("5m") resolves once it's done, files incl
 ### $llm.music.createAsync()
 
 ```ts
-$llm.music.createAsync(opts: { model: string; prompt: string; lyrics?: string; seconds?: number; wait?: string; options?: Record<string, any> }): Promise<LlmJob>
+$llm.music.createAsync(opts: { model: string; prompt: string; lyrics?: string; seconds?: number; wait?: string; options?: Record<string, any>; signal?: AbortSignal }): Promise<LlmJob>
 ```
 
 Starts a piece of music; with wait ("5m") it resolves once it's done, files included.
 
 | Parameter | Type | |
 |---|---|---|
-| `opts` | `{ model: string; prompt: string; lyrics?: string; seconds?: number; wait?: string; options?: Record<string, any> }` |  |
+| `opts` | `{ model: string; prompt: string; lyrics?: string; seconds?: number; wait?: string; options?: Record<string, any>; signal?: AbortSignal }` |  |
 
 Returns `Promise<LlmJob>`.
 
@@ -285,14 +273,14 @@ Returns `Promise<LlmModels>`.
 ### $llm.video.createAsync()
 
 ```ts
-$llm.video.createAsync(opts: { model: string; prompt: string; image?: LlmFile; seconds?: number; size?: string; aspectRatio?: string; wait?: string; options?: Record<string, any> }): Promise<LlmJob>
+$llm.video.createAsync(opts: { model: string; prompt: string; image?: LlmFile; seconds?: number; size?: string; aspectRatio?: string; wait?: string; options?: Record<string, any>; signal?: AbortSignal }): Promise<LlmJob>
 ```
 
 Starts a video, optionally from a picture; with wait it resolves once it's done.
 
 | Parameter | Type | |
 |---|---|---|
-| `opts` | `{ model: string; prompt: string; image?: LlmFile; seconds?: number; size?: string; aspectRatio?: string; wait?: string; options?: Record<string, any> }` |  |
+| `opts` | `{ model: string; prompt: string; image?: LlmFile; seconds?: number; size?: string; aspectRatio?: string; wait?: string; options?: Record<string, any>; signal?: AbortSignal }` |  |
 
 Returns `Promise<LlmJob>`.
 
@@ -344,14 +332,14 @@ Returns `Promise<LlmModels>`.
 ### $llm.embed.embedAsync()
 
 ```ts
-$llm.embed.embedAsync(opts: { model: string; input: string[]; dimensions?: number; options?: Record<string, any> }): Promise<{ vectors: number[][]; model: string; usage: LlmUsage }>
+$llm.embed.embedAsync(opts: { model: string; input: string[]; dimensions?: number; options?: Record<string, any>; signal?: AbortSignal }): Promise<{ vectors: number[][]; model: string; usage: LlmUsage }>
 ```
 
 Turns each text into a vector, for search and similarity.
 
 | Parameter | Type | |
 |---|---|---|
-| `opts` | `{ model: string; input: string[]; dimensions?: number; options?: Record<string, any> }` |  |
+| `opts` | `{ model: string; input: string[]; dimensions?: number; options?: Record<string, any>; signal?: AbortSignal }` |  |
 
 Returns `Promise<{ vectors: number[][]; model: string; usage: LlmUsage }>`.
 
@@ -396,6 +384,21 @@ The same, downloading a file the provider gave only a URL for.
 | `f` | `LlmFile` |  |
 
 Returns `Promise<any>`.
+
+### $llm.fromRecord()
+
+```ts
+$llm.fromRecord(record: core.Record, field: string): LlmFile
+```
+
+A record's stored file (the first in a file field) as an LlmFile with its bytes, to send to a model: speakAsync({ reference: { audio: $llm.fromRecord(rec, "clip"), text } }).
+
+| Parameter | Type | |
+|---|---|---|
+| `record` | `core.Record` |  |
+| `field` | `string` |  |
+
+Returns `LlmFile`.
 
 ### $llm.chat
 
@@ -639,6 +642,21 @@ $llm.search.documents(bucket: string | { bucket: string; source?: string; prefix
 
 Returns `SearchDocument[]`.
 
+### $llm.search.sample()
+
+```ts
+$llm.search.sample(o: string | { buckets?: string | string[]; bucket?: string; count?: number; prefix?: string }): SearchResult[]
+```
+
+Chunks picked at random from the buckets named (every bucket when none): material to draw from, not matches.
+Local and free (nothing is embedded). count defaults to 5, at most 50; prefix keeps documents whose name starts with it.
+
+| Parameter | Type | |
+|---|---|---|
+| `o` | `string \| { buckets?: string \| string[]; bucket?: string; count?: number; prefix?: string }` |  |
+
+Returns `SearchResult[]`.
+
 ### $llm.search.status()
 
 ```ts
@@ -652,7 +670,7 @@ Returns `{ model: string; chunks: number; embedded: number; note?: string }`.
 ### $llm.search.searchAsync()
 
 ```ts
-$llm.search.searchAsync(o: { query: string; buckets?: string | string[]; bucket?: string; limit?: number; prefix?: string; viewer?: core.Record | null })
+$llm.search.searchAsync(o: { query: string; buckets?: string | string[]; bucket?: string; limit?: number; prefix?: string; viewer?: core.Record | null; signal?: AbortSignal })
 ```
 
 The best matches for a query across buckets (all of them when none are named), best first. viewer (an auth record,
@@ -660,7 +678,7 @@ or null for a guest) leaves out records they can't view; left out, the search se
 
 | Parameter | Type | |
 |---|---|---|
-| `o` | `{ query: string; buckets?: string \| string[]; bucket?: string; limit?: number; prefix?: string; viewer?: core.Record \| null }` |  |
+| `o` | `{ query: string; buckets?: string \| string[]; bucket?: string; limit?: number; prefix?: string; viewer?: core.Record \| null; signal?: AbortSignal }` |  |
 
 ### $llm.search.Promise
 
@@ -788,7 +806,7 @@ type LlmUsage = { inputTokens?: number; outputTokens?: number; cachedTokens?: nu
 
 | Member | Type | |
 |---|---|---|
-| `models` | `{ id: string; provider: string; type: string; name?: string; kinds: string[]; inputs?: string[]; reasoning?: boolean; contextTokens?: number; prices?: { unit: string; usd: number }[]; description?: string }[]` |  |
+| `models` | `{ id: string; provider: string; type: string; name?: string; kinds: string[]; inputs?: string[]; reasoning?: boolean; contextTokens?: number; /** USD per unit ("1M input tokens", "1M output tokens", "1M cached input tokens", "1M tokens", "second", "megapixel", * "image", "1K characters", "request"): listed by the provider, or measured from this app's billed calls (calls: how * many). None: the price isn't known. */ prices?: { unit: string; usd: number; source?: "listed" \| "measured"; calls?: number }[]; description?: string; /** parameters, as its maker names them: "1.7B", "30B (3B active)" */ size?: string; /** "tools", "structured output", "vision", "audio input", "voice cloning", "voice design", "built-in voices", "lyrics" */ features?: string[]; /** ISO 639-1 codes */ languages?: string[] }[]` |  |
 
 ### LlmJob
 
@@ -817,6 +835,7 @@ type LlmMessage = { role: "system" | "user" | "assistant"; content: string }
 | `stop?` | `string[]` |  |
 | `reasoning?` | `"" \| "off" \| "low" \| "medium" \| "high"` | How much a reasoning model thinks first: "" (its default), "off", "low", "medium", "high". |
 | `options?` | `Record<string, any>` | The provider's own fields, passed through. |
+| `signal?` | `AbortSignal` | Cancels the call, provider request included: the promise rejects with signal.reason. |
 
 ### LlmPassage
 
@@ -843,7 +862,7 @@ type LlmTextAnswer = { text: string; data?: any; reasoning?: string; stopReason?
 ### LlmModelsOpts
 
 ```ts
-type LlmModelsOpts = { provider?: string }
+type LlmModelsOpts = { provider?: string; signal?: AbortSignal }
 ```
 
 ### LlmLedgerWindow
@@ -889,7 +908,7 @@ A billable call on its way to a provider, as $llm.onCall handlers see it.
 | Member | Type | |
 |---|---|---|
 | `kind` | `"text" \| "image" \| "speech" \| "transcribe" \| "align" \| "music" \| "video" \| "embed"` |  |
-| `op` | `string` | The operation: "complete", "stream", "generate", "edit", "speak", "transcribe", "align", "create" or "embed". |
+| `op` | `string` | The operation: "complete", "stream", "generate", "speak", "transcribe", "align", "create" or "embed". |
 | `model` | `string` | "provider/model"; change it to send the call to another model. |
 | `subject` | `string` | Whom the call is for: "user:<collection>/<id>", "guest:<id>", "guest:ip:<address>", "" or your own ("team:acme"). Change it to count the call elsewhere. |
 | `user` | `{ collection: string; id: string } \| null` | The signed-in user the call is for, or null. |
@@ -970,7 +989,7 @@ type LlmChatInfo = { id: string; title: string; summary: string; meta: any; mess
 | Member | Type | |
 |---|---|---|
 | `id` | `string` |  |
-| `sendAsync()` | `(text: string, opts?: LlmChatOptions & { onText?: (text: string) => boolean \| void; onReasoning?: (text: string) => boolean \| void; schema?: object \| string }): Promise<LlmTextAnswer>` | Asks and saves both turns. With onText, streams the answer to it as it's written. |
+| `sendAsync()` | `(text: string, opts?: LlmChatOptions & { onText?: (text: string) => boolean \| void; onReasoning?: (text: string) => boolean \| void; schema?: object \| string; signal?: AbortSignal }): Promise<LlmTextAnswer>` | Asks and saves both turns. With onText, streams the answer to it as it's written. |
 | `get()` | `(): LlmChatInfo` |  |
 | `history()` | `(opts?: { limit?: number; before?: string }): { id: string; role: "user" \| "assistant"; content: string; created: string }[]` |  |
 | `summary()` | `(): string` |  |

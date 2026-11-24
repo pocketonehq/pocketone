@@ -3,11 +3,13 @@ package llmchat_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
 	"ganigeorgiev.com/pocketbase/pocketbase/tests"
@@ -23,8 +25,19 @@ import (
 
 // fakeText answers "answer N" (or "SUMMARY" when asked to summarize) and remembers every input.
 type fakeText struct {
-	mu     sync.Mutex
-	inputs []textv1.CompleteInput
+	mu        sync.Mutex
+	inputs    []textv1.CompleteInput
+	cancelled chan struct{} // a "stall" question waits for its context and sends here when it's cancelled
+}
+
+// stall reports whether in asks "stall" and, if so, waits until ctx is cancelled.
+func (f *fakeText) stall(ctx context.Context, in textv1.CompleteInput) bool {
+	if len(in.Messages) == 0 || !strings.HasPrefix(in.Messages[len(in.Messages)-1].Content, "stall") {
+		return false
+	}
+	<-ctx.Done()
+	f.cancelled <- struct{}{}
+	return true
 }
 
 func (f *fakeText) answer(in textv1.CompleteInput) textv1.CompleteResult {
@@ -49,11 +62,17 @@ func (f *fakeText) last() textv1.CompleteInput {
 	return textv1.CompleteInput{}
 }
 
-func (f *fakeText) Complete(_ context.Context, _ extkit.Auth, in textv1.CompleteInput) (textv1.CompleteResult, error) {
+func (f *fakeText) Complete(ctx context.Context, _ extkit.Auth, in textv1.CompleteInput) (textv1.CompleteResult, error) {
+	if f.stall(ctx, in) {
+		return textv1.CompleteResult{}, ctx.Err()
+	}
 	return f.answer(in), nil
 }
 func (f *fakeText) Stream(_ context.Context, _ extkit.Auth, in textv1.CompleteInput) (extkit.Stream, error) {
 	return extkit.Stream{Run: func(ctx context.Context, send func(any) error) error {
+		if f.stall(ctx, in) {
+			return ctx.Err()
+		}
 		res := f.answer(in)
 		for _, w := range strings.SplitAfter(res.Text, " ") {
 			if err := send(textv1.Chunk{Text: w}); err != nil {
@@ -89,7 +108,7 @@ func setup(t *testing.T) (core.App, *fakeText, chatv1.Chats) {
 		t.Fatal(err)
 	}
 	t.Cleanup(app.Cleanup)
-	fa := &fakeText{}
+	fa := &fakeText{cancelled: make(chan struct{}, 4)}
 	if _, err := extkit.Setup(app, []extkit.Extension{fakeExt{fa}, llmchat.New()}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -274,6 +293,67 @@ func TestJS(t *testing.T) {
 		t.Fatalf("context function: %q", q)
 	}
 
+}
+
+const abortHooks = `onRecordCreate(async (e) => {
+  const chat = $llm.chat.open($llm.chat.new({}), { model: "p/m" })
+  const out = {}
+  const run = async (name, f) => {
+    const t = Date.now()
+    try { await f(); out[name] = "answered" } catch (err) { out[name] = err.name + ":" + (Date.now() - t) }
+  }
+  await run("send", () => chat.sendAsync("stall", { signal: AbortSignal.timeout(200) }))
+  const c = new AbortController()
+  setTimeout(() => c.abort(), 100)
+  await run("stream", () => chat.sendAsync("stall again", { onText: () => {}, signal: c.signal }))
+  e.record.set("result", JSON.stringify(out))
+  e.next()
+}, "probes")
+`
+
+// chat.sendAsync takes an AbortSignal: the promise rejects with its reason, and the model call's context is
+// cancelled, streamed or not.
+func TestJSAbort(t *testing.T) {
+	app, fa, _ := setup(t)
+	c := core.NewBaseCollection("probes")
+	c.Fields.Add(&core.TextField{Name: "result", Max: 10000})
+	if err := app.Save(c); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "pb_hooks")
+	_ = os.MkdirAll(dir, 0o755)
+	if err := os.WriteFile(filepath.Join(dir, "main.pb.js"), []byte(abortHooks), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := jsvm.Register(app, jsvm.Config{HooksDir: dir, OnInit: func(rt js.Runtime) { llm.New().BindJS(app, rt) }}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.OnBootstrap().Trigger(&core.BootstrapEvent{App: app}, func(*core.BootstrapEvent) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	r := core.NewRecord(c)
+	if err := app.Save(r); err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]string
+	if err := json.Unmarshal([]byte(r.GetString("result")), &out); err != nil {
+		t.Fatalf("result %q: %v", r.GetString("result"), err)
+	}
+	for k, name := range map[string]string{"send": "TimeoutError", "stream": "AbortError"} {
+		var ms int
+		if v := out[k]; !strings.HasPrefix(v, name+":") {
+			t.Errorf("%s: want %s, got %q", k, name, v)
+		} else if _, _ = fmt.Sscan(v[len(name)+1:], &ms); ms > 3000 {
+			t.Errorf("%s: took %d ms", k, ms)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		select {
+		case <-fa.cancelled:
+		case <-time.After(3 * time.Second):
+			t.Fatalf("only %d of 2 model calls were cancelled", i)
+		}
+	}
 }
 
 func mustCollection(t *testing.T, app core.App, name string) *core.Collection {

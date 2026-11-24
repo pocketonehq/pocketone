@@ -58,11 +58,13 @@ func (s textService) answer(ctx context.Context, a extkit.Auth, op string, in te
 	if err != nil {
 		return textv1.CompleteResult{}, err
 	}
-	res, err := t.d.complete(ctx, t.model, in, onDelta)
+	res, err := within(ctx, t, limitText, func(ctx context.Context) (textv1.CompleteResult, error) {
+		return t.d.complete(ctx, t.model, in, onDelta)
+	})
 	res.Model = t.ref()
 	res.Passages = passages
 	if err != nil && !errors.Is(err, errStopped) {
-		return res, providerError(t.p, err)
+		return res, err
 	}
 	if errors.Is(err, errStopped) {
 		res.StopReason = "cancelled"
@@ -146,35 +148,26 @@ type imageService struct{ r *router }
 
 var _ imagev1.Image = imageService{}
 
-func (s imageService) run(ctx context.Context, a extkit.Auth, op string, in imagev1.GenerateInput, edit []llmc.File) (imagev1.Result, error) {
+func (s imageService) Generate(ctx context.Context, a extkit.Auth, in imagev1.GenerateInput) (imagev1.Result, error) {
 	if strings.TrimSpace(in.Prompt) == "" {
 		return imagev1.Result{}, badInput("give a prompt")
 	}
-	t, err := s.r.begin(ctx, a, llmc.KindImage, op, in.Model, &in)
+	t, err := s.r.begin(ctx, a, llmc.KindImage, "generate", in.Model, &in)
 	if err != nil {
 		return imagev1.Result{}, err
 	}
-	res, err := t.d.image(ctx, t.model, in, edit)
+	res, err := within(ctx, t, limitImage, func(ctx context.Context) (imagev1.Result, error) {
+		return t.d.image(ctx, t.model, in)
+	})
 	res.Model = t.ref()
 	if res.Files == nil {
 		res.Files = []llmc.File{}
 	}
 	if err != nil {
-		return res, providerError(t.p, err)
+		return res, err
 	}
 	s.r.fillCost(ctx, t, &res.Usage, used{files: len(res.Files)})
 	return res, nil
-}
-
-func (s imageService) Generate(ctx context.Context, a extkit.Auth, in imagev1.GenerateInput) (imagev1.Result, error) {
-	return s.run(ctx, a, "generate", in, nil)
-}
-
-func (s imageService) Edit(ctx context.Context, a extkit.Auth, in imagev1.EditInput) (imagev1.Result, error) {
-	if len(in.Images) == 0 {
-		return imagev1.Result{}, badInput("give the images to edit")
-	}
-	return s.run(ctx, a, "edit", in.GenerateInput, in.Images)
 }
 
 func (s imageService) Models(ctx context.Context, _ extkit.Auth, in llmc.ModelsInput) (llmc.Models, error) {
@@ -189,14 +182,24 @@ func (s speechService) Speak(ctx context.Context, a extkit.Auth, in speechv1.Spe
 	if strings.TrimSpace(in.Text) == "" {
 		return speechv1.Result{}, badInput("give the text to say")
 	}
+	if in.Reference != nil {
+		if len(in.Reference.Audio.Data) == 0 {
+			return speechv1.Result{}, badInput("give the reference clip's data")
+		}
+		if strings.TrimSpace(in.Instructions) != "" {
+			return speechv1.Result{}, badInput("a cloned voice takes no instructions: its delivery comes from the reference clip")
+		}
+	}
 	t, err := s.r.begin(ctx, a, llmc.KindSpeech, "speak", in.Model, &in)
 	if err != nil {
 		return speechv1.Result{}, err
 	}
-	res, err := t.d.speak(ctx, t.model, in)
+	res, err := within(ctx, t, limitSpeech, func(ctx context.Context) (speechv1.Result, error) {
+		return t.d.speak(ctx, t.model, in)
+	})
 	res.Model = t.ref()
 	if err != nil {
-		return res, providerError(t.p, err)
+		return res, err
 	}
 	s.r.fillCost(ctx, t, &res.Usage, used{chars: utf8.RuneCountInString(in.Text)})
 	return res, nil
@@ -207,11 +210,13 @@ func (s speechService) Voices(ctx context.Context, _ extkit.Auth, in speechv1.Vo
 	if err != nil {
 		return speechv1.VoiceList{}, err
 	}
-	vs, err := t.d.voices(ctx, t.model)
+	vs, err := within(ctx, t, limitList, func(ctx context.Context) ([]speechv1.Voice, error) {
+		return t.d.voices(ctx, t.model)
+	})
 	if vs == nil {
 		vs = []speechv1.Voice{}
 	}
-	return speechv1.VoiceList{Voices: vs}, providerError(t.p, err)
+	return speechv1.VoiceList{Voices: vs}, err
 }
 
 func (s speechService) Models(ctx context.Context, _ extkit.Auth, in llmc.ModelsInput) (llmc.Models, error) {
@@ -230,10 +235,12 @@ func (s transcribeService) Transcribe(ctx context.Context, a extkit.Auth, in tra
 	if err != nil {
 		return transcribev1.Result{}, err
 	}
-	res, err := t.d.transcribe(ctx, t.model, in)
+	res, err := within(ctx, t, limitTranscribe, func(ctx context.Context) (transcribev1.Result, error) {
+		return t.d.transcribe(ctx, t.model, in)
+	})
 	res.Model = t.ref()
 	if err != nil {
-		return res, providerError(t.p, err)
+		return res, err
 	}
 	s.r.fillCost(ctx, t, &res.Usage, used{})
 	return res, nil
@@ -255,13 +262,15 @@ func (s embedService) Embed(ctx context.Context, a extkit.Auth, in embedv1.Embed
 	if err != nil {
 		return embedv1.Result{}, err
 	}
-	res, err := t.d.embed(ctx, t.model, in)
+	res, err := within(ctx, t, limitEmbed, func(ctx context.Context) (embedv1.Result, error) {
+		return t.d.embed(ctx, t.model, in)
+	})
 	res.Model = t.ref()
 	if res.Vectors == nil {
 		res.Vectors = [][]float64{}
 	}
 	if err != nil {
-		return res, providerError(t.p, err)
+		return res, err
 	}
 	s.r.fillCost(ctx, t, &res.Usage, used{})
 	return res, nil
@@ -291,10 +300,12 @@ func (s alignService) Align(ctx context.Context, a extkit.Auth, in alignv1.Align
 	if err != nil {
 		return alignv1.Result{}, err
 	}
-	res, err := t.d.align(ctx, t.model, in)
+	res, err := within(ctx, t, limitAlign, func(ctx context.Context) (alignv1.Result, error) {
+		return t.d.align(ctx, t.model, in)
+	})
 	res.Model = t.ref()
 	if err != nil {
-		return res, providerError(t.p, err)
+		return res, err
 	}
 	s.r.fillCost(ctx, t, &res.Usage, used{})
 	return res, nil
@@ -318,9 +329,11 @@ func (s jobService) create(ctx context.Context, a extkit.Auth, model, wait strin
 	if err != nil {
 		return llmc.Job{}, err
 	}
-	j, err := t.d.startJob(ctx, s.kind, t.model, in)
+	j, err := within(ctx, t, limitJobStart, func(ctx context.Context) (llmc.Job, error) {
+		return t.d.startJob(ctx, s.kind, t.model, in)
+	})
 	if err != nil {
-		return llmc.Job{}, providerError(t.p, err)
+		return llmc.Job{}, err
 	}
 	j.ID, j.Model = jobID(t.p, j.ID), t.ref()
 	t.c.job = j.ID // so get can fill in its cost once it's done
@@ -338,9 +351,11 @@ func (s jobService) get(ctx context.Context, in llmc.JobRef) (llmc.Job, error) {
 	if err != nil {
 		return llmc.Job{}, err
 	}
-	j, err := t.d.getJob(ctx, s.kind, pid)
+	j, err := within(ctx, t, limitJobFollow, func(ctx context.Context) (llmc.Job, error) {
+		return t.d.getJob(ctx, s.kind, pid)
+	})
 	if err != nil {
-		return llmc.Job{}, providerError(t.p, err)
+		return llmc.Job{}, err
 	}
 	j.ID = in.ID
 	s.r.settleJob(ctx, t, in.ID, &j)
@@ -352,8 +367,9 @@ func (s jobService) content(ctx context.Context, in llmc.ContentInput) (llmc.Fil
 	if err != nil {
 		return llmc.File{}, err
 	}
-	f, err := t.d.jobContent(ctx, s.kind, pid, in.Index)
-	return f, providerError(t.p, err)
+	return within(ctx, t, limitJobFollow, func(ctx context.Context) (llmc.File, error) {
+		return t.d.jobContent(ctx, s.kind, pid, in.Index)
+	})
 }
 
 type musicService struct{ jobService }

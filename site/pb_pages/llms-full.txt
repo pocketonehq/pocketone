@@ -3079,8 +3079,39 @@ try {
 | `unknown_model` | No model named, or no provider by that name. |
 | `not_supported` | That kind of provider doesn't do this (music on Cloudflare, say). |
 | `provider` | The provider said no: a wrong key, no credits, a model it doesn't have. Its message is kept, with your provider's name in front. |
-| `timeout` | The provider didn't answer in time. |
+| `timeout` | The provider didn't answer in time, and the request was cancelled. The message names the model and what ran out. Worth a retry. |
 | `limit` | A limit refused the call before it reached the provider: one in Settings → LLM or your own ([Limits](https://pocketone.dev/docs/extensions/llm/guides/limits)). |
+
+### Time limits
+
+A provider sometimes drops a request and never answers. Calls don't wait on one for long:
+
+- **Text** is always streamed from the provider, even from `completeAsync`, so a stalled answer is spotted as soon as
+  the provider goes quiet: after 10 seconds with nothing from Vultr or OpenRouter (both send something every second
+  while a model works, thinking included), 30 from Cloudflare, 2 minutes from other OpenAI-compatible APIs (OpenAI
+  sends nothing while its reasoning models think, and a local server may take a while to read a long prompt).
+- **Every call** also has an overall limit: 10 minutes for text, 3 for a picture, 2 for speech or alignment, 5 for a
+  transcription, 1 for embeddings or starting a music or video job (following one with `wait` has its own limit).
+
+Either one cancels the request and throws with code `timeout`: `vultr/glm-5.3: the provider sent nothing for 10s, so
+the call was cancelled`, or `...: no answer in 3m0s, so the call was cancelled`.
+
+To give up sooner, pass a `signal` (an [`AbortSignal`](https://pocketone.dev/docs/quickjs#cancelling-go-calls)) in any call's options. When
+it fires, the promise rejects with its reason and the provider's request is cancelled:
+
+```js
+// at most 30 seconds, even in background work after the response was sent
+const a = await $llm.text.completeAsync({ model: "vultr/glm-5.3", prompt, signal: AbortSignal.timeout(30_000) })
+
+// or stop it yourself: a "Stop" button, a newer question
+const c = new AbortController()
+const s = $llm.text.streamAsync({ model, prompt, signal: c.signal }, (t) => { /* ... */ })
+c.abort() // s rejects with an AbortError
+```
+
+`AbortSignal.timeout` rejects with a `DOMException` named `TimeoutError`, `abort()` with one named `AbortError`. The
+same `signal` works on `chat.sendAsync(text, { signal })`. Go code passes a context with an earlier deadline, or
+cancels it.
 
 ## Costs
 
@@ -4081,26 +4112,6 @@ Small, complete apps that show what a PocketOne app looks like. Each is a Pocket
 folder (and sometimes migrations and hooks) run by the stock `pocketone` binary. Their source is in the PocketOne
 repository, ready to copy.
 
-## Apps
-
-An app built on [`$llm`](https://pocketone.dev/docs/extensions/llm), PocketOne's cloud models, running live on PocketHost:
-
-| App | Try it | Source |
-|---|---|---|
-| [**Bedtime Story**](https://pocketone.dev/docs/examples/bedtime-story): one topic told slowly and in depth, read aloud with pictures and music | [sleep.pocketone.dev](https://sleep.pocketone.dev) | [`ext/llm/examples/bedtime`](https://github.com/pocketonehq/pocketone/tree/main/ext/llm/examples/bedtime) |
-
-To run it yourself:
-
-```bash
-cd ext/llm/examples/bedtime
-pocketone superuser upsert admin@example.com password --dir=pb_data
-pocketone serve --dir=pb_data
-```
-
-Open the dashboard at `http://127.0.0.1:8090/_/`, add a provider in Settings → LLM (it defaults to Vultr models under a
-provider named `vultr`), then open `http://127.0.0.1:8090`. To put your copy online, `pocketone link` your own
-app and `pocketone deploy` ([Deploy and live sync](https://pocketone.dev/docs/features/deploy)).
-
 ## Starter kits
 
 To start an app of your own instead, begin from a [starter kit](https://pocketone.dev/docs/starters): `pocketone pages create myapp --starter
@@ -4764,7 +4775,7 @@ The Go packages under [`ext/contracts`](https://github.com/pocketonehq/pocketone
 | [`llm/align/v1`](https://pocketone.dev/docs/reference/go/llm/align/v1) | Package alignv1 is the llm.align/v1 contract: forced alignment. |
 | [`llm/chat/v1`](https://pocketone.dev/docs/reference/go/llm/chat/v1) | Package chatv1 is the llm.chat/v1 contract: stored conversations with the app's language model. |
 | [`llm/embed/v1`](https://pocketone.dev/docs/reference/go/llm/embed/v1) | Package embedv1 is the llm.embed/v1 contract: a model turns texts into vectors, for search by meaning. |
-| [`llm/image/v1`](https://pocketone.dev/docs/reference/go/llm/image/v1) | Package imagev1 is the llm.image/v1 contract: a model makes pictures from a prompt, or changes pictures it's given. |
+| [`llm/image/v1`](https://pocketone.dev/docs/reference/go/llm/image/v1) | Package imagev1 is the llm.image/v1 contract: a model makes pictures from a prompt, and from reference pictures. |
 | [`llm/ledger/v1`](https://pocketone.dev/docs/reference/go/llm/ledger/v1) | Package ledgerv1 is the llm.ledger/v1 contract: what an app's model calls have used and cost, read from the ledger every llm.* call leaves (the provider's own record of each call), and how much of each limit is left. |
 | [`llm/music/v1`](https://pocketone.dev/docs/reference/go/llm/music/v1) | Package musicv1 is the llm.music/v1 contract: a model makes music from a prompt (and lyrics). |
 | [`llm/search/v1`](https://pocketone.dev/docs/reference/go/llm/search/v1) | Package searchv1 is the llm.search/v1 contract: named buckets of content an app searches. |
@@ -6127,36 +6138,15 @@ From [llm.embed/v1](https://pocketone.dev/docs/contracts/llm.embed/v1) (generate
 
 Calls llm.image/v1 on a remote
 
-### pocketone remote llm image edit
-
-Changes the pictures it's given as the prompt says (llm.image/v1)
-
-```
-pocketone remote llm image edit
-```
-
-Changes the pictures it's given as the prompt says.
-
-Calls POST /api/\_c/llm.image/v1/edit on the remote (token scope: llm).
-
-| Flag | Type | Default | |
-|---|---|---|---|
-| `--generateinput` | string | – | a JSON value (@file reads a file) |
-| `--images` | string | – | a JSON value (@file reads a file) |
-| `--json` | string | – | the whole input as JSON (@file reads a file, - reads stdin); flags override its fields |
-| `-r`, `--remote` | string | – | the remote (a name or URL); default: the project's default remote |
-
-From [llm.image/v1](https://pocketone.dev/docs/contracts/llm.image/v1) (generated).
-
 ### pocketone remote llm image generate
 
-Makes pictures from a prompt (llm.image/v1)
+Makes pictures from a prompt, and from the reference pictures it's given (llm.image/v1)
 
 ```
 pocketone remote llm image generate
 ```
 
-Makes pictures from a prompt.
+Makes pictures from a prompt, and from the reference pictures it's given.
 
 Calls POST /api/\_c/llm.image/v1/generate on the remote (token scope: llm).
 
@@ -6168,6 +6158,7 @@ Calls POST /api/\_c/llm.image/v1/generate on the remote (token scope: llm).
 | `--n` | int64 | `0` |  |
 | `--options` | string | – | a JSON value (@file reads a file) |
 | `--prompt` | string | – |  |
+| `--references` | string | – | a JSON value (@file reads a file) |
 | `-r`, `--remote` | string | – | the remote (a name or URL); default: the project's default remote |
 | `--size` | string | – |  |
 
@@ -6698,6 +6689,29 @@ Calls POST /api/\_c/llm.search/v1/remove on the remote (token scope: search).
 
 From [llm.search/v1](https://pocketone.dev/docs/contracts/llm.search/v1) (generated).
 
+### pocketone remote llm search sample
+
+Returns chunks picked at random from the buckets named: material to draw from ("surprise me", a topic nobody asked about), not matches (llm.search/v1)
+
+```
+pocketone remote llm search sample
+```
+
+Returns chunks picked at random from the buckets named: material to draw from ("surprise me", a topic nobody asked about), not matches. No query, no embedding, so it costs nothing. Like Search without a viewer, it may return any chunk, a followed record's included.
+
+Calls POST /api/\_c/llm.search/v1/sample on the remote (token scope: search:read).
+
+| Flag | Type | Default | |
+|---|---|---|---|
+| `--bucket` | string | – |  |
+| `--buckets` | stringSlice | – |  |
+| `--count` | int64 | `0` |  |
+| `--json` | string | – | the whole input as JSON (@file reads a file, - reads stdin); flags override its fields |
+| `--prefix` | string | – |  |
+| `-r`, `--remote` | string | – | the remote (a name or URL); default: the project's default remote |
+
+From [llm.search/v1](https://pocketone.dev/docs/contracts/llm.search/v1) (generated).
+
 ### pocketone remote llm search set-model
 
 Changes the app's embedding model ("provider/model" from llm.embed/v1's models; "" picks one again) (llm.search/v1)
@@ -6843,6 +6857,7 @@ Calls POST /api/\_c/llm.speech/v1/speak on the remote (token scope: llm).
 | `--json` | string | – | the whole input as JSON (@file reads a file, - reads stdin); flags override its fields |
 | `--model` | string | – |  |
 | `--options` | string | – | a JSON value (@file reads a file) |
+| `--reference` | string | – | a JSON value (@file reads a file) |
 | `-r`, `--remote` | string | – | the remote (a name or URL); default: the project's default remote |
 | `--speed` | float64 | `0` |  |
 | `--text` | string | – |  |
@@ -7784,8 +7799,7 @@ A PocketOne app serves MCP at `/mcp` ([MCP](https://pocketone.dev/docs/extension
 
 | Tool | What it does | Reads only | Token scope | Arguments |
 |---|---|---|---|---|
-| `llm_image_generate` | Makes pictures from a prompt. |  | `llm` | `model` (string), `prompt` (string), `n` (int), `size` (string), `aspectRatio` (string), `options` (json) |
-| `llm_image_edit` | Changes the pictures it's given as the prompt says. |  | `llm` | `GenerateInput` (json), `images` (json) |
+| `llm_image_generate` | Makes pictures from a prompt, and from the reference pictures it's given. |  | `llm` | `model` (string), `prompt` (string), `n` (int), `size` (string), `aspectRatio` (string), `references` (json), `options` (json) |
 | `llm_image_models` | Lists the image models of every provider in Settings → LLM. | yes | `llm:read` | `provider` (string) |
 
 ## llm.ledger/v1
@@ -7835,6 +7849,7 @@ A PocketOne app serves MCP at `/mcp` ([MCP](https://pocketone.dev/docs/extension
 | `llm_search_remove` | Takes sources out of a bucket, with their documents. |  | `search` | `bucket` (string), `sources` (strings) |
 | `llm_search_documents` | Lists a bucket's documents (or one source's), by source and name. | yes | `search:read` | `bucket` (string), `source` (string), `prefix` (string) |
 | `llm_search_search` | Returns the chunks that best match a query across the buckets named, best first. |  | `search:read` | `buckets` (strings), `bucket` (string), `query` (string), `limit` (int), `prefix` (string), `viewer` (json) |
+| `llm_search_sample` | Returns chunks picked at random from the buckets named: material to draw from ("surprise me", a topic nobody asked about), not matches. |  | `search:read` | `buckets` (strings), `bucket` (string), `count` (int), `prefix` (string) |
 
 ## llm.speech/v1
 
@@ -7842,7 +7857,7 @@ A PocketOne app serves MCP at `/mcp` ([MCP](https://pocketone.dev/docs/extension
 
 | Tool | What it does | Reads only | Token scope | Arguments |
 |---|---|---|---|---|
-| `llm_speech_speak` | Reads the text aloud and returns the audio. |  | `llm` | `model` (string), `text` (string), `voice` (string), `format` (string), `speed` (float), `instructions` (string), `options` (json) |
+| `llm_speech_speak` | Reads the text aloud and returns the audio. |  | `llm` | `model` (string), `text` (string), `voice` (string), `format` (string), `speed` (float), `instructions` (string), `reference` (json), `options` (json) |
 | `llm_speech_voices` | Lists a model's voices, when the provider says. |  | `llm:read` | `model` (string) |
 | `llm_speech_models` | Lists the speech models of every provider in Settings → LLM. | yes | `llm:read` | `provider` (string) |
 
@@ -8550,11 +8565,11 @@ The table is generated from each contract's README and every extension's `Contra
 | [`llm.align/v1`](https://pocketone.dev/docs/contracts/llm.align/v1) | Forced alignment: audio and the exact words spoken in it in, the time of every line and word out. | llm |  |  | @benallfree |
 | [`llm.chat/v1`](https://pocketone.dev/docs/contracts/llm.chat/v1) | Stored conversations with a language model: start a chat, send to it, read its history, find and forget chats by the app's own meta. | llm-chat |  |  | @benallfree |
 | [`llm.embed/v1`](https://pocketone.dev/docs/contracts/llm.embed/v1) | Turn texts into vectors for search by meaning: texts in, one vector each out. | llm |  | llm-search | @benallfree |
-| [`llm.image/v1`](https://pocketone.dev/docs/contracts/llm.image/v1) | Make pictures from a prompt, or change pictures you give it; they come back as files. | llm |  |  | @benallfree |
+| [`llm.image/v1`](https://pocketone.dev/docs/contracts/llm.image/v1) | Make pictures from a prompt, and from reference pictures you give it; they come back as files. | llm |  |  | @benallfree |
 | [`llm.ledger/v1`](https://pocketone.dev/docs/contracts/llm.ledger/v1) | What an app's model calls used and cost, from the ledger every llm.* call leaves, and how much of each limit is left. | llm |  |  | @benallfree |
 | [`llm.music/v1`](https://pocketone.dev/docs/contracts/llm.music/v1) | Make music from a prompt and lyrics, as a job: start it, follow it, fetch its files (or wait for them). | llm |  |  | @benallfree |
 | [`llm.search/v1`](https://pocketone.dev/docs/contracts/llm.search/v1) | RAG knowledge bases (buckets) with hybrid search: sources (files, folders, zips, pages, Git repositories, collections) kept current, one embedding model per app. | llm-search |  | llm-chat | @benallfree |
-| [`llm.speech/v1`](https://pocketone.dev/docs/contracts/llm.speech/v1) | Read text aloud: text in, an audio file out, in a voice the model offers. | llm |  |  | @benallfree |
+| [`llm.speech/v1`](https://pocketone.dev/docs/contracts/llm.speech/v1) | Read text aloud: text in, an audio file out, in a voice the model offers or one cloned from a clip. | llm |  |  | @benallfree |
 | [`llm.text/v1`](https://pocketone.dev/docs/contracts/llm.text/v1) | Ask a language model: a prompt or a conversation in, text (or JSON matching a schema) out, whole or streamed. | llm | llm-chat |  | @benallfree |
 | [`llm.transcribe/v1`](https://pocketone.dev/docs/contracts/llm.transcribe/v1) | Write down what's said in audio: an audio file in, text out. | llm |  |  | @benallfree |
 | [`llm.video/v1`](https://pocketone.dev/docs/contracts/llm.video/v1) | Make video from a prompt (and a first frame), as a job: start it, follow it, fetch its files (or wait for them). | llm |  |  | @benallfree |
@@ -11156,7 +11171,7 @@ Source: https://pocketone.dev/docs/contracts/llm.image/v1
 
 # llm.image/v1
 
-A model makes pictures from a prompt, or changes the pictures it's given. They come back as files. Every call names its model as `provider/model`: a provider the app's admins added in Settings → LLM, a slash, and
+A model makes pictures from a prompt, and from reference pictures it's given. They come back as files. Every call names its model as `provider/model`: a provider the app's admins added in Settings → LLM, a slash, and
 that provider's own id for the model. Shared types (`File`, `Usage`, `ModelInfo`, `Job`, the errors) are in
 [`pocketone.dev/ext/contracts/llm`](https://github.com/pocketonehq/pocketone/blob/main/ext/contracts/llm/llm.go).
 
@@ -11173,15 +11188,26 @@ const r = await $llm.image.generateAsync({ model: "vultr/z-image-turbo", prompt:
 record.set("cover", $llm.file(r.files[0]))
 ```
 
+`references` are pictures the model draws from: one to change as the prompt says, or one whose style and characters
+a new scene keeps. Paint an anchor picture first, then every other picture with it as the reference, and a story's
+pictures share one look:
+
+```js
+const anchor = (await $llm.image.generateAsync({ model, prompt: "a red fox in a blue scarf and a small owl in round glasses, watercolor" })).files[0]
+const next = await $llm.image.generateAsync({ model, prompt: "Same style and characters as the reference. Show them rowing across a misty pond.", references: [anchor] })
+```
+
+Only a model whose listing has the feature `"reference images"` takes references (`ModelInfo.Features`, from
+`models`); offer them only then. Any other model answers `not_supported`, or the provider's own error.
+
 Over HTTP (a superuser, or a token with the scope shown):
 
 | Operation | HTTP | Body | Token scope |
 |---|---|---|---|
-| Generate | `POST /api/_c/llm.image/v1/generate` | `{"model": "...", "prompt": "...", "n": 1, "size": "1024x1024"}` | `llm` |
-| Edit | `POST /api/_c/llm.image/v1/edit` | as Generate, with `"images": [File]` | `llm` |
+| Generate | `POST /api/_c/llm.image/v1/generate` | `{"model": "...", "prompt": "...", "n": 1, "size": "1024x1024", "references": [File]}` | `llm` |
 | Models | `GET /api/_c/llm.image/v1/models` | `?provider=` (optional) | `llm:read` |
 
-Both answer `{"files": [File], "model", "usage"}`. A `File` is `{"name", "type", "data", "url"}`: `data` is the bytes
+Generate answers `{"files": [File], "model", "usage"}`. A `File` is `{"name", "type", "data", "url"}`: `data` is the bytes
 (base64), `url` the provider's own copy when it keeps one.
 
 Errors: `not_configured` (no providers), `unknown_model`, `not_supported`, `provider` (the cloud's own error), `timeout`.
@@ -11195,18 +11221,30 @@ Implement `imagev1.Image` and provide it in `Register` (`imagev1.Contract.Provid
 or provider, and `provider` with the cloud's own message (never its key) when the cloud refuses. Fill `model` with the
 full `provider/model` that answered, and `usage` with what the provider reports.
 
+List `"reference images"` (`llm.FeatureReferenceImages`) in a model's `Features` only when both the model and your
+provider take `references`; answer `not_supported` for references you can't send.
+
+## Decisions
+
+- **References are a field of Generate, not an Edit operation** (Ben, 2026-11-24). Drawing a new scene from a
+  reference isn't editing it, and providers treat both the same way: Vultr answers a generation with images as an edit.
+  The earlier `Edit` operation and `EditInput` are gone.
+- **A feature says which models take them**, not `inputs` containing `"image"`: `inputs` is what the provider says the
+  model reads, but whether `references` work also depends on the provider here (Cloudflare lists models that read
+  images, and its driver sends none).
+
 ## Commands and APIs
 
 Every operation is a REST endpoint, a `pocketone` command and an MCP tool, all generated from the contract and behind the same token scope check and hooks. See [Remote CLI](https://pocketone.dev/docs/features/remote), or the full [CLI](https://pocketone.dev/docs/reference/cli), [Extension APIs](https://pocketone.dev/docs/extensions/apis) and [MCP](https://pocketone.dev/docs/reference/mcp) references.
 
 ### generate
 
-Makes pictures from a prompt.
+Makes pictures from a prompt, and from the reference pictures it's given.
 
 | | |
 |---|---|
 | REST | `POST /api/_c/llm.image/v1/generate` |
-| CLI | `pocketone remote llm image generate --model <value> --prompt <value> --n <n> --size <value> --aspectratio <value> --options <json>` |
+| CLI | `pocketone remote llm image generate --model <value> --prompt <value> --n <n> --size <value> --aspectratio <value> --references <json> --options <json>` |
 | MCP | `llm_image_generate` |
 | Token scope | `llm` |
 
@@ -11217,23 +11255,8 @@ Makes pictures from a prompt.
 | `n` | `--n` | int |
 | `size` | `--size` | string |
 | `aspectRatio` | `--aspectratio` | string |
+| `references` | `--references` | json |
 | `options` | `--options` | json |
-
-### edit
-
-Changes the pictures it's given as the prompt says.
-
-| | |
-|---|---|
-| REST | `POST /api/_c/llm.image/v1/edit` |
-| CLI | `pocketone remote llm image edit --generateinput <json> --images <json>` |
-| MCP | `llm_image_edit` |
-| Token scope | `llm` |
-
-| Input field | Flag | Type |
-|---|---|---|
-| `GenerateInput` | `--generateinput` | json |
-| `images` | `--images` | json |
 
 ### models
 
@@ -11609,6 +11632,7 @@ Over HTTP (a superuser, or a token with the scope shown):
 | Remove | `POST /api/_c/llm.search/v1/remove` | `{"bucket", "sources": [...]}` | `search` |
 | Documents | `GET /api/_c/llm.search/v1/documents` | `?bucket=&source=&prefix=` | `search:read` |
 | Search | `POST /api/_c/llm.search/v1/search` | `{"buckets": [...], "query", "limit", "prefix", "viewer"}` | `search:read` |
+| Sample | `POST /api/_c/llm.search/v1/sample` | `{"buckets": [...], "count", "prefix"}`: chunks picked at random (no query, no embedding) | `search:read` |
 
 A source answers `{"bucket", "name", "kind", "url", "every", "commits", "exclude", "collection", "fields", "filter",
 "path", "include", "pageURL", "hash", "status", "error", "documents", "chunks", "embedded", "bytes", "pending", "costMicroUSD", "refreshed", "next"}` (`embedded` below `chunks`: embedding under way; documents carry the same); `kind` is
@@ -11976,6 +12000,24 @@ Returns the chunks that best match a query across the buckets named, best first.
 | `prefix` | `--prefix` | string |
 | `viewer` | `--viewer` | json |
 
+### sample
+
+Returns chunks picked at random from the buckets named: material to draw from ("surprise me", a topic nobody asked about), not matches. No query, no embedding, so it costs nothing. Like Search without a viewer, it may return any chunk, a followed record's included.
+
+| | |
+|---|---|
+| REST | `POST /api/_c/llm.search/v1/sample` |
+| CLI | `pocketone remote llm search sample --buckets <a,b> --bucket <value> --count <n> --prefix <value>` |
+| MCP | `llm_search_sample` |
+| Token scope | `search:read` |
+
+| Input field | Flag | Type |
+|---|---|---|
+| `buckets` | `--buckets` | strings |
+| `bucket` | `--bucket` | string |
+| `count` | `--count` | int |
+| `prefix` | `--prefix` | string |
+
 ## Extensions
 
 <!-- contracts:index (generated by `go run ./.github/extensions contracts` from each extension's Contracts(); don't edit) -->
@@ -12014,7 +12056,14 @@ In page code it's `$llm.speech` (bound by the llm extension):
 const r = await $llm.speech.speakAsync({ model: "vultr/qwen3-tts-12hz-1.7b", text: page, voice: "vivian", instructions: "slow and calm" })
 record.set("narration", $llm.file(r.file))
 await $llm.speech.voicesAsync("vultr/qwen3-tts-12hz-1.7b")
+// a voice cloned from a stored clip: leave voice and instructions out
+await $llm.speech.speakAsync({ model: "vultr/qwen3-tts-12hz-1.7b", text: page, reference: { audio: $llm.fromRecord(clip, "audio"), text: clip.getString("passage") } })
 ```
+
+**Voice cloning.** `reference` (`{audio: File, text}`) asks the model to read in the voice of that clip; `text` is what
+the clip says, optional but closer with it. A model clones when one of its voices has `mode: "clone"` (`voices`), and a
+provider that doesn't clone answers `not_supported`. Nothing is saved at the provider: the clip goes with every call.
+`instructions` can't go with a `reference`.
 
 Over HTTP (a superuser, or a token with the scope shown):
 
@@ -12024,8 +12073,8 @@ Over HTTP (a superuser, or a token with the scope shown):
 | Voices | `POST /api/_c/llm.speech/v1/voices` | `{"model": "..."}` | `llm:read` |
 | Models | `GET /api/_c/llm.speech/v1/models` | `?provider=` (optional) | `llm:read` |
 
-`speak` answers `{"file": File, "model", "usage"}`; `voices` answers `{"voices": [{"id", "name", "language"}]}`
-(empty when the provider doesn't list them).
+`speak` answers `{"file": File, "model", "usage"}`; `voices` answers `{"voices": [{"id", "name", "language", "mode",
+"description"}]}` (empty when the provider doesn't list them; `mode` is `builtin`, `design` or `clone` when it says).
 
 Errors: `not_configured` (no providers), `unknown_model`, `not_supported`, `provider` (the cloud's own error), `timeout`.
 
@@ -12035,7 +12084,7 @@ From Go: `speechv1.Contract.Must(app)` (from `pocketone.dev/ext/contracts/llm/sp
 
 Implement `speechv1.Speech` and provide it in `Register` (`speechv1.Contract.Provide(app, impl)`). Route on the
 `provider/` prefix, answer `not_supported` for a provider that can't do this kind, `unknown_model` for a missing model
-or provider, and `provider` with the cloud's own message (never its key) when the cloud refuses. Fill `model` with the
+or provider (and for a `reference` on a provider that can't clone), and `provider` with the cloud's own message (never its key) when the cloud refuses. Fill `model` with the
 full `provider/model` that answered, and `usage` with what the provider reports.
 
 ## Commands and APIs
@@ -12049,7 +12098,7 @@ Reads the text aloud and returns the audio.
 | | |
 |---|---|
 | REST | `POST /api/_c/llm.speech/v1/speak` |
-| CLI | `pocketone remote llm speech speak --model <value> --text <value> --voice <value> --format <value> --speed <n> --instructions <value> --options <json>` |
+| CLI | `pocketone remote llm speech speak --model <value> --text <value> --voice <value> --format <value> --speed <n> --instructions <value> --reference <json> --options <json>` |
 | MCP | `llm_speech_speak` |
 | Token scope | `llm` |
 
@@ -12061,6 +12110,7 @@ Reads the text aloud and returns the audio.
 | `format` | `--format` | string |
 | `speed` | `--speed` | float |
 | `instructions` | `--instructions` | string |
+| `reference` | `--reference` | json |
 | `options` | `--options` | json |
 
 ### voices
@@ -13961,8 +14011,7 @@ Its own API under `/api/_c/deploy/v1/`: see [deploy/v1](https://pocketone.dev/do
 
 | Endpoint | What it does | Token scope | Input |
 |---|---|---|---|
-| `POST /api/_c/llm.image/v1/generate` | Makes pictures from a prompt. | `llm` | `model` (string), `prompt` (string), `n` (int), `size` (string), `aspectRatio` (string), `options` (json) |
-| `POST /api/_c/llm.image/v1/edit` | Changes the pictures it's given as the prompt says. | `llm` | `GenerateInput` (json), `images` (json) |
+| `POST /api/_c/llm.image/v1/generate` | Makes pictures from a prompt, and from the reference pictures it's given. | `llm` | `model` (string), `prompt` (string), `n` (int), `size` (string), `aspectRatio` (string), `references` (json), `options` (json) |
 | `GET /api/_c/llm.image/v1/models` | Lists the image models of every provider in Settings → LLM. | `llm:read` | `provider` (string) |
 
 ## llm.ledger/v1
@@ -14013,6 +14062,7 @@ Its own API under `/api/_c/deploy/v1/`: see [deploy/v1](https://pocketone.dev/do
 | `POST /api/_c/llm.search/v1/remove` | Takes sources out of a bucket, with their documents. | `search` | `bucket` (string), `sources` (strings) |
 | `GET /api/_c/llm.search/v1/documents` | Lists a bucket's documents (or one source's), by source and name. | `search:read` | `bucket` (string), `source` (string), `prefix` (string) |
 | `POST /api/_c/llm.search/v1/search` | Returns the chunks that best match a query across the buckets named, best first. | `search:read` | `buckets` (strings), `bucket` (string), `query` (string), `limit` (int), `prefix` (string), `viewer` (json) |
+| `POST /api/_c/llm.search/v1/sample` | Returns chunks picked at random from the buckets named: material to draw from ("surprise me", a topic nobody asked about), not matches. | `search:read` | `buckets` (strings), `bucket` (string), `count` (int), `prefix` (string) |
 
 ## llm.speech/v1
 
@@ -14020,7 +14070,7 @@ Its own API under `/api/_c/deploy/v1/`: see [deploy/v1](https://pocketone.dev/do
 
 | Endpoint | What it does | Token scope | Input |
 |---|---|---|---|
-| `POST /api/_c/llm.speech/v1/speak` | Reads the text aloud and returns the audio. | `llm` | `model` (string), `text` (string), `voice` (string), `format` (string), `speed` (float), `instructions` (string), `options` (json) |
+| `POST /api/_c/llm.speech/v1/speak` | Reads the text aloud and returns the audio. | `llm` | `model` (string), `text` (string), `voice` (string), `format` (string), `speed` (float), `instructions` (string), `reference` (json), `options` (json) |
 | `POST /api/_c/llm.speech/v1/voices` | Lists a model's voices, when the provider says. | `llm:read` | `model` (string) |
 | `GET /api/_c/llm.speech/v1/models` | Lists the speech models of every provider in Settings → LLM. | `llm:read` | `provider` (string) |
 
@@ -16989,15 +17039,16 @@ while a model works; there are no blocking versions to reach for. Each call name
 | `$llm.text.completeAsync({ model, system?, prompt \| messages, schema?, maxTokens?, temperature?, stop?, reasoning?, enrich?, options? })` | Answers: `{ text, data, reasoning, stopReason, model, usage, passages }`. With `schema`, `data` is the parsed JSON. With `enrich` (RAG: buckets to search, `["help"]`), the best passages from them are sent after the prompt and listed in `passages` ([LLM Search](https://pocketone.dev/docs/extensions/llm-search)). |
 | `$llm.text.streamAsync(opts, onText, onReasoning?)` | The same, calling `onText` with each piece as it's written (`false` stops it). |
 | `$llm.text.count(text \| messages)` | About how many tokens (four characters each). Local, so not async. |
-| `$llm.image.generateAsync({ model, prompt, n?, size?, aspectRatio? })`, `editAsync({ ..., images })` | Pictures: `{ files, model, usage }`. |
-| `$llm.speech.speakAsync({ model, text, voice?, format?, speed?, instructions? })`, `voicesAsync(model)` | Audio: `{ file, model, usage }`. |
+| `$llm.image.generateAsync({ model, prompt, references?, n?, size?, aspectRatio? })` | Pictures: `{ files, model, usage }`. `references` are pictures to draw from, on models with the feature `reference images`. |
+| `$llm.speech.speakAsync({ model, text, voice?, format?, speed?, instructions?, reference? })`, `voicesAsync(model)` | Audio: `{ file, model, usage }`. `reference: { audio, text? }` reads in the voice of that clip (voice cloning). |
 | `$llm.transcribe.transcribeAsync({ model, audio, language?, prompt? })` | Text from audio: `{ text, language, model, usage }`. |
 | `$llm.align.alignAsync({ model, audio, text, mode?, language? })` | When each line and word of `text` is said in `audio`: `{ duration, lines, words, unaligned, model, usage }`, in seconds. For captions timed to a voice. |
 | `$llm.music.createAsync({ model, prompt, lyrics?, seconds?, wait? })`, `getAsync(id)`, `contentAsync(id, index)` | Music, as a job (below). |
 | `$llm.video.createAsync({ model, prompt, image?, seconds?, size?, aspectRatio?, wait? })`, `getAsync(id)`, `contentAsync(id, index)` | Video, as a job. |
 | `$llm.embed.embedAsync({ model, input, dimensions? })` | One vector per text: `{ vectors, model, usage }`. |
-| `$llm.<kind>.modelsAsync({ provider? })` | The models your providers offer of that kind, with prices where the provider lists them. |
+| `$llm.<kind>.modelsAsync({ provider? })` | The models your providers offer of that kind, with their prices, size, features and languages where known (below). |
 | `$llm.file(file)`, `$llm.fileAsync(file)` | A generated file as a PocketBase file, for `record.set("field", ...)`; `fileAsync` also downloads one the provider gave only a URL for. |
+| `$llm.fromRecord(record, field)` | The other way: a record's stored file as a file with its bytes, to send to a model (a voice clip, audio to transcribe). |
 | `$llm.chat.*` | Stored conversations, from the [LLM Chat](https://pocketone.dev/docs/extensions/llm-chat) extension. |
 
 **`reasoning`** is how much a reasoning model thinks before answering: `"off"`, `"low"`, `"medium"`, `"high"`, or left
@@ -17020,9 +17071,33 @@ whole number on every answer of every kind: what the provider charged when it sa
 media), else worked out from the model's listed prices and what the call used (tokens, cached tokens, pictures,
 seconds, characters), with `usage.costEstimated` true, else `0` (free, or no prices it can count).
 
+**Models and prices:** each model in a `models` answer carries what its provider says about it: `contextTokens`,
+`size` ("27B", "30B (3B active)"), `features` (`tools`, `structured output`, `vision`, `audio input`, `voice cloning`,
+`voice design`, `built-in voices`, `lyrics`), `languages`, and `prices`. A price is a rate on one meter, in US dollars
+per `unit`, and every provider's are given in the same units: `1M input tokens`, `1M output tokens`,
+`1M cached input tokens`, `second` (of audio or video made, or read), `megapixel`, `image`, `1K characters` (read
+aloud), `request`. Its `source` is `listed` (the provider's own list) or `measured`: what this app's calls to the model
+were actually billed, from the ledger, over `calls` calls (text in `1M tokens`, in and out together, since a bill
+doesn't split them; pictures per `request`). Costs worked out from listed prices never count toward a measured one.
+No prices means the price isn't known. Extras a call may not use (web search, cache writes, images sent in) aren't
+listed, and a model with a price in a unit that can't be put in these (per inference step) lists none rather than
+look cheaper than it is.
+
+Settings → LLM lists every model of each kind across your providers under **Models**, searchable and cheapest first.
+Other dashboard screens use the same pieces through `window.pocketone.llm`: `select({ kind, value, onchange })` is a
+searchable dropdown of a kind's models with their prices. Give it the work the model is
+for, `job: () => ({ "1M input tokens": 0.006, "1M output tokens": 0.002 })` (how much of each price unit the work uses)
+and `per: "a story"`, and each model also shows what that work costs on it ("≈ $0.0012 a story", "≥" when it lists only
+one side of the tokens), cheapest first. `browser({ kinds?, kind? })` is the whole list, and `models(kind)`,
+`prices(model)`, `priceText(model)`, `rank(model)` and `costFor(model, job)` the data underneath.
+
 **Errors** have a code: `not_configured` (no providers yet), `unknown_model` (no model named, or no provider by that
 name), `not_supported` (that provider type doesn't do this kind), `provider` (the provider's own error, its message
-kept, with the provider's name in front), `timeout`.
+kept, with the provider's name in front), `timeout` (the provider didn't answer in time; the request was cancelled).
+Text calls always stream from the provider, so a stalled answer fails after a few seconds of silence (10 s on Vultr and
+OpenRouter), and every call has an overall limit by kind. To give up sooner, pass `signal` (an `AbortSignal`) in any
+call's options, `{ signal: AbortSignal.timeout(30_000) }`: the promise rejects with its reason and the provider's request
+is cancelled ([Time limits](https://pocketone.dev/docs/extensions/llm#time-limits)).
 
 **Over HTTP** each kind is a contract at `/api/_c/llm.<kind>/v1/` (`llm.text/v1/complete`, `llm.image/v1/generate`...),
 for superusers and for API tokens with the `llm` scope (`llm:read` for `models`, `voices`, `get` and `content`); see
@@ -17032,9 +17107,9 @@ What each provider type covers:
 
 | | Text | Pictures | Speech | Transcription | Music | Video | Embeddings |
 |---|---|---|---|---|---|---|---|
-| `vultr` | yes | yes | yes, with voices | yes | yes (job) | yes (job) | yes |
+| `vultr` | yes | yes (and references) | yes, with voices and cloning | yes | yes (job) | yes (job) | yes |
 | `cloudflare` | yes | yes | yes | yes | | | yes |
-| `openrouter` | yes | yes (and edits) | yes, with voices | yes | | yes (job) | yes |
+| `openrouter` | yes | yes (and references) | yes, with voices and cloning | yes | | yes (job) | yes |
 | `openai` | yes | yes | yes | yes | | | yes |
 
 An `openai` provider's model list names only ids, so each model's kind is guessed from its name (`whisper` is
@@ -17062,8 +17137,7 @@ Generated from the `pocketone` binary and the contracts this extension provides.
 
 | Operation | CLI | REST | MCP |
 |---|---|---|---|
-| [generate](https://pocketone.dev/docs/contracts/llm.image/v1#generate) | `pocketone remote llm image generate --model <value> --prompt <value> --n <n> --size <value> --aspectratio <value> --options <json>` | `POST /api/_c/llm.image/v1/generate` | `llm_image_generate` |
-| [edit](https://pocketone.dev/docs/contracts/llm.image/v1#edit) | `pocketone remote llm image edit --generateinput <json> --images <json>` | `POST /api/_c/llm.image/v1/edit` | `llm_image_edit` |
+| [generate](https://pocketone.dev/docs/contracts/llm.image/v1#generate) | `pocketone remote llm image generate --model <value> --prompt <value> --n <n> --size <value> --aspectratio <value> --references <json> --options <json>` | `POST /api/_c/llm.image/v1/generate` | `llm_image_generate` |
 | [models](https://pocketone.dev/docs/contracts/llm.image/v1#models) | `pocketone remote llm image models --provider <value>` | `GET /api/_c/llm.image/v1/models` | `llm_image_models` |
 
 ### [llm.ledger/v1](https://pocketone.dev/docs/contracts/llm.ledger/v1)
@@ -17088,7 +17162,7 @@ Generated from the `pocketone` binary and the contracts this extension provides.
 
 | Operation | CLI | REST | MCP |
 |---|---|---|---|
-| [speak](https://pocketone.dev/docs/contracts/llm.speech/v1#speak) | `pocketone remote llm speech speak --model <value> --text <value> --voice <value> --format <value> --speed <n> --instructions <value> --options <json>` | `POST /api/_c/llm.speech/v1/speak` | `llm_speech_speak` |
+| [speak](https://pocketone.dev/docs/contracts/llm.speech/v1#speak) | `pocketone remote llm speech speak --model <value> --text <value> --voice <value> --format <value> --speed <n> --instructions <value> --reference <json> --options <json>` | `POST /api/_c/llm.speech/v1/speak` | `llm_speech_speak` |
 | [voices](https://pocketone.dev/docs/contracts/llm.speech/v1#voices) | `pocketone remote llm speech voices --model <value>` | `POST /api/_c/llm.speech/v1/voices` | `llm_speech_voices` |
 | [models](https://pocketone.dev/docs/contracts/llm.speech/v1#models) | `pocketone remote llm speech models --provider <value>` | `GET /api/_c/llm.speech/v1/models` | `llm_speech_models` |
 
@@ -17475,6 +17549,8 @@ const found = await $llm.search.searchAsync({ buckets: "docs", query: "install o
 // found.results[0].url → "/docs/install#macos"
 ```
 
+**Drawing at random.** `$llm.search.sample({ buckets?, count?, prefix? })` returns chunks picked at random from the buckets named, in the same shape as search results (no score): material to draw from, for a "surprise me" or a topic nobody has asked about. Nothing is embedded, so it's local and free.
+
 **Searching.** `await $llm.search.searchAsync({ query, buckets?, limit?, prefix?, viewer? })` returns the best chunks across
 the buckets named (every bucket when none are): `{ results: [{ bucket, document, text, heading, startLine, endLine,
 record, url, score }], model, usage }`; `url` links to where the passage is published, for a web page or a server folder
@@ -17524,6 +17600,7 @@ Generated from the `pocketone` binary and the contracts this extension provides.
 | [remove](https://pocketone.dev/docs/contracts/llm.search/v1#remove) | `pocketone remote llm search remove --bucket <value> --sources <a,b>` | `POST /api/_c/llm.search/v1/remove` | `llm_search_remove` |
 | [documents](https://pocketone.dev/docs/contracts/llm.search/v1#documents) | `pocketone remote llm search documents --bucket <value> --source <value> --prefix <value>` | `GET /api/_c/llm.search/v1/documents` | `llm_search_documents` |
 | [search](https://pocketone.dev/docs/contracts/llm.search/v1#search) | `pocketone remote llm search --buckets <a,b> --bucket <value> --query <value> --limit <n> --prefix <value> --viewer <json>` | `POST /api/_c/llm.search/v1/search` | `llm_search_search` |
+| [sample](https://pocketone.dev/docs/contracts/llm.search/v1#sample) | `pocketone remote llm search sample --buckets <a,b> --bucket <value> --count <n> --prefix <value>` | `POST /api/_c/llm.search/v1/sample` | `llm_search_sample` |
 
 ## Integrations
 
@@ -27175,6 +27252,56 @@ const (
 
 Kinds are what a model makes, one contract each.
 
+<a id="unitinputtokens"></a><a id="unitcachedtokens"></a><a id="unitoutputtokens"></a><a id="unittokens"></a><a id="unitsecond"></a><a id="unitmegapixel"></a><a id="unitimage"></a><a id="unitcharacters"></a><a id="unitrequest"></a>
+
+```go
+const (
+	UnitInputTokens  = "1M input tokens"
+	UnitCachedTokens = "1M cached input tokens" // input tokens served from the provider's prompt cache
+	UnitOutputTokens = "1M output tokens"       // reasoning tokens count as output
+	// UnitTokens is input and output tokens together: the unit of a text model's measured price, since a call's bill
+	// doesn't say how much was for input and how much for output.
+	UnitTokens     = "1M tokens"
+	UnitSecond     = "second" // of audio or video made (speech, music, video) or read (transcribe, align)
+	UnitMegapixel  = "megapixel"
+	UnitImage      = "image"
+	UnitCharacters = "1K characters" // of text read aloud
+	UnitRequest    = "request"       // one call, whatever it used
+)
+```
+
+The units a Price is in. Every provider's prices are given in these, so prices compare across providers.
+
+<a id="sourcelisted"></a><a id="sourcemeasured"></a>
+
+```go
+const (
+	SourceListed   = "listed"
+	SourceMeasured = "measured"
+)
+```
+
+Price sources.
+
+<a id="featuretools"></a><a id="featurestructured"></a><a id="featurevision"></a><a id="featureaudioinput"></a><a id="featurevoicecloning"></a><a id="featurevoicedesign"></a><a id="featurevoices"></a><a id="featurelyrics"></a><a id="featurereferenceimages"></a>
+
+```go
+const (
+	FeatureTools        = "tools"             // calls functions the caller defines
+	FeatureStructured   = "structured output" // answers in a JSON schema
+	FeatureVision       = "vision"            // reads images
+	FeatureAudioInput   = "audio input"       // reads audio
+	FeatureVoiceCloning = "voice cloning"     // speaks in the voice of a reference clip
+	FeatureVoiceDesign  = "voice design"      // speaks in a voice described in words
+	FeatureVoices       = "built-in voices"   // has named voices to pick from
+	FeatureLyrics       = "lyrics"            // sings given lyrics
+	// FeatureReferenceImages is an image model that draws from pictures it's given (llm.image/v1's References).
+	FeatureReferenceImages = "reference images"
+)
+```
+
+Features a model has, as ModelInfo.Features lists them (a model that thinks before answering is Reasoning instead).
+
 <a id="jobqueued"></a><a id="jobrunning"></a><a id="jobdone"></a><a id="jobfailed"></a>
 
 ```go
@@ -27206,7 +27333,7 @@ LimitsPriority is the built-in limits handler's priority: after handlers with th
 
 ## Variables
 
-<a id="errnotconfigured"></a><a id="errunknownmodel"></a><a id="errnotsupported"></a><a id="errprovider"></a><a id="errlimit"></a>
+<a id="errnotconfigured"></a><a id="errunknownmodel"></a><a id="errnotsupported"></a><a id="errprovider"></a><a id="errlimit"></a><a id="errtimeout"></a>
 
 ```go
 var (
@@ -27219,6 +27346,11 @@ var (
 	// ErrLimit: a limit in Settings → LLM refused the call before it reached the provider. Each refusal says which
 	// limit and when its window resets ("try again after 00:00 UTC").
 	ErrLimit = &extkit.Error{Code: "limit", Status: 429, Message: "a limit in Settings → LLM refused this call"}
+	// ErrTimeout: the provider didn't answer in time and the request was cancelled. Its message names the model and
+	// what ran out: a streamed answer that went quiet ("the provider sent nothing for 10s"), or the call's time limit
+	// ("no answer in 3m0s"). Worth a retry, unlike a bad answer. A caller's own deadline or cancellation (a Go
+	// context, an AbortSignal in page code) ends the call as that caller's error instead.
+	ErrTimeout = &extkit.Error{Code: "timeout", Status: 504, Message: "the provider didn't answer in time"}
 )
 ```
 
@@ -27336,7 +27468,7 @@ type CallEvent struct {
 	Context context.Context
 
 	Kind string // "text", "image", "speech", "transcribe", "align", "music", "video" or "embed"
-	Op   string // the contract operation: "complete", "stream", "generate", "edit", "speak", ...
+	Op   string // the contract operation: "complete", "stream", "generate", "speak", ...
 	// Model is the call's "provider/model"; a handler may change it.
 	Model string
 	// Subject is whom the call is for (see WithSubject): "user:<collection>/<id>", "guest:<id>",
@@ -27449,14 +27581,23 @@ type ModelInfo struct {
 	Kinds    []string `json:"kinds"`
 	Inputs   []string `json:"inputs,omitempty"` // what it reads: text, image, audio...
 	// Reasoning is true for a model that thinks before answering (its thinking counts toward maxTokens).
-	Reasoning     bool    `json:"reasoning,omitempty"`
-	ContextTokens int     `json:"contextTokens,omitempty"`
-	Prices        []Price `json:"prices,omitempty"`
-	Description   string  `json:"description,omitempty"`
+	Reasoning     bool `json:"reasoning,omitempty"`
+	ContextTokens int  `json:"contextTokens,omitempty"`
+	// Prices are its listed prices, then the prices measured from this app's own calls, each marked by Source. None
+	// means its price isn't known.
+	Prices      []Price `json:"prices,omitempty"`
+	Description string  `json:"description,omitempty"`
+	// Size is how many parameters it has, as its maker names it: "1.7B", "27B", "30B (3B active)" for a
+	// mixture of experts.
+	Size string `json:"size,omitempty"`
+	// Features are what it can do beyond its kind, from the Feature constants.
+	Features []string `json:"features,omitempty"`
+	// Languages are the languages it speaks, writes or hears (ISO 639-1 codes), when the provider lists them.
+	Languages []string `json:"languages,omitempty"`
 }
 ```
 
-ModelInfo is one model, as each contract's models operation lists it.
+ModelInfo is one model, as each contract's models operation lists it. Every field past Kinds is optional: a provider fills what it says about the model, and nothing is guessed.
 
 ### Models
 
@@ -27507,10 +27648,15 @@ Passage is a piece of a search bucket that was added to a prompt, and where it c
 type Price struct {
 	Unit string  `json:"unit"`
 	USD  float64 `json:"usd"`
+	// Source is where the price comes from: "listed" (the provider's own model list; also when empty) or "measured"
+	// (what this app's calls to the model were billed, from the ledger: cost divided by what they used).
+	Source string `json:"source,omitempty"`
+	// Calls is, for a measured price, how many billed calls it was measured over.
+	Calls int `json:"calls,omitempty"`
 }
 ```
 
-Price is one of a model's listed prices: USD per Unit ("1M input tokens", "image", "second", "1M characters").
+Price is one of a model's prices: USD per Unit, one of the Unit constants. A price is a rate on one meter of a call; a model may list several (input and output tokens), and a call's cost is each meter's use times its rate, added up.
 
 ### SubjectParts
 
@@ -28492,7 +28638,7 @@ Source: https://pocketone.dev/docs/reference/go/llm/image/v1
 import imagev1 "pocketone.dev/ext/contracts/llm/image/v1"
 ```
 
-Package imagev1 is the llm.image/v1 contract: a model makes pictures from a prompt, or changes pictures it's given.
+Package imagev1 is the llm.image/v1 contract: a model makes pictures from a prompt, and from reference pictures.
 
 A wire contract at /api/\_c/llm.image/v1. In pb\_hooks it's $llm.image.
 
@@ -28516,7 +28662,7 @@ var W = extkit.NewWire(Contract, "llm", func(inner Image, g *extkit.Guard[Image]
 },
 	extkit.Op[Image]{
 		Name:   "generate",
-		Desc:   "Makes pictures from a prompt.",
+		Desc:   "Makes pictures from a prompt, and from the reference pictures it's given.",
 		Method: "POST",
 		Path:   "generate",
 		In:     reflect.TypeOf(GenerateInput{}),
@@ -28527,21 +28673,6 @@ var W = extkit.NewWire(Contract, "llm", func(inner Image, g *extkit.Guard[Image]
 				return nil, err
 			}
 			return impl.Generate(ctx, a, in)
-		},
-	},
-	extkit.Op[Image]{
-		Name:   "edit",
-		Desc:   "Changes the pictures it's given as the prompt says.",
-		Method: "POST",
-		Path:   "edit",
-		In:     reflect.TypeOf(EditInput{}),
-		Out:    extkit.OutJSON,
-		Invoke: func(ctx context.Context, impl Image, a extkit.Auth, req extkit.OpRequest) (any, error) {
-			var in EditInput
-			if err := extkit.DecodeInput(req.JSON, &in); err != nil {
-				return nil, err
-			}
-			return impl.Edit(ctx, a, in)
 		},
 	},
 	extkit.Op[Image]{
@@ -28566,14 +28697,6 @@ var W = extkit.NewWire(Contract, "llm", func(inner Image, g *extkit.Guard[Image]
 W is llm.image/v1's wire side: routes at /api/\_c/llm.image/v1/\<op>, action hooks, MCP tools and the client.
 
 ## Functions
-
-### OnEdit
-
-```go
-func OnEdit(owner any, fn func(e *extkit.CallEvent, in *EditInput) error)
-```
-
-OnEdit binds fn to edit calls on owner (an app, or a host's scope for calls the host answers). Call e.Next() to continue; return an error to refuse. in is the call's input; changes reach the provider.
 
 ### OnGenerate
 
@@ -28611,12 +28734,6 @@ func NewClient(baseURL, token string, hc *http.Client) *Client
 
 NewClient calls llm.image/v1 on the app at baseURL with token (a PocketBase auth token or an API token).
 
-### Client.Edit
-
-```go
-func (c *Client) Edit(ctx context.Context, _ extkit.Auth, in EditInput) (Result, error)
-```
-
 ### Client.Generate
 
 ```go
@@ -28629,17 +28746,6 @@ func (c *Client) Generate(ctx context.Context, _ extkit.Auth, in GenerateInput) 
 func (c *Client) Models(ctx context.Context, _ extkit.Auth, in llm.ModelsInput) (llm.Models, error)
 ```
 
-### EditInput
-
-```go
-type EditInput struct {
-	GenerateInput
-	Images []llm.File `json:"images"`
-}
-```
-
-EditInput is what to change, and the pictures to change.
-
 ### GenerateInput
 
 ```go
@@ -28649,8 +28755,12 @@ type GenerateInput struct {
 	N      int    `json:"n,omitempty"`    // how many (default 1)
 	Size   string `json:"size,omitempty"` // "1024x1024"
 	// AspectRatio is "16:9", "1:1"... for models that take one instead of a size.
-	AspectRatio string      `json:"aspectRatio,omitempty"`
-	Options     llm.Options `json:"options,omitempty"`
+	AspectRatio string `json:"aspectRatio,omitempty"`
+	// References are pictures the model draws from: one to change as the prompt says, or one whose style and
+	// characters a new scene keeps ("same style and characters; show them ..."). Only a model whose ModelInfo lists
+	// llm.FeatureReferenceImages takes them; any other answers not_supported or the provider's own error.
+	References []llm.File  `json:"references,omitempty"`
+	Options    llm.Options `json:"options,omitempty"`
 }
 ```
 
@@ -28660,14 +28770,10 @@ GenerateInput is what to draw.
 
 ```go
 type Image interface {
-	// Generate makes pictures from a prompt.
+	// Generate makes pictures from a prompt, and from the reference pictures it's given.
 	//
 	//op: POST generate
 	Generate(ctx context.Context, a extkit.Auth, in GenerateInput) (Result, error)
-	// Edit changes the pictures it's given as the prompt says.
-	//
-	//op: POST edit
-	Edit(ctx context.Context, a extkit.Auth, in EditInput) (Result, error)
 	// Models lists the image models of every provider in Settings → LLM.
 	//
 	//op: GET models scope=llm:read
@@ -29684,6 +29790,22 @@ var W = extkit.NewWire(Contract, "search", func(inner Search, g *extkit.Guard[Se
 			return impl.Search(ctx, a, in)
 		},
 	},
+	extkit.Op[Search]{
+		Name:   "sample",
+		Desc:   "Returns chunks picked at random from the buckets named: material to draw from (\"surprise me\", a topic nobody asked about), not matches. No query, no embedding, so it costs nothing. Like Search without a viewer, it may return any chunk, a followed record's included.",
+		Method: "POST",
+		Path:   "sample",
+		Scope:  "search:read",
+		In:     reflect.TypeOf(SampleInput{}),
+		Out:    extkit.OutJSON,
+		Invoke: func(ctx context.Context, impl Search, a extkit.Auth, req extkit.OpRequest) (any, error) {
+			var in SampleInput
+			if err := extkit.DecodeInput(req.JSON, &in); err != nil {
+				return nil, err
+			}
+			return impl.Sample(ctx, a, in)
+		},
+	},
 )
 ```
 
@@ -29810,6 +29932,14 @@ func OnRemove(owner any, fn func(e *extkit.CallEvent, in *RemoveInput) error)
 ```
 
 OnRemove binds fn to remove calls on owner (an app, or a host's scope for calls the host answers). Call e.Next() to continue; return an error to refuse. in is the call's input; changes reach the provider.
+
+### OnSample
+
+```go
+func OnSample(owner any, fn func(e *extkit.CallEvent, in *SampleInput) error)
+```
+
+OnSample binds fn to sample calls on owner (an app, or a host's scope for calls the host answers). Call e.Next() to continue; return an error to refuse. in is the call's input; changes reach the provider.
 
 ### OnSearch
 
@@ -30025,6 +30155,12 @@ func (c *Client) Refresh(ctx context.Context, _ extkit.Auth, in SourceRef) (Sour
 
 ```go
 func (c *Client) Remove(ctx context.Context, _ extkit.Auth, in RemoveInput) (Removed, error)
+```
+
+### Client.Sample
+
+```go
+func (c *Client) Sample(ctx context.Context, _ extkit.Auth, in SampleInput) (Results, error)
 ```
 
 ### Client.Search
@@ -30271,7 +30407,22 @@ type Results struct {
 }
 ```
 
-Results are the best matches, best first.
+Results are the best matches, best first (a Sample's are in no order, with no score).
+
+### SampleInput
+
+```go
+type SampleInput struct {
+	// Buckets are drawn from together; none draws from every bucket. Bucket is one more.
+	Buckets []string `json:"buckets,omitempty"`
+	Bucket  string   `json:"bucket,omitempty"`
+	Count   int      `json:"count,omitempty"` // default 5, at most 50
+	// Prefix keeps chunks from documents whose name starts with it.
+	Prefix string `json:"prefix,omitempty"`
+}
+```
+
+SampleInput is where to draw random chunks from.
 
 ### Search
 
@@ -30368,6 +30519,12 @@ type Search interface {
 	//
 	//op: POST search scope=search:read
 	Search(ctx context.Context, a extkit.Auth, in SearchInput) (Results, error)
+	// Sample returns chunks picked at random from the buckets named: material to draw from ("surprise me", a topic
+	// nobody asked about), not matches. No query, no embedding, so it costs nothing. Like Search without a viewer, it
+	// may return any chunk, a followed record's included.
+	//
+	//op: POST sample scope=search:read
+	Sample(ctx context.Context, a extkit.Auth, in SampleInput) (Results, error)
 }
 ```
 
@@ -30551,6 +30708,20 @@ A wire contract at /api/\_c/llm.speech/v1. In pb\_hooks it's $llm.speech.
 
 Source: [`ext/contracts/llm/speech/v1`](https://github.com/pocketonehq/pocketone/tree/main/ext/contracts/llm/speech/v1).
 
+## Constants
+
+<a id="modebuiltin"></a><a id="modedesign"></a><a id="modeclone"></a>
+
+```go
+const (
+	ModeBuiltin = "builtin"
+	ModeDesign  = "design"
+	ModeClone   = "clone"
+)
+```
+
+Voice modes, in Voice.Mode.
+
 ## Variables
 
 <a id="contract"></a>
@@ -30705,9 +30876,14 @@ type SpeakInput struct {
 	// Format is the audio format: mp3 (default), wav, opus, flac, pcm, as the provider allows.
 	Format string  `json:"format,omitempty"`
 	Speed  float64 `json:"speed,omitempty"`
-	// Instructions describe the delivery ("slow and calm, a bedtime voice"), for models that take them.
-	Instructions string      `json:"instructions,omitempty"`
-	Options      llm.Options `json:"options,omitempty"`
+	// Instructions describe the delivery ("slow and calm, a bedtime voice"), for models that take them. Not with a
+	// Reference: a cloned voice takes its delivery from the clip.
+	Instructions string `json:"instructions,omitempty"`
+	// Reference clones a voice: the model reads Text in the voice of this clip. Leave Voice empty (or the model's
+	// clone voice, Voices' Mode "clone"). Models that clone list a voice with that mode; a provider that doesn't clone
+	// refuses the call with llm.ErrNotSupported. Nothing is saved at the provider: send the clip with every call.
+	Reference *VoiceReference `json:"reference,omitempty"`
+	Options   llm.Options     `json:"options,omitempty"`
 }
 ```
 
@@ -30742,6 +30918,11 @@ type Voice struct {
 	Name     string `json:"name,omitempty"`
 	Language string `json:"language,omitempty"`
 	Gender   string `json:"gender,omitempty"`
+	// Mode is how the voice is made, when the provider says: "builtin" (a speaker the model has), "design" (a new
+	// voice described in Instructions) or "clone" (the voice of a Reference clip). A model with a "clone" voice
+	// clones.
+	Mode        string `json:"mode,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 ```
 
@@ -30756,6 +30937,28 @@ type VoiceList struct {
 ```
 
 VoiceList is a model's voices.
+
+### VoiceList.Clones
+
+```go
+func (l VoiceList) Clones() bool
+```
+
+Clones reports whether a model's voices include a clone voice, so a Reference works with it.
+
+### VoiceReference
+
+```go
+type VoiceReference struct {
+	// Audio is the clip, with its data: a short, clean recording (10 to 30 seconds) read the way the model should
+	// speak. Its Name's extension (me.wav) or Type tells the provider the format.
+	Audio llm.File `json:"audio"`
+	// Text is what the clip says, word for word. Optional, but most models match the voice more closely with it.
+	Text string `json:"text,omitempty"`
+}
+```
+
+VoiceReference is a clip of the voice to imitate.
 
 ### VoicesInput
 
@@ -34547,28 +34750,16 @@ Returns `Promise<LlmModels>`.
 ### $llm.image.generateAsync()
 
 ```ts
-$llm.image.generateAsync(opts: { model: string; prompt: string; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any> }): Promise<{ files: LlmFile[]; model: string; usage: LlmUsage }>
+$llm.image.generateAsync(opts: { model: string; prompt: string; references?: LlmFile[]; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any>; signal?: AbortSignal }): Promise<{ files: LlmFile[]; model: string; usage: LlmUsage }>
 ```
 
-Makes pictures from a prompt: n of them, at a size or aspect ratio the provider supports.
+Makes pictures from a prompt: n of them, at a size or aspect ratio the provider supports. references are pictures
+it draws from: one to change, or one whose style and characters a new scene keeps. Only models with the feature
+"reference images" take them (Vultr, OpenRouter).
 
 | Parameter | Type | |
 |---|---|---|
-| `opts` | `{ model: string; prompt: string; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any> }` |  |
-
-Returns `Promise<{ files: LlmFile[]; model: string; usage: LlmUsage }>`.
-
-### $llm.image.editAsync()
-
-```ts
-$llm.image.editAsync(opts: { model: string; prompt: string; images: LlmFile[]; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any> }): Promise<{ files: LlmFile[]; model: string; usage: LlmUsage }>
-```
-
-Changes pictures by a prompt (providers that edit: OpenRouter, OpenAI-compatible).
-
-| Parameter | Type | |
-|---|---|---|
-| `opts` | `{ model: string; prompt: string; images: LlmFile[]; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any> }` |  |
+| `opts` | `{ model: string; prompt: string; references?: LlmFile[]; n?: number; size?: string; aspectRatio?: string; options?: Record<string, any>; signal?: AbortSignal }` |  |
 
 Returns `Promise<{ files: LlmFile[]; model: string; usage: LlmUsage }>`.
 
@@ -34591,30 +34782,30 @@ Returns `Promise<LlmModels>`.
 ### $llm.speech.speakAsync()
 
 ```ts
-$llm.speech.speakAsync(opts: { model: string; text: string; voice?: string; format?: string; speed?: number; instructions?: string; options?: Record<string, any> }): Promise<{ file: LlmFile; model: string; usage: LlmUsage }>
+$llm.speech.speakAsync(opts: { model: string; text: string; voice?: string; format?: string; speed?: number; instructions?: string; reference?: { audio: LlmFile; text?: string }; options?: Record<string, any>; signal?: AbortSignal }): Promise<{ file: LlmFile; model: string; usage: LlmUsage }>
 ```
 
-Reads text aloud in a voice, as an audio file.
+reference clones a voice: the text is read in the voice of that clip (leave voice and instructions out). Providers that don't clone refuse it.
 
 | Parameter | Type | |
 |---|---|---|
-| `opts` | `{ model: string; text: string; voice?: string; format?: string; speed?: number; instructions?: string; options?: Record<string, any> }` |  |
+| `opts` | `{ model: string; text: string; voice?: string; format?: string; speed?: number; instructions?: string; reference?: { audio: LlmFile; text?: string }; options?: Record<string, any>; signal?: AbortSignal }` |  |
 
 Returns `Promise<{ file: LlmFile; model: string; usage: LlmUsage }>`.
 
 ### $llm.speech.voicesAsync()
 
 ```ts
-$llm.speech.voicesAsync(model: string): Promise<{ id: string; name?: string; language?: string; gender?: string }[]>
+$llm.speech.voicesAsync(model: string): Promise<{ id: string; name?: string; language?: string; gender?: string; mode?: "builtin" | "design" | "clone"; description?: string }[]>
 ```
 
-The voices a speech model offers.
+A model clones when one of its voices has mode "clone".
 
 | Parameter | Type | |
 |---|---|---|
 | `model` | `string` |  |
 
-Returns `Promise<{ id: string; name?: string; language?: string; gender?: string }[]>`.
+Returns `Promise<{ id: string; name?: string; language?: string; gender?: string; mode?: "builtin" | "design" | "clone"; description?: string }[]>`.
 
 ### $llm.speech.modelsAsync()
 
@@ -34635,14 +34826,14 @@ Returns `Promise<LlmModels>`.
 ### $llm.transcribe.transcribeAsync()
 
 ```ts
-$llm.transcribe.transcribeAsync(opts: { model: string; audio: LlmFile; language?: string; prompt?: string; options?: Record<string, any> }): Promise<{ text: string; language?: string; model: string; usage: LlmUsage }>
+$llm.transcribe.transcribeAsync(opts: { model: string; audio: LlmFile; language?: string; prompt?: string; options?: Record<string, any>; signal?: AbortSignal }): Promise<{ text: string; language?: string; model: string; usage: LlmUsage }>
 ```
 
 Writes down what's said in a recording.
 
 | Parameter | Type | |
 |---|---|---|
-| `opts` | `{ model: string; audio: LlmFile; language?: string; prompt?: string; options?: Record<string, any> }` |  |
+| `opts` | `{ model: string; audio: LlmFile; language?: string; prompt?: string; options?: Record<string, any>; signal?: AbortSignal }` |  |
 
 Returns `Promise<{ text: string; language?: string; model: string; usage: LlmUsage }>`.
 
@@ -34667,14 +34858,14 @@ Forced alignment: when each line and word of a known text is said in its audio (
 ### $llm.align.alignAsync()
 
 ```ts
-$llm.align.alignAsync(opts: { model: string; audio: LlmFile; text: string; mode?: "speech" | "lyrics"; language?: string; options?: Record<string, any> }): Promise<{ duration: number lines: { index: number; text: string; start: number; end: number; score: number; certain: boolean; tag?: string }[] words: { line: number; text: string; start: number; end: number; score: number }[] unaligned?: { line: number; text: string; reason: string }[] model: string usage: LlmUsage }>
+$llm.align.alignAsync(opts: { model: string; audio: LlmFile; text: string; mode?: "speech" | "lyrics"; language?: string; options?: Record<string, any>; signal?: AbortSignal }): Promise<{ duration: number lines: { index: number; text: string; start: number; end: number; score: number; certain: boolean; tag?: string }[] words: { line: number; text: string; start: number; end: number; score: number }[] unaligned?: { line: number; text: string; reason: string }[] model: string usage: LlmUsage }>
 ```
 
 When each line and word of text is said in audio.
 
 | Parameter | Type | |
 |---|---|---|
-| `opts` | `{ model: string; audio: LlmFile; text: string; mode?: "speech" \| "lyrics"; language?: string; options?: Record<string, any> }` |  |
+| `opts` | `{ model: string; audio: LlmFile; text: string; mode?: "speech" \| "lyrics"; language?: string; options?: Record<string, any>; signal?: AbortSignal }` |  |
 
 Returns `Promise<{ duration: number lines: { index: number; text: string; start: number; end: number; score: number; certain: boolean; tag?: string }[] words: { line: number; text: string; start: number; end: number; score: number }[] unaligned?: { line: number; text: string; reason: string }[] model: string usage: LlmUsage }>`.
 
@@ -34699,14 +34890,14 @@ Music is a job: createAsync with wait ("5m") resolves once it's done, files incl
 ### $llm.music.createAsync()
 
 ```ts
-$llm.music.createAsync(opts: { model: string; prompt: string; lyrics?: string; seconds?: number; wait?: string; options?: Record<string, any> }): Promise<LlmJob>
+$llm.music.createAsync(opts: { model: string; prompt: string; lyrics?: string; seconds?: number; wait?: string; options?: Record<string, any>; signal?: AbortSignal }): Promise<LlmJob>
 ```
 
 Starts a piece of music; with wait ("5m") it resolves once it's done, files included.
 
 | Parameter | Type | |
 |---|---|---|
-| `opts` | `{ model: string; prompt: string; lyrics?: string; seconds?: number; wait?: string; options?: Record<string, any> }` |  |
+| `opts` | `{ model: string; prompt: string; lyrics?: string; seconds?: number; wait?: string; options?: Record<string, any>; signal?: AbortSignal }` |  |
 
 Returns `Promise<LlmJob>`.
 
@@ -34758,14 +34949,14 @@ Returns `Promise<LlmModels>`.
 ### $llm.video.createAsync()
 
 ```ts
-$llm.video.createAsync(opts: { model: string; prompt: string; image?: LlmFile; seconds?: number; size?: string; aspectRatio?: string; wait?: string; options?: Record<string, any> }): Promise<LlmJob>
+$llm.video.createAsync(opts: { model: string; prompt: string; image?: LlmFile; seconds?: number; size?: string; aspectRatio?: string; wait?: string; options?: Record<string, any>; signal?: AbortSignal }): Promise<LlmJob>
 ```
 
 Starts a video, optionally from a picture; with wait it resolves once it's done.
 
 | Parameter | Type | |
 |---|---|---|
-| `opts` | `{ model: string; prompt: string; image?: LlmFile; seconds?: number; size?: string; aspectRatio?: string; wait?: string; options?: Record<string, any> }` |  |
+| `opts` | `{ model: string; prompt: string; image?: LlmFile; seconds?: number; size?: string; aspectRatio?: string; wait?: string; options?: Record<string, any>; signal?: AbortSignal }` |  |
 
 Returns `Promise<LlmJob>`.
 
@@ -34817,14 +35008,14 @@ Returns `Promise<LlmModels>`.
 ### $llm.embed.embedAsync()
 
 ```ts
-$llm.embed.embedAsync(opts: { model: string; input: string[]; dimensions?: number; options?: Record<string, any> }): Promise<{ vectors: number[][]; model: string; usage: LlmUsage }>
+$llm.embed.embedAsync(opts: { model: string; input: string[]; dimensions?: number; options?: Record<string, any>; signal?: AbortSignal }): Promise<{ vectors: number[][]; model: string; usage: LlmUsage }>
 ```
 
 Turns each text into a vector, for search and similarity.
 
 | Parameter | Type | |
 |---|---|---|
-| `opts` | `{ model: string; input: string[]; dimensions?: number; options?: Record<string, any> }` |  |
+| `opts` | `{ model: string; input: string[]; dimensions?: number; options?: Record<string, any>; signal?: AbortSignal }` |  |
 
 Returns `Promise<{ vectors: number[][]; model: string; usage: LlmUsage }>`.
 
@@ -34869,6 +35060,21 @@ The same, downloading a file the provider gave only a URL for.
 | `f` | `LlmFile` |  |
 
 Returns `Promise<any>`.
+
+### $llm.fromRecord()
+
+```ts
+$llm.fromRecord(record: core.Record, field: string): LlmFile
+```
+
+A record's stored file (the first in a file field) as an LlmFile with its bytes, to send to a model: speakAsync({ reference: { audio: $llm.fromRecord(rec, "clip"), text } }).
+
+| Parameter | Type | |
+|---|---|---|
+| `record` | `core.Record` |  |
+| `field` | `string` |  |
+
+Returns `LlmFile`.
 
 ### $llm.chat
 
@@ -35112,6 +35318,21 @@ $llm.search.documents(bucket: string | { bucket: string; source?: string; prefix
 
 Returns `SearchDocument[]`.
 
+### $llm.search.sample()
+
+```ts
+$llm.search.sample(o: string | { buckets?: string | string[]; bucket?: string; count?: number; prefix?: string }): SearchResult[]
+```
+
+Chunks picked at random from the buckets named (every bucket when none): material to draw from, not matches.
+Local and free (nothing is embedded). count defaults to 5, at most 50; prefix keeps documents whose name starts with it.
+
+| Parameter | Type | |
+|---|---|---|
+| `o` | `string \| { buckets?: string \| string[]; bucket?: string; count?: number; prefix?: string }` |  |
+
+Returns `SearchResult[]`.
+
 ### $llm.search.status()
 
 ```ts
@@ -35125,7 +35346,7 @@ Returns `{ model: string; chunks: number; embedded: number; note?: string }`.
 ### $llm.search.searchAsync()
 
 ```ts
-$llm.search.searchAsync(o: { query: string; buckets?: string | string[]; bucket?: string; limit?: number; prefix?: string; viewer?: core.Record | null })
+$llm.search.searchAsync(o: { query: string; buckets?: string | string[]; bucket?: string; limit?: number; prefix?: string; viewer?: core.Record | null; signal?: AbortSignal })
 ```
 
 The best matches for a query across buckets (all of them when none are named), best first. viewer (an auth record,
@@ -35133,7 +35354,7 @@ or null for a guest) leaves out records they can't view; left out, the search se
 
 | Parameter | Type | |
 |---|---|---|
-| `o` | `{ query: string; buckets?: string \| string[]; bucket?: string; limit?: number; prefix?: string; viewer?: core.Record \| null }` |  |
+| `o` | `{ query: string; buckets?: string \| string[]; bucket?: string; limit?: number; prefix?: string; viewer?: core.Record \| null; signal?: AbortSignal }` |  |
 
 ### $llm.search.Promise
 
@@ -35261,7 +35482,7 @@ type LlmUsage = { inputTokens?: number; outputTokens?: number; cachedTokens?: nu
 
 | Member | Type | |
 |---|---|---|
-| `models` | `{ id: string; provider: string; type: string; name?: string; kinds: string[]; inputs?: string[]; reasoning?: boolean; contextTokens?: number; prices?: { unit: string; usd: number }[]; description?: string }[]` |  |
+| `models` | `{ id: string; provider: string; type: string; name?: string; kinds: string[]; inputs?: string[]; reasoning?: boolean; contextTokens?: number; /** USD per unit ("1M input tokens", "1M output tokens", "1M cached input tokens", "1M tokens", "second", "megapixel", * "image", "1K characters", "request"): listed by the provider, or measured from this app's billed calls (calls: how * many). None: the price isn't known. */ prices?: { unit: string; usd: number; source?: "listed" \| "measured"; calls?: number }[]; description?: string; /** parameters, as its maker names them: "1.7B", "30B (3B active)" */ size?: string; /** "tools", "structured output", "vision", "audio input", "voice cloning", "voice design", "built-in voices", "lyrics" */ features?: string[]; /** ISO 639-1 codes */ languages?: string[] }[]` |  |
 
 ### LlmJob
 
@@ -35290,6 +35511,7 @@ type LlmMessage = { role: "system" | "user" | "assistant"; content: string }
 | `stop?` | `string[]` |  |
 | `reasoning?` | `"" \| "off" \| "low" \| "medium" \| "high"` | How much a reasoning model thinks first: "" (its default), "off", "low", "medium", "high". |
 | `options?` | `Record<string, any>` | The provider's own fields, passed through. |
+| `signal?` | `AbortSignal` | Cancels the call, provider request included: the promise rejects with signal.reason. |
 
 ### LlmPassage
 
@@ -35316,7 +35538,7 @@ type LlmTextAnswer = { text: string; data?: any; reasoning?: string; stopReason?
 ### LlmModelsOpts
 
 ```ts
-type LlmModelsOpts = { provider?: string }
+type LlmModelsOpts = { provider?: string; signal?: AbortSignal }
 ```
 
 ### LlmLedgerWindow
@@ -35362,7 +35584,7 @@ A billable call on its way to a provider, as $llm.onCall handlers see it.
 | Member | Type | |
 |---|---|---|
 | `kind` | `"text" \| "image" \| "speech" \| "transcribe" \| "align" \| "music" \| "video" \| "embed"` |  |
-| `op` | `string` | The operation: "complete", "stream", "generate", "edit", "speak", "transcribe", "align", "create" or "embed". |
+| `op` | `string` | The operation: "complete", "stream", "generate", "speak", "transcribe", "align", "create" or "embed". |
 | `model` | `string` | "provider/model"; change it to send the call to another model. |
 | `subject` | `string` | Whom the call is for: "user:<collection>/<id>", "guest:<id>", "guest:ip:<address>", "" or your own ("team:acme"). Change it to count the call elsewhere. |
 | `user` | `{ collection: string; id: string } \| null` | The signed-in user the call is for, or null. |
@@ -35443,7 +35665,7 @@ type LlmChatInfo = { id: string; title: string; summary: string; meta: any; mess
 | Member | Type | |
 |---|---|---|
 | `id` | `string` |  |
-| `sendAsync()` | `(text: string, opts?: LlmChatOptions & { onText?: (text: string) => boolean \| void; onReasoning?: (text: string) => boolean \| void; schema?: object \| string }): Promise<LlmTextAnswer>` | Asks and saves both turns. With onText, streams the answer to it as it's written. |
+| `sendAsync()` | `(text: string, opts?: LlmChatOptions & { onText?: (text: string) => boolean \| void; onReasoning?: (text: string) => boolean \| void; schema?: object \| string; signal?: AbortSignal }): Promise<LlmTextAnswer>` | Asks and saves both turns. With onText, streams the answer to it as it's written. |
 | `get()` | `(): LlmChatInfo` |  |
 | `history()` | `(opts?: { limit?: number; before?: string }): { id: string; role: "user" \| "assistant"; content: string; created: string }[]` |  |
 | `summary()` | `(): string` |  |
@@ -36359,7 +36581,7 @@ refuse.
 onLlmImageGenerate(handler: (e: contracts.CallEvent<contracts.llm.image.v1.GenerateInput>) => void): void
 ```
 
-Generate makes pictures from a prompt.
+Generate makes pictures from a prompt, and from the reference pictures it's given.
 
 Runs on every generate call to llm.image/v1, from any surface (HTTP, Go, MCP, the CLI): change e.input, or throw to
 refuse.
@@ -36367,21 +36589,6 @@ refuse.
 | Parameter | Type | |
 |---|---|---|
 | `handler` | `(e: contracts.CallEvent<contracts.llm.image.v1.GenerateInput>) => void` |  |
-
-### onLlmImageEdit()
-
-```ts
-onLlmImageEdit(handler: (e: contracts.CallEvent<contracts.llm.image.v1.EditInput>) => void): void
-```
-
-Edit changes the pictures it's given as the prompt says.
-
-Runs on every edit call to llm.image/v1, from any surface (HTTP, Go, MCP, the CLI): change e.input, or throw to
-refuse.
-
-| Parameter | Type | |
-|---|---|---|
-| `handler` | `(e: contracts.CallEvent<contracts.llm.image.v1.EditInput>) => void` |  |
 
 ### onLlmImageModels()
 
@@ -36830,6 +37037,23 @@ refuse.
 | Parameter | Type | |
 |---|---|---|
 | `handler` | `(e: contracts.CallEvent<contracts.llm.search.v1.SearchInput>) => void` |  |
+
+### onLlmSearchSample()
+
+```ts
+onLlmSearchSample(handler: (e: contracts.CallEvent<contracts.llm.search.v1.SampleInput>) => void): void
+```
+
+Sample returns chunks picked at random from the buckets named: material to draw from ("surprise me", a topic
+nobody asked about), not matches. No query, no embedding, so it costs nothing. Like Search without a viewer, it
+may return any chunk, a followed record's included.
+
+Runs on every sample call to llm.search/v1, from any surface (HTTP, Go, MCP, the CLI): change e.input, or throw to
+refuse.
+
+| Parameter | Type | |
+|---|---|---|
+| `handler` | `(e: contracts.CallEvent<contracts.llm.search.v1.SampleInput>) => void` |  |
 
 ### onLlmSpeechSpeak()
 
@@ -37509,21 +37733,8 @@ GenerateInput is what to draw.
 | `n` | `number` | how many (default 1) |
 | `size` | `string` | "1024x1024" |
 | `aspectRatio` | `string` | AspectRatio is "16:9", "1:1"... for models that take one instead of a size. |
+| `references` | `Array<LlmFile>` | References are pictures the model draws from: one to change as the prompt says, or one whose style and characters a new scene keeps ("same style and characters; show them ..."). Only a model whose ModelInfo lists llm.FeatureReferenceImages takes them; any other answers not_supported or the provider's own error. |
 | `options` | `Record<string, any>` |  |
-
-### contracts.llm.image.v1.EditInput
-
-EditInput is what to change, and the pictures to change.
-
-| Member | Type | |
-|---|---|---|
-| `model` | `string` |  |
-| `prompt` | `string` |  |
-| `n` | `number` |  |
-| `size` | `string` |  |
-| `aspectRatio` | `string` |  |
-| `options` | `Record<string, any>` |  |
-| `images` | `Array<LlmFile>` |  |
 
 ### contracts.llm.image.v1.LlmModelsInput
 
@@ -37799,6 +38010,17 @@ SearchInput is a query.
 | `prefix` | `string` | Prefix keeps matches from documents whose name starts with it. |
 | `viewer` | `Viewer \| null` |  |
 
+### contracts.llm.search.v1.SampleInput
+
+SampleInput is where to draw random chunks from.
+
+| Member | Type | |
+|---|---|---|
+| `buckets` | `Array<string>` | Buckets are drawn from together; none draws from every bucket. Bucket is one more. |
+| `bucket` | `string` |  |
+| `count` | `number` | default 5, at most 50 |
+| `prefix` | `string` | Prefix keeps chunks from documents whose name starts with it. |
+
 ### contracts.llm.search.v1.Viewer
 
 Viewer is who a search is for. Matches from records they can't view (the collection's view rule, as PocketBase
@@ -37820,7 +38042,8 @@ SpeakInput is what to say and how.
 | `voice` | `string` |  |
 | `format` | `string` | Format is the audio format: mp3 (default), wav, opus, flac, pcm, as the provider allows. |
 | `speed` | `number` |  |
-| `instructions` | `string` | Instructions describe the delivery ("slow and calm, a bedtime voice"), for models that take them. |
+| `instructions` | `string` | Instructions describe the delivery ("slow and calm, a bedtime voice"), for models that take them. Not with a Reference: a cloned voice takes its delivery from the clip. |
+| `reference` | `VoiceReference \| null` | Reference clones a voice: the model reads Text in the voice of this clip. Leave Voice empty (or the model's clone voice, Voices' Mode "clone"). Models that clone list a voice with that mode; a provider that doesn't clone refuses the call with llm.ErrNotSupported. Nothing is saved at the provider: send the clip with every call. |
 | `options` | `Record<string, any>` |  |
 
 ### contracts.llm.speech.v1.VoicesInput
@@ -37836,6 +38059,24 @@ VoicesInput names the model whose voices to list.
 | Member | Type | |
 |---|---|---|
 | `provider` | `string` |  |
+
+### contracts.llm.speech.v1.VoiceReference
+
+VoiceReference is a clip of the voice to imitate.
+
+| Member | Type | |
+|---|---|---|
+| `audio` | `LlmFile` | Audio is the clip, with its data: a short, clean recording (10 to 30 seconds) read the way the model should speak. Its Name's extension (me.wav) or Type tells the provider the format. |
+| `text` | `string` | Text is what the clip says, word for word. Optional, but most models match the voice more closely with it. |
+
+### contracts.llm.speech.v1.LlmFile
+
+| Member | Type | |
+|---|---|---|
+| `name` | `string` |  |
+| `type` | `string` |  |
+| `data` | `any` |  |
+| `url` | `string` |  |
 
 ### contracts.llm.text.v1.CompleteInput
 
@@ -38991,7 +39232,20 @@ page.Set("picture", f)
 ```
 
 `n` asks for several, `size` (`"1024x768"`) or `aspectRatio` (`"16:9"`) shapes them, as the model allows.
-`$llm.image.editAsync({ model, prompt, images: [file] })` changes pictures you give it (on OpenRouter).
+`references: [file]` gives the model pictures to draw from: one to change as the prompt says, or one whose style and
+characters a new scene keeps. Paint an anchor picture first and pass it with every other picture, and they share one
+look:
+
+```ts
+const anchor = (await $llm.image.generateAsync({ model, prompt: "a red fox in a blue scarf, watercolor" })).files[0]
+const next = await $llm.image.generateAsync({ model, references: [anchor],
+  prompt: "Same style and characters as the reference. Show the fox asleep under the stars." })
+```
+
+Only models whose listing has the feature `reference images` take them (`$llm.image.modelsAsync()`, each model's
+`features`): on Vultr `qwen-image-2.1` (up to 10; evaluation only, under the Qwen Research License) and `minimax-h3`
+(up to 9, a still at a time), and OpenRouter's image models that read images. Cloudflare and other OpenAI-compatible
+APIs answer `not_supported`.
 
 ## Speech
 
@@ -39002,6 +39256,26 @@ page.set("narration", $llm.file(r.file))
 
 `$llm.speech.voicesAsync(model)` lists a model's voices, where the provider says. `format` picks `mp3` (the default), `wav`,
 `opus` or what else the model makes.
+
+### A voice of your own
+
+Some models read in the voice of a clip you give them (voice cloning). Record 10 to 30 seconds read the way the story
+should sound, store it in a file field, and send it as `reference` with what it says:
+
+```ts
+const clip = $app.findFirstRecordByData("voices", "name", "mine")
+const r = await $llm.speech.speakAsync({
+  model: "vultr/qwen3-tts-12hz-1.7b",
+  text: storyPage,
+  reference: { audio: $llm.fromRecord(clip, "audio"), text: clip.getString("passage") },
+})
+```
+
+`$llm.fromRecord(record, field)` reads a stored file with its bytes, ready to send to a model. Leave out `voice` and
+`instructions`: a cloned voice takes its delivery from the clip. A model clones when one of its voices from
+`voicesAsync` has `mode: "clone"`. Nothing is saved at the provider, so the clip goes along on every call. Vultr and
+OpenRouter clone; Cloudflare and other OpenAI-compatible APIs refuse a `reference` with `not_supported`. Clone only a
+voice you have the right to use.
 
 ## Transcription
 
@@ -44686,133 +44960,6 @@ git fetch upstream master
 | Script | [`run.sh`](https://github.com/pocketonehq/pocketone/blob/main/.github/upstream-tests/run.sh) |
 | Exceptions | [`known-deviations.txt`](https://github.com/pocketonehq/pocketone/blob/main/.github/upstream-tests/known-deviations.txt) |
 | Every core change | [Changes we made to PocketBase](https://github.com/pocketonehq/pocketone#changes-we-made-to-pocketbase) |
-
-
----
-
-Source: https://pocketone.dev/docs/examples/bedtime-story
-
-# Bedtime Story
-
-Try it at [sleep.pocketone.dev](https://sleep.pocketone.dev). Source:
-[`ext/llm/examples/bedtime`](https://github.com/pocketonehq/pocketone/tree/main/ext/llm/examples/bedtime).
-
-You give it a topic, or leave it empty and it picks one: the universe, the mind, a moment in history. A minute or two
-later it plays the story: one narrator reading, pictures that slowly pan and zoom, the words lit up as they're said,
-and quiet music underneath. You choose the length and how many pictures. Each story is saved, so it can be replayed and
-shared.
-
-```
-pb_migrations/         stories, their listens, each call's cost, the saved tuning, audio samples
-pb_hooks/
-  admin_plugins.pb.js  registers the tuning screen with the dashboard
-pb_admin_ext/
-  bedtime/main.js      the tuning screen: Settings → Bedtime Story
-pb_pages/
-  index.ets            ask for a story, or Inspire me; stories told, most listened to first
-  inspire.ts           POST /inspire: a topic no story has covered yet
-  view.ts              POST /view: counts a listen
-  story.ts             POST /story: saves the record, starts making the story
-  story/[id].ets       progress while it's made, then the player
-  admin/tuning.ts      GET/POST /admin/tuning: the tuning (superusers only)
-  admin/sample.ts      POST /admin/sample: tries a piece with unsaved tuning (superusers only)
-  _private/story.ts    the default tuning, the limits and the six steps
-```
-
-**Making a story takes longer than a request should wait**, so `POST /story` saves a `stories` record with status
-`queued`, starts the work without awaiting it, and answers at once with the record's id. The work runs on in the
-background, saving its progress on the record after each step. The story page polls the record through PocketBase's
-records API (the collection's list and view rules are open, so anyone with the link can watch and play), and reloads
-into the player when the status is `done`.
-
-**The six steps** (`_private/story.ts`):
-
-1. **Write.** `$llm.text.completeAsync` with a JSON schema returns the title, the topic, a description of what recurs
-   in the pictures, and the story one sentence per item, in the prompt's language.
-2. **Read it aloud.** `$llm.speech.speakAsync` records one voiceover of the whole story, so the narrator's voice stays
-   the same throughout.
-3. **Align.** `$llm.align.alignAsync` takes the voiceover and the sentences and returns when each sentence and each word
-   is said. Nothing is transcribed: every word that comes back is one that was written.
-4. **Place the pictures.** The timed transcript goes back to the text model, which chooses the sentence where each
-   picture begins and what it shows, plus one style line for all of them and a prompt for the music.
-5. **Paint** the pictures with `$llm.image.generateAsync`, all at once, and
-6. **compose** the music with `$llm.music.createAsync({ wait })`, at the same time.
-
-The files (the voiceover, the pictures, the music) are saved on the record with `$llm.file()`, and the story with its
-timings in a JSON field. The pictures look alike because every prompt repeats the same style line and the same
-description of what recurs.
-
-**The player** (`story/[id].ets`) is plain HTML, CSS and a little JavaScript. One audio element plays the voiceover and
-drives everything else from its current time: the picture whose start has passed fades in, its slow pan and zoom is a
-CSS animation, placed by a negative `animation-delay` after a seek, and the caption shows the sentence being read with
-each word brightening at its start time. The music loops under the voice at low volume. A scrubber, the space bar and
-the arrow keys move through the story.
-
-**Inspire me** sends the titles and topics of every story told so far, and the topics it already suggested on this
-page, to the text model, which suggests one that none of them covers. **Listens:** after 10 seconds of actual listening
-(time playing, not scrubbing), the player posts `/view`, which adds one to the story's `views` in a single SQL update so
-listens at the same moment all count. The front page lists stories by it.
-
-## Tuning it from the dashboard
-
-Everything that shapes a story (the narrator's voice, what the models are told, how pictures and music are asked for,
-which models run and how much a day may cost) can be changed without touching code, from **Settings → Bedtime Story**
-in the PocketBase dashboard (`/_/`, superusers only). Each part has a **Sample** button, so you hear or see a change
-before any listener does.
-
-| Part | What you set | Sample |
-|---|---|---|
-| **Narrator** | **Voice:** `default`, a calm middle-aged woman with a low, clear voice, generated afresh each call; or `design`, a new voice made from the description in Instructions. **Instructions:** how `default` reads, or the voice itself for `design` ("A deep, calm older man's voice, slow and soft"). **Seed:** the same seed gives the same voice every time; empty lets it vary a little. **Speed:** 1 is normal. **Sample text:** what Sample reads. | Reads the sample text in that voice. `design` with no description is refused. |
-| **Writing the story** | The writer's instructions. Placeholders: `{minutes}`, `{minWords}`, `{maxWords}`, `{anyTopic}`. Keep the field names it mentions (title, language, topic, look, sentences): the shape of the answer is fixed. | Writes a 1-minute story on the topic you give (or one it picks) and shows its sentences. |
-| **Choosing the pictures** | The instructions that turn the timed transcript into pictures, their style and the music prompt (placeholder `{n}`), and the words added after every picture's prompt. | Paints one picture in the style you give. |
-| **Music** | The words added after every story's music prompt, and how many seconds of music to make (it loops). | Plays 20 seconds for the music prompt you give. |
-| **Inspire me** | The instructions for suggesting a topic no story has covered. | Suggests one. |
-| **Models and budget** | Each step's model as `provider/model` (a provider in Settings → LLM), and the daily budget in US dollars, with what's been spent today. | |
-
-**Sample** uses what's on the screen, saved or not, and shows which model answered, how long it took and what it cost.
-Samples are recorded with every other model call, but the daily budget never stops them. **Save changes** stores the
-tuning; every story started after that uses it. **Put back the defaults** forgets it.
-
-**What stories remember.** Since the tuning can change, each story keeps how it was made: the seconds it took and the
-models and voice that made it. The story's splash shows them with its date and cost, for example "Made Nov 22, 2026 in
-21 s for $0.057", then writing `vultr/mimo-v2.6-flash`, voice `vultr/auk`, narrator `default, seed 7`.
-
-**How it's built.**
-
-- **Where the tuning lives.** `_private/story.ts` holds the defaults (`DEFAULT_TUNING`, with models overridable from
-  the environment). A save writes the changed values to a `settings` record (key `tuning`, open to no one but
-  superusers and the app), and `tuning(app)` merges it over the defaults each time a story or a suggestion starts.
-  `/admin/sample` merges the screen's unsaved values over that again, so a sample never changes what listeners get.
-- **The screen is a dashboard extension**, registered from `pb_hooks` the way
-  [PocketHost's guide](https://pockethost.io/docs/admin-extensions) shows. The hook hands PocketBase the folder
-  holding the screen:
-
-  ```js
-  // pb_hooks/admin_plugins.pb.js
-  $app.onServe().bindFunc((e) => {
-    e.uiExtensions.push({ name: "bedtime", fs: $os.dirFS(`${__hooks}/../pb_admin_ext/bedtime`) })
-    e.next()
-  })
-  ```
-
-  PocketBase serves the folder at `/_/extensions/bedtime/` and loads its `main.js` into the dashboard. `main.js` adds
-  the Settings entry (`app.store.settingsNavGroups`) and the page (`app.routes.superuserOnly("#/settings/bedtime", ...)`),
-  built from the dashboard's own pieces, and calls `/admin/tuning` and `/admin/sample` with `app.pb.send`, which carries
-  the signed-in superuser's token. Those two endpoints answer only superusers.
-- **Audio samples are saved, then played.** The dashboard plays media only from its own address (its
-  Content-Security-Policy blocks `data:` audio), so each audio sample is saved in a `samples` collection, viewable by
-  its random id only and trimmed to the last 20, and played from `/api/files/...`. Picture samples come back inline.
-
-## Guards for a public copy
-
-Every model call's cost (`usage.costMicroUSD`) is saved as a row; once the day's total
-(from 00:00 UTC) reaches the budget, $1 by default, the form turns off with "Out of tokens for today" and the API
-refuses new stories. Before anything is made, the app checks that each model's provider is set up, answering and
-offering that model, and refuses the same way when it isn't. Stories are at most 5 minutes with 5 pictures, held both
-in the form and in the API.
-
-A 1-minute story with three pictures takes under a minute to make and costs a few cents on Vultr, most of it the
-pictures and the music.
 
 
 ---

@@ -1199,36 +1199,15 @@ From [llm.embed/v1](/docs/contracts/llm.embed/v1) (generated).
 
 Calls llm.image/v1 on a remote
 
-### pocketone remote llm image edit
-
-Changes the pictures it's given as the prompt says (llm.image/v1)
-
-```
-pocketone remote llm image edit
-```
-
-Changes the pictures it's given as the prompt says.
-
-Calls POST /api/\_c/llm.image/v1/edit on the remote (token scope: llm).
-
-| Flag | Type | Default | |
-|---|---|---|---|
-| `--generateinput` | string | – | a JSON value (@file reads a file) |
-| `--images` | string | – | a JSON value (@file reads a file) |
-| `--json` | string | – | the whole input as JSON (@file reads a file, - reads stdin); flags override its fields |
-| `-r`, `--remote` | string | – | the remote (a name or URL); default: the project's default remote |
-
-From [llm.image/v1](/docs/contracts/llm.image/v1) (generated).
-
 ### pocketone remote llm image generate
 
-Makes pictures from a prompt (llm.image/v1)
+Makes pictures from a prompt, and from the reference pictures it's given (llm.image/v1)
 
 ```
 pocketone remote llm image generate
 ```
 
-Makes pictures from a prompt.
+Makes pictures from a prompt, and from the reference pictures it's given.
 
 Calls POST /api/\_c/llm.image/v1/generate on the remote (token scope: llm).
 
@@ -1240,6 +1219,7 @@ Calls POST /api/\_c/llm.image/v1/generate on the remote (token scope: llm).
 | `--n` | int64 | `0` |  |
 | `--options` | string | – | a JSON value (@file reads a file) |
 | `--prompt` | string | – |  |
+| `--references` | string | – | a JSON value (@file reads a file) |
 | `-r`, `--remote` | string | – | the remote (a name or URL); default: the project's default remote |
 | `--size` | string | – |  |
 
@@ -1770,6 +1750,29 @@ Calls POST /api/\_c/llm.search/v1/remove on the remote (token scope: search).
 
 From [llm.search/v1](/docs/contracts/llm.search/v1) (generated).
 
+### pocketone remote llm search sample
+
+Returns chunks picked at random from the buckets named: material to draw from ("surprise me", a topic nobody asked about), not matches (llm.search/v1)
+
+```
+pocketone remote llm search sample
+```
+
+Returns chunks picked at random from the buckets named: material to draw from ("surprise me", a topic nobody asked about), not matches. No query, no embedding, so it costs nothing. Like Search without a viewer, it may return any chunk, a followed record's included.
+
+Calls POST /api/\_c/llm.search/v1/sample on the remote (token scope: search:read).
+
+| Flag | Type | Default | |
+|---|---|---|---|
+| `--bucket` | string | – |  |
+| `--buckets` | stringSlice | – |  |
+| `--count` | int64 | `0` |  |
+| `--json` | string | – | the whole input as JSON (@file reads a file, - reads stdin); flags override its fields |
+| `--prefix` | string | – |  |
+| `-r`, `--remote` | string | – | the remote (a name or URL); default: the project's default remote |
+
+From [llm.search/v1](/docs/contracts/llm.search/v1) (generated).
+
 ### pocketone remote llm search set-model
 
 Changes the app's embedding model ("provider/model" from llm.embed/v1's models; "" picks one again) (llm.search/v1)
@@ -1915,6 +1918,7 @@ Calls POST /api/\_c/llm.speech/v1/speak on the remote (token scope: llm).
 | `--json` | string | – | the whole input as JSON (@file reads a file, - reads stdin); flags override its fields |
 | `--model` | string | – |  |
 | `--options` | string | – | a JSON value (@file reads a file) |
+| `--reference` | string | – | a JSON value (@file reads a file) |
 | `-r`, `--remote` | string | – | the remote (a name or URL); default: the project's default remote |
 | `--speed` | float64 | `0` |  |
 | `--text` | string | – |  |

@@ -28,7 +28,7 @@ The Go packages under [`ext/contracts`](https://github.com/pocketonehq/pocketone
 | [`llm/align/v1`](https://pocketone.dev/docs/reference/go/llm/align/v1) | Package alignv1 is the llm.align/v1 contract: forced alignment. |
 | [`llm/chat/v1`](https://pocketone.dev/docs/reference/go/llm/chat/v1) | Package chatv1 is the llm.chat/v1 contract: stored conversations with the app's language model. |
 | [`llm/embed/v1`](https://pocketone.dev/docs/reference/go/llm/embed/v1) | Package embedv1 is the llm.embed/v1 contract: a model turns texts into vectors, for search by meaning. |
-| [`llm/image/v1`](https://pocketone.dev/docs/reference/go/llm/image/v1) | Package imagev1 is the llm.image/v1 contract: a model makes pictures from a prompt, or changes pictures it's given. |
+| [`llm/image/v1`](https://pocketone.dev/docs/reference/go/llm/image/v1) | Package imagev1 is the llm.image/v1 contract: a model makes pictures from a prompt, and from reference pictures. |
 | [`llm/ledger/v1`](https://pocketone.dev/docs/reference/go/llm/ledger/v1) | Package ledgerv1 is the llm.ledger/v1 contract: what an app's model calls have used and cost, read from the ledger every llm.* call leaves (the provider's own record of each call), and how much of each limit is left. |
 | [`llm/music/v1`](https://pocketone.dev/docs/reference/go/llm/music/v1) | Package musicv1 is the llm.music/v1 contract: a model makes music from a prompt (and lyrics). |
 | [`llm/search/v1`](https://pocketone.dev/docs/reference/go/llm/search/v1) | Package searchv1 is the llm.search/v1 contract: named buckets of content an app searches. |

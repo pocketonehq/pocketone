@@ -96,15 +96,16 @@ while a model works; there are no blocking versions to reach for. Each call name
 | `$llm.text.completeAsync({ model, system?, prompt \| messages, schema?, maxTokens?, temperature?, stop?, reasoning?, enrich?, options? })` | Answers: `{ text, data, reasoning, stopReason, model, usage, passages }`. With `schema`, `data` is the parsed JSON. With `enrich` (RAG: buckets to search, `["help"]`), the best passages from them are sent after the prompt and listed in `passages` ([LLM Search](https://pocketone.dev/docs/extensions/llm-search)). |
 | `$llm.text.streamAsync(opts, onText, onReasoning?)` | The same, calling `onText` with each piece as it's written (`false` stops it). |
 | `$llm.text.count(text \| messages)` | About how many tokens (four characters each). Local, so not async. |
-| `$llm.image.generateAsync({ model, prompt, n?, size?, aspectRatio? })`, `editAsync({ ..., images })` | Pictures: `{ files, model, usage }`. |
-| `$llm.speech.speakAsync({ model, text, voice?, format?, speed?, instructions? })`, `voicesAsync(model)` | Audio: `{ file, model, usage }`. |
+| `$llm.image.generateAsync({ model, prompt, references?, n?, size?, aspectRatio? })` | Pictures: `{ files, model, usage }`. `references` are pictures to draw from, on models with the feature `reference images`. |
+| `$llm.speech.speakAsync({ model, text, voice?, format?, speed?, instructions?, reference? })`, `voicesAsync(model)` | Audio: `{ file, model, usage }`. `reference: { audio, text? }` reads in the voice of that clip (voice cloning). |
 | `$llm.transcribe.transcribeAsync({ model, audio, language?, prompt? })` | Text from audio: `{ text, language, model, usage }`. |
 | `$llm.align.alignAsync({ model, audio, text, mode?, language? })` | When each line and word of `text` is said in `audio`: `{ duration, lines, words, unaligned, model, usage }`, in seconds. For captions timed to a voice. |
 | `$llm.music.createAsync({ model, prompt, lyrics?, seconds?, wait? })`, `getAsync(id)`, `contentAsync(id, index)` | Music, as a job (below). |
 | `$llm.video.createAsync({ model, prompt, image?, seconds?, size?, aspectRatio?, wait? })`, `getAsync(id)`, `contentAsync(id, index)` | Video, as a job. |
 | `$llm.embed.embedAsync({ model, input, dimensions? })` | One vector per text: `{ vectors, model, usage }`. |
-| `$llm.<kind>.modelsAsync({ provider? })` | The models your providers offer of that kind, with prices where the provider lists them. |
+| `$llm.<kind>.modelsAsync({ provider? })` | The models your providers offer of that kind, with their prices, size, features and languages where known (below). |
 | `$llm.file(file)`, `$llm.fileAsync(file)` | A generated file as a PocketBase file, for `record.set("field", ...)`; `fileAsync` also downloads one the provider gave only a URL for. |
+| `$llm.fromRecord(record, field)` | The other way: a record's stored file as a file with its bytes, to send to a model (a voice clip, audio to transcribe). |
 | `$llm.chat.*` | Stored conversations, from the [LLM Chat](https://pocketone.dev/docs/extensions/llm-chat) extension. |
 
 **`reasoning`** is how much a reasoning model thinks before answering: `"off"`, `"low"`, `"medium"`, `"high"`, or left
@@ -127,9 +128,33 @@ whole number on every answer of every kind: what the provider charged when it sa
 media), else worked out from the model's listed prices and what the call used (tokens, cached tokens, pictures,
 seconds, characters), with `usage.costEstimated` true, else `0` (free, or no prices it can count).
 
+**Models and prices:** each model in a `models` answer carries what its provider says about it: `contextTokens`,
+`size` ("27B", "30B (3B active)"), `features` (`tools`, `structured output`, `vision`, `audio input`, `voice cloning`,
+`voice design`, `built-in voices`, `lyrics`), `languages`, and `prices`. A price is a rate on one meter, in US dollars
+per `unit`, and every provider's are given in the same units: `1M input tokens`, `1M output tokens`,
+`1M cached input tokens`, `second` (of audio or video made, or read), `megapixel`, `image`, `1K characters` (read
+aloud), `request`. Its `source` is `listed` (the provider's own list) or `measured`: what this app's calls to the model
+were actually billed, from the ledger, over `calls` calls (text in `1M tokens`, in and out together, since a bill
+doesn't split them; pictures per `request`). Costs worked out from listed prices never count toward a measured one.
+No prices means the price isn't known. Extras a call may not use (web search, cache writes, images sent in) aren't
+listed, and a model with a price in a unit that can't be put in these (per inference step) lists none rather than
+look cheaper than it is.
+
+Settings → LLM lists every model of each kind across your providers under **Models**, searchable and cheapest first.
+Other dashboard screens use the same pieces through `window.pocketone.llm`: `select({ kind, value, onchange })` is a
+searchable dropdown of a kind's models with their prices. Give it the work the model is
+for, `job: () => ({ "1M input tokens": 0.006, "1M output tokens": 0.002 })` (how much of each price unit the work uses)
+and `per: "a story"`, and each model also shows what that work costs on it ("≈ $0.0012 a story", "≥" when it lists only
+one side of the tokens), cheapest first. `browser({ kinds?, kind? })` is the whole list, and `models(kind)`,
+`prices(model)`, `priceText(model)`, `rank(model)` and `costFor(model, job)` the data underneath.
+
 **Errors** have a code: `not_configured` (no providers yet), `unknown_model` (no model named, or no provider by that
 name), `not_supported` (that provider type doesn't do this kind), `provider` (the provider's own error, its message
-kept, with the provider's name in front), `timeout`.
+kept, with the provider's name in front), `timeout` (the provider didn't answer in time; the request was cancelled).
+Text calls always stream from the provider, so a stalled answer fails after a few seconds of silence (10 s on Vultr and
+OpenRouter), and every call has an overall limit by kind. To give up sooner, pass `signal` (an `AbortSignal`) in any
+call's options, `{ signal: AbortSignal.timeout(30_000) }`: the promise rejects with its reason and the provider's request
+is cancelled ([Time limits](https://pocketone.dev/docs/extensions/llm#time-limits)).
 
 **Over HTTP** each kind is a contract at `/api/_c/llm.<kind>/v1/` (`llm.text/v1/complete`, `llm.image/v1/generate`...),
 for superusers and for API tokens with the `llm` scope (`llm:read` for `models`, `voices`, `get` and `content`); see
@@ -139,9 +164,9 @@ What each provider type covers:
 
 | | Text | Pictures | Speech | Transcription | Music | Video | Embeddings |
 |---|---|---|---|---|---|---|---|
-| `vultr` | yes | yes | yes, with voices | yes | yes (job) | yes (job) | yes |
+| `vultr` | yes | yes (and references) | yes, with voices and cloning | yes | yes (job) | yes (job) | yes |
 | `cloudflare` | yes | yes | yes | yes | | | yes |
-| `openrouter` | yes | yes (and edits) | yes, with voices | yes | | yes (job) | yes |
+| `openrouter` | yes | yes (and references) | yes, with voices and cloning | yes | | yes (job) | yes |
 | `openai` | yes | yes | yes | yes | | | yes |
 
 An `openai` provider's model list names only ids, so each model's kind is guessed from its name (`whisper` is
@@ -169,8 +194,7 @@ Generated from the `pocketone` binary and the contracts this extension provides.
 
 | Operation | CLI | REST | MCP |
 |---|---|---|---|
-| [generate](https://pocketone.dev/docs/contracts/llm.image/v1#generate) | `pocketone remote llm image generate --model <value> --prompt <value> --n <n> --size <value> --aspectratio <value> --options <json>` | `POST /api/_c/llm.image/v1/generate` | `llm_image_generate` |
-| [edit](https://pocketone.dev/docs/contracts/llm.image/v1#edit) | `pocketone remote llm image edit --generateinput <json> --images <json>` | `POST /api/_c/llm.image/v1/edit` | `llm_image_edit` |
+| [generate](https://pocketone.dev/docs/contracts/llm.image/v1#generate) | `pocketone remote llm image generate --model <value> --prompt <value> --n <n> --size <value> --aspectratio <value> --references <json> --options <json>` | `POST /api/_c/llm.image/v1/generate` | `llm_image_generate` |
 | [models](https://pocketone.dev/docs/contracts/llm.image/v1#models) | `pocketone remote llm image models --provider <value>` | `GET /api/_c/llm.image/v1/models` | `llm_image_models` |
 
 ### [llm.ledger/v1](https://pocketone.dev/docs/contracts/llm.ledger/v1)
@@ -195,7 +219,7 @@ Generated from the `pocketone` binary and the contracts this extension provides.
 
 | Operation | CLI | REST | MCP |
 |---|---|---|---|
-| [speak](https://pocketone.dev/docs/contracts/llm.speech/v1#speak) | `pocketone remote llm speech speak --model <value> --text <value> --voice <value> --format <value> --speed <n> --instructions <value> --options <json>` | `POST /api/_c/llm.speech/v1/speak` | `llm_speech_speak` |
+| [speak](https://pocketone.dev/docs/contracts/llm.speech/v1#speak) | `pocketone remote llm speech speak --model <value> --text <value> --voice <value> --format <value> --speed <n> --instructions <value> --reference <json> --options <json>` | `POST /api/_c/llm.speech/v1/speak` | `llm_speech_speak` |
 | [voices](https://pocketone.dev/docs/contracts/llm.speech/v1#voices) | `pocketone remote llm speech voices --model <value>` | `POST /api/_c/llm.speech/v1/voices` | `llm_speech_voices` |
 | [models](https://pocketone.dev/docs/contracts/llm.speech/v1#models) | `pocketone remote llm speech models --provider <value>` | `GET /api/_c/llm.speech/v1/models` | `llm_speech_models` |
 

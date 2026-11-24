@@ -404,3 +404,43 @@ func pageURL(pattern, file string) string {
 	}
 	return u
 }
+
+// Sample implements search/v1: chunks picked at random from the buckets named (every bucket when none), no query and
+// no embedding.
+func (s *service) Sample(_ context.Context, _ extkit.Auth, in searchv1.SampleInput) (searchv1.Results, error) {
+	out := searchv1.Results{Results: []searchv1.Result{}}
+	buckets, err := s.searchBuckets(searchv1.SearchInput{Buckets: in.Buckets, Bucket: in.Bucket})
+	if err != nil || len(buckets) == 0 {
+		return out, err
+	}
+	count := in.Count
+	if count <= 0 {
+		count = DefaultLimit
+	}
+	count = min(count, MaxLimit)
+	ids := make([]any, len(buckets))
+	nameOf := map[string]string{}
+	for i, b := range buckets {
+		ids[i] = b.Id
+		nameOf[b.Id] = b.GetString("name")
+	}
+	where := dbx.And(dbx.In("c.bucket", ids...), dbx.NewExp("c.text != ''"))
+	if in.Prefix != "" {
+		where = dbx.And(where, dbx.Like("d.name", in.Prefix).Match(false, true))
+	}
+	var rows []chunkRow
+	err = s.app.DB().Select("c.id AS id", "c.text AS text", "c.heading AS heading", "c.anchor AS anchor", "c.start_line AS start_line",
+		"c.end_line AS end_line", "d.name AS name", "d.record AS record", "c.bucket AS bucket", "s.name AS source",
+		"s.kind AS kind", "s.spec AS spec").
+		From(ChunksCollection+" c").InnerJoin(DocumentsCollection+" d", dbx.NewExp("d.id = c.document")).
+		InnerJoin(SourcesCollection+" s", dbx.NewExp("s.id = d.src")).
+		Where(where).OrderBy("RANDOM()").Limit(int64(count)).All(&rows)
+	if err != nil {
+		return out, err
+	}
+	for _, r := range rows {
+		out.Results = append(out.Results, searchv1.Result{Bucket: nameOf[r.Bucket], Source: r.Source, Document: r.Name, Text: r.Text,
+			Heading: r.Heading, StartLine: r.StartLine, EndLine: r.EndLine, Record: recordRef(r.Record), URL: resultURL(r)})
+	}
+	return out, nil
+}

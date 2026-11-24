@@ -1,6 +1,6 @@
 ---
 owners: ["@benallfree"]
-summary: "Read text aloud: text in, an audio file out, in a voice the model offers."
+summary: "Read text aloud: text in, an audio file out, in a voice the model offers or one cloned from a clip."
 ---
 
 # llm.speech/v1
@@ -21,7 +21,14 @@ In page code it's `$llm.speech` (bound by the llm extension):
 const r = await $llm.speech.speakAsync({ model: "vultr/qwen3-tts-12hz-1.7b", text: page, voice: "vivian", instructions: "slow and calm" })
 record.set("narration", $llm.file(r.file))
 await $llm.speech.voicesAsync("vultr/qwen3-tts-12hz-1.7b")
+// a voice cloned from a stored clip: leave voice and instructions out
+await $llm.speech.speakAsync({ model: "vultr/qwen3-tts-12hz-1.7b", text: page, reference: { audio: $llm.fromRecord(clip, "audio"), text: clip.getString("passage") } })
 ```
+
+**Voice cloning.** `reference` (`{audio: File, text}`) asks the model to read in the voice of that clip; `text` is what
+the clip says, optional but closer with it. A model clones when one of its voices has `mode: "clone"` (`voices`), and a
+provider that doesn't clone answers `not_supported`. Nothing is saved at the provider: the clip goes with every call.
+`instructions` can't go with a `reference`.
 
 Over HTTP (a superuser, or a token with the scope shown):
 
@@ -31,8 +38,8 @@ Over HTTP (a superuser, or a token with the scope shown):
 | Voices | `POST /api/_c/llm.speech/v1/voices` | `{"model": "..."}` | `llm:read` |
 | Models | `GET /api/_c/llm.speech/v1/models` | `?provider=` (optional) | `llm:read` |
 
-`speak` answers `{"file": File, "model", "usage"}`; `voices` answers `{"voices": [{"id", "name", "language"}]}`
-(empty when the provider doesn't list them).
+`speak` answers `{"file": File, "model", "usage"}`; `voices` answers `{"voices": [{"id", "name", "language", "mode",
+"description"}]}` (empty when the provider doesn't list them; `mode` is `builtin`, `design` or `clone` when it says).
 
 Errors: `not_configured` (no providers), `unknown_model`, `not_supported`, `provider` (the cloud's own error), `timeout`.
 
@@ -42,7 +49,7 @@ From Go: `speechv1.Contract.Must(app)` (from `pocketone.dev/ext/contracts/llm/sp
 
 Implement `speechv1.Speech` and provide it in `Register` (`speechv1.Contract.Provide(app, impl)`). Route on the
 `provider/` prefix, answer `not_supported` for a provider that can't do this kind, `unknown_model` for a missing model
-or provider, and `provider` with the cloud's own message (never its key) when the cloud refuses. Fill `model` with the
+or provider (and for a `reference` on a provider that can't clone), and `provider` with the cloud's own message (never its key) when the cloud refuses. Fill `model` with the
 full `provider/model` that answered, and `usage` with what the provider reports.
 
 ## Extensions

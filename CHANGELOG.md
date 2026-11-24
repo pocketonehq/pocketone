@@ -43,6 +43,10 @@ every extension that got a new version, with a link to its changes. Upstream Poc
 
 ## Unreleased
 
+### Changed
+
+- The Story Time (Bedtime Story) example app is no longer in the repository or the docs' example apps.
+
 ### Fixed
 
 - Realtime messages reach each subscriber in the order they were sent: two quick changes to the same record could arrive swapped, so a client could end on the stale one.

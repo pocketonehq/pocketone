@@ -18,9 +18,16 @@ declare namespace contracts.llm.speech.v1 {
     format: string;
     speed: number;
     /**
-     * Instructions describe the delivery ("slow and calm, a bedtime voice"), for models that take them.
+     * Instructions describe the delivery ("slow and calm, a bedtime voice"), for models that take them. Not with a
+     * Reference: a cloned voice takes its delivery from the clip.
      */
     instructions: string;
+    /**
+     * Reference clones a voice: the model reads Text in the voice of this clip. Leave Voice empty (or the model's
+     * clone voice, Voices' Mode "clone"). Models that clone list a voice with that mode; a provider that doesn't clone
+     * refuses the call with llm.ErrNotSupported. Nothing is saved at the provider: send the clip with every call.
+     */
+    reference: VoiceReference | null;
     options: Record<string, any>;
   }
 
@@ -36,6 +43,28 @@ declare namespace contracts.llm.speech.v1 {
 
   interface LlmModelsInput {
     provider: string;
+  }
+
+  /**
+   * VoiceReference is a clip of the voice to imitate.
+   */
+  interface VoiceReference {
+    /**
+     * Audio is the clip, with its data: a short, clean recording (10 to 30 seconds) read the way the model should
+     * speak. Its Name's extension (me.wav) or Type tells the provider the format.
+     */
+    audio: LlmFile;
+    /**
+     * Text is what the clip says, word for word. Optional, but most models match the voice more closely with it.
+     */
+    text: string;
+  }
+
+  interface LlmFile {
+    name: string;
+    type: string;
+    data: any;
+    url: string;
   }
 }
 

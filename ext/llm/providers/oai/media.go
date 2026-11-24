@@ -105,13 +105,29 @@ func sniffImage(b []byte, format string) string {
 
 // SpeechRequest is POST /audio/speech. Voice is usually a name; Extra holds provider fields.
 type SpeechRequest struct {
-	Model          string         `json:"model"`
-	Input          string         `json:"input"`
-	Voice          any            `json:"voice,omitempty"`
-	Instructions   string         `json:"instructions,omitempty"`
-	ResponseFormat string         `json:"response_format,omitempty"` // mp3, opus, flac, wav, pcm
-	Speed          float64        `json:"speed,omitempty"`
-	Extra          map[string]any `json:"-"`
+	Model          string  `json:"model"`
+	Input          string  `json:"input"`
+	Voice          any     `json:"voice,omitempty"`
+	Instructions   string  `json:"instructions,omitempty"`
+	ResponseFormat string  `json:"response_format,omitempty"` // mp3, opus, flac, wav, pcm
+	Speed          float64 `json:"speed,omitempty"`
+	// InputReferences clone a voice (OpenRouter's shape, which Vultr takes too): one input_audio part with the clip
+	// and, optionally, a text part with what it says.
+	InputReferences []SpeechReference `json:"input_references,omitempty"`
+	Extra           map[string]any    `json:"-"`
+}
+
+// SpeechReference is one part of a voice-cloning reference.
+type SpeechReference struct {
+	Type       string      `json:"type"` // "input_audio" or "text"
+	InputAudio *InputAudio `json:"input_audio,omitempty"`
+	Text       string      `json:"text,omitempty"`
+}
+
+// InputAudio is a clip, base64-encoded, with its format (wav, mp3, flac, ogg, m4a, webm).
+type InputAudio struct {
+	Data   string `json:"data"`
+	Format string `json:"format,omitempty"`
 }
 
 // Speech turns text into audio and returns it whole.
@@ -132,7 +148,7 @@ func (c *Client) Speech(ctx context.Context, req SpeechRequest) (File, error) {
 func ReadFile(res *http.Response) (File, error) {
 	b, err := io.ReadAll(io.LimitReader(res.Body, 512<<20))
 	if err != nil {
-		return File{}, &Error{Status: res.StatusCode, Message: "reading the answer: " + err.Error()}
+		return File{}, &Error{Status: res.StatusCode, Message: "reading the answer: " + err.Error(), Err: err}
 	}
 	ct := res.Header.Get("Content-Type")
 	if mt, _, err := mime.ParseMediaType(ct); err == nil {
@@ -169,7 +185,7 @@ func (c *Client) Download(ctx context.Context, url string) (File, error) {
 	}
 	res, err := hc.Do(req)
 	if err != nil {
-		return File{}, &Error{Message: "download: " + err.Error()}
+		return File{}, &Error{Message: "download: " + err.Error(), Err: err}
 	}
 	defer res.Body.Close()
 	if res.StatusCode >= 300 {
@@ -177,7 +193,7 @@ func (c *Client) Download(ctx context.Context, url string) (File, error) {
 	}
 	b, err := io.ReadAll(io.LimitReader(res.Body, 2<<30))
 	if err != nil {
-		return File{}, &Error{Message: "download: " + err.Error()}
+		return File{}, &Error{Message: "download: " + err.Error(), Err: err}
 	}
 	ct := res.Header.Get("Content-Type")
 	if mt, _, err := mime.ParseMediaType(ct); err == nil {
@@ -234,7 +250,7 @@ func (c *Client) Transcribe(ctx context.Context, req TranscribeRequest) (Transcr
 	defer res.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 64<<20))
 	if err != nil {
-		return Transcript{}, &Error{Status: res.StatusCode, Message: "reading the answer: " + err.Error()}
+		return Transcript{}, &Error{Status: res.StatusCode, Message: "reading the answer: " + err.Error(), Err: err}
 	}
 	var v struct {
 		Text string `json:"text"`

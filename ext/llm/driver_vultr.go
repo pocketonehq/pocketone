@@ -3,6 +3,8 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"path"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -34,31 +36,73 @@ func (d *vultrDriver) models(ctx context.Context) ([]llmc.ModelInfo, error) {
 	}
 	out := make([]llmc.ModelInfo, 0, len(ms))
 	for _, m := range ms {
-		info := llmc.ModelInfo{ID: m.ID, Name: m.Name, Description: m.Description, Reasoning: m.Reasoning != nil}
+		info := llmc.ModelInfo{ID: m.ID, Name: m.Name, Description: m.Description, Reasoning: m.Reasoning != nil,
+			Size: sizeOf(m.HuggingFace, m.ID)}
+		video := slices.ContainsFunc(m.Outputs, func(o vultr.Output) bool { return o.Type == "video" })
+		references := slices.ContainsFunc(m.Inputs, func(in vultr.Input) bool { return in.Type == "image" && in.Supported.References != nil })
 		for _, in := range m.Inputs {
 			info.Inputs = append(info.Inputs, in.Type)
+			if in.Supported.MaxContext != nil && in.Type == "text" {
+				info.ContextTokens = in.Supported.MaxContext.Value
+			}
 		}
 		for _, o := range m.Outputs {
 			k := kindOfOutput(o.Type)
 			if o.Type == "audio" {
 				k = llmc.KindMusic
 			}
-			if k == "" {
+			// a model that makes video is a video model, though it can make a still too; it's an image model as well
+			// when it draws stills from reference images (minimax-h3)
+			if k == "" || (k == llmc.KindImage && video && !references) {
 				continue
+			}
+			if k == llmc.KindImage && references {
+				addFeature(&info, llmc.FeatureReferenceImages)
 			}
 			info.Kinds = append(info.Kinds, k)
 			for _, pr := range o.Pricing {
 				usd, _ := strconv.ParseFloat(pr.USD, 64)
-				unit := pr.Unit
-				if pr.Type != "" && !strings.Contains(unit, pr.Type) {
-					unit = pr.Type + " per " + unit
+				switch pr.Unit {
+				case "token":
+					if k == llmc.KindEmbed { // an embedding's tokens are the text it reads
+						addPrice(&info, llmc.UnitInputTokens, usd*1e6)
+					} else {
+						addPrice(&info, llmc.UnitOutputTokens, usd*1e6)
+					}
+				case "second":
+					addPrice(&info, llmc.UnitSecond, usd)
+				case "megapixel":
+					addPrice(&info, llmc.UnitMegapixel, usd)
 				}
-				info.Prices = append(info.Prices, llmc.Price{Unit: unit, USD: usd})
+			}
+			vultrFeatures(&info, k, o.Params)
+		}
+		if len(info.Kinds) == 0 {
+			continue
+		}
+		// what it costs to send: prompt tokens for text, seconds of audio for a transcriber
+		for _, in := range m.Inputs {
+			for _, pr := range in.Pricing {
+				usd, _ := strconv.ParseFloat(pr.USD, 64)
+				switch {
+				case in.Type == "text" && pr.Unit == "token":
+					addPrice(&info, llmc.UnitInputTokens, usd*1e6)
+				case in.Type == "audio" && pr.Unit == "second" && slices.Contains(info.Kinds, llmc.KindTranscribe):
+					addPrice(&info, llmc.UnitSecond, usd)
+				}
+			}
+			switch in.Type {
+			case "image":
+				if slices.Contains(info.Kinds, llmc.KindText) {
+					addFeature(&info, llmc.FeatureVision)
+				}
+			case "audio":
+				if slices.Contains(info.Kinds, llmc.KindText) {
+					addFeature(&info, llmc.FeatureAudioInput)
+				}
 			}
 		}
-		if len(info.Kinds) > 0 {
-			out = append(out, info)
-		}
+		out = append(out, info)
 	}
 	// the aligner is only in the authenticated catalog (GET /models/all), under its feature
 	if d.c.Key != "" {
@@ -109,18 +153,28 @@ func (d *vultrDriver) align(ctx context.Context, model string, in alignv1.AlignI
 }
 
 func (d *vultrDriver) complete(ctx context.Context, model string, in textv1.CompleteInput, onDelta func(string, string) bool) (textv1.CompleteResult, error) {
-	return chatComplete(ctx, d.c, chatRequest(model, in, reasoningEffort), onDelta)
+	return chatComplete(ctx, d.c, chatRequest(model, in, reasoningEffort), idleText(TypeVultr), onDelta)
 }
 
-func (d *vultrDriver) image(ctx context.Context, model string, in imagev1.GenerateInput, edit []llmc.File) (imagev1.Result, error) {
-	if len(edit) > 0 {
-		return imagev1.Result{}, d.no("image edits yet")
-	}
-	req := oai.ImageRequest{Model: model, Prompt: in.Prompt, N: in.N, Size: in.Size, ResponseFormat: "b64_json", Extra: in.Options}
+func (d *vultrDriver) image(ctx context.Context, model string, in imagev1.GenerateInput) (imagev1.Result, error) {
+	extra := map[string]any{}
 	if in.AspectRatio != "" {
-		req.Extra = merge(map[string]any{"aspect_ratio": in.AspectRatio}, in.Options)
+		extra["aspect_ratio"] = in.AspectRatio
 	}
-	r, err := d.c.Images(ctx, req)
+	// references go as OpenAI's JSON edit shape on /images/edits, each a data: URL (or its https URL). Only a model
+	// with reference editing takes them (its image input lists references); any other answers a 400 naming "images".
+	path := "images/generations"
+	if len(in.References) > 0 {
+		path = "images/edits"
+		images := make([]any, 0, len(in.References))
+		for _, f := range in.References {
+			images = append(images, map[string]any{"image_url": dataURL(f)})
+		}
+		extra["images"] = images
+	}
+	req := oai.ImageRequest{Model: model, Prompt: in.Prompt, N: in.N, Size: in.Size, ResponseFormat: "b64_json",
+		Extra: merge(extra, in.Options)}
+	r, err := d.c.ImagesAt(ctx, path, req)
 	if err != nil {
 		return imagev1.Result{}, err
 	}
@@ -132,8 +186,13 @@ func (d *vultrDriver) image(ctx context.Context, model string, in imagev1.Genera
 }
 
 func (d *vultrDriver) speak(ctx context.Context, model string, in speechv1.SpeakInput) (speechv1.Result, error) {
-	f, err := d.c.Speech(ctx, oai.SpeechRequest{Model: model, Input: in.Text, Voice: voiceOrNil(in.Voice), Instructions: in.Instructions,
-		ResponseFormat: orDefault(in.Format, "mp3"), Speed: in.Speed, Extra: in.Options})
+	voice := in.Voice
+	if in.Reference != nil && voice == "" {
+		voice = speechv1.ModeClone // Vultr's clone voice is named "clone" on every model that clones
+	}
+	f, err := d.c.Speech(ctx, oai.SpeechRequest{Model: model, Input: in.Text, Voice: voiceOrNil(voice), Instructions: in.Instructions,
+		ResponseFormat: orDefault(in.Format, "mp3"), Speed: in.Speed, InputReferences: speechReferences(in.Reference),
+		Extra: in.Options})
 	if err != nil {
 		return speechv1.Result{}, err
 	}
@@ -148,7 +207,7 @@ func (d *vultrDriver) voices(ctx context.Context, model string) ([]speechv1.Voic
 	}
 	out := make([]speechv1.Voice, 0, len(vs))
 	for _, v := range vs {
-		out = append(out, speechv1.Voice{ID: v.ID, Name: v.Name, Language: v.Language})
+		out = append(out, speechv1.Voice{ID: v.ID, Name: v.Name, Language: v.Language, Mode: v.Mode, Description: v.Description})
 	}
 	return out, nil
 }
@@ -282,6 +341,22 @@ func orDefault(s, def string) string {
 	return s
 }
 
+// speechReferences is a voice-cloning clip as OpenRouter's input_references (which Vultr takes too), or nil.
+func speechReferences(r *speechv1.VoiceReference) []oai.SpeechReference {
+	if r == nil {
+		return nil
+	}
+	format := strings.TrimPrefix(path.Ext(r.Audio.Name), ".")
+	if format == "" {
+		format = strings.TrimPrefix(extFor(r.Audio.Type), ".")
+	}
+	refs := []oai.SpeechReference{{Type: "input_audio", InputAudio: &oai.InputAudio{Data: b64(r.Audio.Data), Format: strings.ToLower(format)}}}
+	if t := strings.TrimSpace(r.Text); t != "" {
+		refs = append(refs, oai.SpeechReference{Type: "text", Text: t})
+	}
+	return refs
+}
+
 func voiceOrNil(v string) any {
 	if v == "" {
 		return nil
@@ -295,4 +370,44 @@ func dataURL(f llmc.File) string {
 		return f.URL
 	}
 	return "data:" + orDefault(f.Type, "application/octet-stream") + ";base64," + b64(f.Data)
+}
+
+// vultrFeatures reads what a model can do from the parameters its output takes.
+func vultrFeatures(info *llmc.ModelInfo, kind string, params map[string]json.RawMessage) {
+	if _, ok := params["tools"]; ok {
+		addFeature(info, llmc.FeatureTools)
+	}
+	if _, ok := params["structured_outputs"]; ok {
+		addFeature(info, llmc.FeatureStructured)
+	}
+	if _, ok := params["lyrics"]; ok && kind == llmc.KindMusic {
+		addFeature(info, llmc.FeatureLyrics)
+	}
+	var enum struct {
+		Values []string `json:"values"`
+	}
+	if v, ok := params["voice"]; ok && json.Unmarshal(v, &enum) == nil {
+		for _, voice := range enum.Values {
+			switch voice {
+			case "clone":
+				addFeature(info, llmc.FeatureVoiceCloning)
+			case "design":
+				addFeature(info, llmc.FeatureVoiceDesign)
+			case "default":
+			default:
+				addFeature(info, llmc.FeatureVoices)
+			}
+		}
+	}
+	if _, ok := params["input_references"]; ok && kind == llmc.KindSpeech {
+		addFeature(info, llmc.FeatureVoiceCloning)
+	}
+	enum.Values = nil
+	if v, ok := params["language"]; ok && json.Unmarshal(v, &enum) == nil {
+		for _, l := range enum.Values {
+			if len(l) == 2 && !slices.Contains(info.Languages, l) {
+				info.Languages = append(info.Languages, l)
+			}
+		}
+	}
 }

@@ -1,11 +1,11 @@
 ---
 owners: ["@benallfree"]
-summary: "Make pictures from a prompt, or change pictures you give it; they come back as files."
+summary: "Make pictures from a prompt, and from reference pictures you give it; they come back as files."
 ---
 
 # llm.image/v1
 
-A model makes pictures from a prompt, or changes the pictures it's given. They come back as files. Every call names its model as `provider/model`: a provider the app's admins added in Settings → LLM, a slash, and
+A model makes pictures from a prompt, and from reference pictures it's given. They come back as files. Every call names its model as `provider/model`: a provider the app's admins added in Settings → LLM, a slash, and
 that provider's own id for the model. Shared types (`File`, `Usage`, `ModelInfo`, `Job`, the errors) are in
 [`pocketone.dev/ext/contracts/llm`](../../llm.go).
 
@@ -22,15 +22,26 @@ const r = await $llm.image.generateAsync({ model: "vultr/z-image-turbo", prompt:
 record.set("cover", $llm.file(r.files[0]))
 ```
 
+`references` are pictures the model draws from: one to change as the prompt says, or one whose style and characters
+a new scene keeps. Paint an anchor picture first, then every other picture with it as the reference, and a story's
+pictures share one look:
+
+```js
+const anchor = (await $llm.image.generateAsync({ model, prompt: "a red fox in a blue scarf and a small owl in round glasses, watercolor" })).files[0]
+const next = await $llm.image.generateAsync({ model, prompt: "Same style and characters as the reference. Show them rowing across a misty pond.", references: [anchor] })
+```
+
+Only a model whose listing has the feature `"reference images"` takes references (`ModelInfo.Features`, from
+`models`); offer them only then. Any other model answers `not_supported`, or the provider's own error.
+
 Over HTTP (a superuser, or a token with the scope shown):
 
 | Operation | HTTP | Body | Token scope |
 |---|---|---|---|
-| Generate | `POST /api/_c/llm.image/v1/generate` | `{"model": "...", "prompt": "...", "n": 1, "size": "1024x1024"}` | `llm` |
-| Edit | `POST /api/_c/llm.image/v1/edit` | as Generate, with `"images": [File]` | `llm` |
+| Generate | `POST /api/_c/llm.image/v1/generate` | `{"model": "...", "prompt": "...", "n": 1, "size": "1024x1024", "references": [File]}` | `llm` |
 | Models | `GET /api/_c/llm.image/v1/models` | `?provider=` (optional) | `llm:read` |
 
-Both answer `{"files": [File], "model", "usage"}`. A `File` is `{"name", "type", "data", "url"}`: `data` is the bytes
+Generate answers `{"files": [File], "model", "usage"}`. A `File` is `{"name", "type", "data", "url"}`: `data` is the bytes
 (base64), `url` the provider's own copy when it keeps one.
 
 Errors: `not_configured` (no providers), `unknown_model`, `not_supported`, `provider` (the cloud's own error), `timeout`.
@@ -43,6 +54,18 @@ Implement `imagev1.Image` and provide it in `Register` (`imagev1.Contract.Provid
 `provider/` prefix, answer `not_supported` for a provider that can't do this kind, `unknown_model` for a missing model
 or provider, and `provider` with the cloud's own message (never its key) when the cloud refuses. Fill `model` with the
 full `provider/model` that answered, and `usage` with what the provider reports.
+
+List `"reference images"` (`llm.FeatureReferenceImages`) in a model's `Features` only when both the model and your
+provider take `references`; answer `not_supported` for references you can't send.
+
+## Decisions
+
+- **References are a field of Generate, not an Edit operation** (Ben, 2026-11-24). Drawing a new scene from a
+  reference isn't editing it, and providers treat both the same way: Vultr answers a generation with images as an edit.
+  The earlier `Edit` operation and `EditInput` are gone.
+- **A feature says which models take them**, not `inputs` containing `"image"`: `inputs` is what the provider says the
+  model reads, but whether `references` work also depends on the provider here (Cloudflare lists models that read
+  images, and its driver sends none).
 
 ## Extensions
 

@@ -30,6 +30,56 @@ const (
 
 Kinds are what a model makes, one contract each.
 
+<a id="unitinputtokens"></a><a id="unitcachedtokens"></a><a id="unitoutputtokens"></a><a id="unittokens"></a><a id="unitsecond"></a><a id="unitmegapixel"></a><a id="unitimage"></a><a id="unitcharacters"></a><a id="unitrequest"></a>
+
+```go
+const (
+	UnitInputTokens  = "1M input tokens"
+	UnitCachedTokens = "1M cached input tokens" // input tokens served from the provider's prompt cache
+	UnitOutputTokens = "1M output tokens"       // reasoning tokens count as output
+	// UnitTokens is input and output tokens together: the unit of a text model's measured price, since a call's bill
+	// doesn't say how much was for input and how much for output.
+	UnitTokens     = "1M tokens"
+	UnitSecond     = "second" // of audio or video made (speech, music, video) or read (transcribe, align)
+	UnitMegapixel  = "megapixel"
+	UnitImage      = "image"
+	UnitCharacters = "1K characters" // of text read aloud
+	UnitRequest    = "request"       // one call, whatever it used
+)
+```
+
+The units a Price is in. Every provider's prices are given in these, so prices compare across providers.
+
+<a id="sourcelisted"></a><a id="sourcemeasured"></a>
+
+```go
+const (
+	SourceListed   = "listed"
+	SourceMeasured = "measured"
+)
+```
+
+Price sources.
+
+<a id="featuretools"></a><a id="featurestructured"></a><a id="featurevision"></a><a id="featureaudioinput"></a><a id="featurevoicecloning"></a><a id="featurevoicedesign"></a><a id="featurevoices"></a><a id="featurelyrics"></a><a id="featurereferenceimages"></a>
+
+```go
+const (
+	FeatureTools        = "tools"             // calls functions the caller defines
+	FeatureStructured   = "structured output" // answers in a JSON schema
+	FeatureVision       = "vision"            // reads images
+	FeatureAudioInput   = "audio input"       // reads audio
+	FeatureVoiceCloning = "voice cloning"     // speaks in the voice of a reference clip
+	FeatureVoiceDesign  = "voice design"      // speaks in a voice described in words
+	FeatureVoices       = "built-in voices"   // has named voices to pick from
+	FeatureLyrics       = "lyrics"            // sings given lyrics
+	// FeatureReferenceImages is an image model that draws from pictures it's given (llm.image/v1's References).
+	FeatureReferenceImages = "reference images"
+)
+```
+
+Features a model has, as ModelInfo.Features lists them (a model that thinks before answering is Reasoning instead).
+
 <a id="jobqueued"></a><a id="jobrunning"></a><a id="jobdone"></a><a id="jobfailed"></a>
 
 ```go
@@ -61,7 +111,7 @@ LimitsPriority is the built-in limits handler's priority: after handlers with th
 
 ## Variables
 
-<a id="errnotconfigured"></a><a id="errunknownmodel"></a><a id="errnotsupported"></a><a id="errprovider"></a><a id="errlimit"></a>
+<a id="errnotconfigured"></a><a id="errunknownmodel"></a><a id="errnotsupported"></a><a id="errprovider"></a><a id="errlimit"></a><a id="errtimeout"></a>
 
 ```go
 var (
@@ -74,6 +124,11 @@ var (
 	// ErrLimit: a limit in Settings → LLM refused the call before it reached the provider. Each refusal says which
 	// limit and when its window resets ("try again after 00:00 UTC").
 	ErrLimit = &extkit.Error{Code: "limit", Status: 429, Message: "a limit in Settings → LLM refused this call"}
+	// ErrTimeout: the provider didn't answer in time and the request was cancelled. Its message names the model and
+	// what ran out: a streamed answer that went quiet ("the provider sent nothing for 10s"), or the call's time limit
+	// ("no answer in 3m0s"). Worth a retry, unlike a bad answer. A caller's own deadline or cancellation (a Go
+	// context, an AbortSignal in page code) ends the call as that caller's error instead.
+	ErrTimeout = &extkit.Error{Code: "timeout", Status: 504, Message: "the provider didn't answer in time"}
 )
 ```
 
@@ -191,7 +246,7 @@ type CallEvent struct {
 	Context context.Context
 
 	Kind string // "text", "image", "speech", "transcribe", "align", "music", "video" or "embed"
-	Op   string // the contract operation: "complete", "stream", "generate", "edit", "speak", ...
+	Op   string // the contract operation: "complete", "stream", "generate", "speak", ...
 	// Model is the call's "provider/model"; a handler may change it.
 	Model string
 	// Subject is whom the call is for (see WithSubject): "user:<collection>/<id>", "guest:<id>",
@@ -304,14 +359,23 @@ type ModelInfo struct {
 	Kinds    []string `json:"kinds"`
 	Inputs   []string `json:"inputs,omitempty"` // what it reads: text, image, audio...
 	// Reasoning is true for a model that thinks before answering (its thinking counts toward maxTokens).
-	Reasoning     bool    `json:"reasoning,omitempty"`
-	ContextTokens int     `json:"contextTokens,omitempty"`
-	Prices        []Price `json:"prices,omitempty"`
-	Description   string  `json:"description,omitempty"`
+	Reasoning     bool `json:"reasoning,omitempty"`
+	ContextTokens int  `json:"contextTokens,omitempty"`
+	// Prices are its listed prices, then the prices measured from this app's own calls, each marked by Source. None
+	// means its price isn't known.
+	Prices      []Price `json:"prices,omitempty"`
+	Description string  `json:"description,omitempty"`
+	// Size is how many parameters it has, as its maker names it: "1.7B", "27B", "30B (3B active)" for a
+	// mixture of experts.
+	Size string `json:"size,omitempty"`
+	// Features are what it can do beyond its kind, from the Feature constants.
+	Features []string `json:"features,omitempty"`
+	// Languages are the languages it speaks, writes or hears (ISO 639-1 codes), when the provider lists them.
+	Languages []string `json:"languages,omitempty"`
 }
 ```
 
-ModelInfo is one model, as each contract's models operation lists it.
+ModelInfo is one model, as each contract's models operation lists it. Every field past Kinds is optional: a provider fills what it says about the model, and nothing is guessed.
 
 ### Models
 
@@ -362,10 +426,15 @@ Passage is a piece of a search bucket that was added to a prompt, and where it c
 type Price struct {
 	Unit string  `json:"unit"`
 	USD  float64 `json:"usd"`
+	// Source is where the price comes from: "listed" (the provider's own model list; also when empty) or "measured"
+	// (what this app's calls to the model were billed, from the ledger: cost divided by what they used).
+	Source string `json:"source,omitempty"`
+	// Calls is, for a measured price, how many billed calls it was measured over.
+	Calls int `json:"calls,omitempty"`
 }
 ```
 
-Price is one of a model's listed prices: USD per Unit ("1M input tokens", "image", "second", "1M characters").
+Price is one of a model's prices: USD per Unit, one of the Unit constants. A price is a rate on one meter of a call; a model may list several (input and output tokens), and a call's cost is each meter's use times its rate, added up.
 
 ### SubjectParts
 

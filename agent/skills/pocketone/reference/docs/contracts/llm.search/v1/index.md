@@ -50,6 +50,7 @@ Over HTTP (a superuser, or a token with the scope shown):
 | Remove | `POST /api/_c/llm.search/v1/remove` | `{"bucket", "sources": [...]}` | `search` |
 | Documents | `GET /api/_c/llm.search/v1/documents` | `?bucket=&source=&prefix=` | `search:read` |
 | Search | `POST /api/_c/llm.search/v1/search` | `{"buckets": [...], "query", "limit", "prefix", "viewer"}` | `search:read` |
+| Sample | `POST /api/_c/llm.search/v1/sample` | `{"buckets": [...], "count", "prefix"}`: chunks picked at random (no query, no embedding) | `search:read` |
 
 A source answers `{"bucket", "name", "kind", "url", "every", "commits", "exclude", "collection", "fields", "filter",
 "path", "include", "pageURL", "hash", "status", "error", "documents", "chunks", "embedded", "bytes", "pending", "costMicroUSD", "refreshed", "next"}` (`embedded` below `chunks`: embedding under way; documents carry the same); `kind` is
@@ -416,6 +417,24 @@ Returns the chunks that best match a query across the buckets named, best first.
 | `limit` | `--limit` | int |
 | `prefix` | `--prefix` | string |
 | `viewer` | `--viewer` | json |
+
+### sample
+
+Returns chunks picked at random from the buckets named: material to draw from ("surprise me", a topic nobody asked about), not matches. No query, no embedding, so it costs nothing. Like Search without a viewer, it may return any chunk, a followed record's included.
+
+| | |
+|---|---|
+| REST | `POST /api/_c/llm.search/v1/sample` |
+| CLI | `pocketone remote llm search sample --buckets <a,b> --bucket <value> --count <n> --prefix <value>` |
+| MCP | `llm_search_sample` |
+| Token scope | `search:read` |
+
+| Input field | Flag | Type |
+|---|---|---|
+| `buckets` | `--buckets` | strings |
+| `bucket` | `--bucket` | string |
+| `count` | `--count` | int |
+| `prefix` | `--prefix` | string |
 
 ## Extensions
 

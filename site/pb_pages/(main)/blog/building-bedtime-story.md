@@ -14,7 +14,7 @@ Give it a topic, or leave it empty and let it pick one: the universe, the mind, 
 
 ![The player mid-story: a galaxy through a window, and the caption "everything we see is matter" with the word being spoken lit up](/blog/img/bedtime-player-galaxy.jpg)
 
-It's still a plain PocketOne app with no Go. Source is at [`ext/llm/examples/bedtime`](https://github.com/pocketonehq/pocketone/tree/main/ext/llm/examples/bedtime).
+It's still a plain PocketOne app with no Go. Source is at [`ext/llm/examples/bedtime`](https://github.com/pocketonehq/pocketone/tree/be02e3b3a47d5525235d0eb352d59774baccbdae/ext/llm/examples/bedtime) (as of this post; the example has since left the repository).
 
 ![The front page: a box for the topic, minutes and pictures, Tell me a story and Inspire me, then the stories told so far](/blog/img/bedtime-home.jpg)
 
@@ -151,6 +151,8 @@ Saved tuning goes in a `settings` record that only superusers can read. It's mer
 
 ### Run it yourself
 
+In a checkout of [that commit](https://github.com/pocketonehq/pocketone/tree/be02e3b3a47d5525235d0eb352d59774baccbdae):
+
 ```bash
 cd ext/llm/examples/bedtime
 pocketone superuser upsert admin@example.com password --dir=pb_data
@@ -161,4 +163,4 @@ Add a provider in Settings → LLM. The defaults use Vultr models for writing, s
 
 The live copy runs on PocketHost, deployed with `pocketone deploy --restart`.
 
-The [Bedtime Story walkthrough](/docs/examples/bedtime-story) in the docs has the full reference, including every tuning field. If you missed it, here's [how Docs Chat became the ask starter kit](/blog/building-docs-chat).
+If you missed it, here's [how Docs Chat became the ask starter kit](/blog/building-docs-chat).

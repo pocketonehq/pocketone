@@ -62,12 +62,12 @@ func (d *openAIDriver) models(ctx context.Context) ([]llmc.ModelInfo, error) {
 }
 
 func (d *openAIDriver) complete(ctx context.Context, model string, in textv1.CompleteInput, onDelta func(string, string) bool) (textv1.CompleteResult, error) {
-	return chatComplete(ctx, d.c, chatRequest(model, in, reasoningEffort), onDelta)
+	return chatComplete(ctx, d.c, chatRequest(model, in, reasoningEffort), idleText(TypeOpenAI), onDelta)
 }
 
-func (d *openAIDriver) image(ctx context.Context, model string, in imagev1.GenerateInput, edit []llmc.File) (imagev1.Result, error) {
-	if len(edit) > 0 {
-		return imagev1.Result{}, d.no("image edits yet")
+func (d *openAIDriver) image(ctx context.Context, model string, in imagev1.GenerateInput) (imagev1.Result, error) {
+	if len(in.References) > 0 {
+		return imagev1.Result{}, d.no("reference images")
 	}
 	r, err := d.c.Images(ctx, oai.ImageRequest{Model: model, Prompt: in.Prompt, N: in.N, Size: in.Size, Extra: in.Options})
 	if err != nil {
@@ -81,6 +81,10 @@ func (d *openAIDriver) image(ctx context.Context, model string, in imagev1.Gener
 }
 
 func (d *openAIDriver) speak(ctx context.Context, model string, in speechv1.SpeakInput) (speechv1.Result, error) {
+	// the OpenAI speech API has no clip-based cloning; a compatible server that has it can take input_references in Options
+	if in.Reference != nil {
+		return speechv1.Result{}, d.no("voice cloning")
+	}
 	f, err := d.c.Speech(ctx, oai.SpeechRequest{Model: model, Input: in.Text, Voice: voiceOrNil(in.Voice), Instructions: in.Instructions,
 		ResponseFormat: orDefault(in.Format, "mp3"), Speed: in.Speed, Extra: in.Options})
 	if err != nil {

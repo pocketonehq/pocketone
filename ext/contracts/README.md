@@ -40,11 +40,11 @@ The table is generated from each contract's README and every extension's `Contra
 | [`llm.align/v1`](llm/align/v1/README.md) | Forced alignment: audio and the exact words spoken in it in, the time of every line and word out. | llm |  |  | @benallfree |
 | [`llm.chat/v1`](llm/chat/v1/README.md) | Stored conversations with a language model: start a chat, send to it, read its history, find and forget chats by the app's own meta. | llm-chat |  |  | @benallfree |
 | [`llm.embed/v1`](llm/embed/v1/README.md) | Turn texts into vectors for search by meaning: texts in, one vector each out. | llm |  | llm-search | @benallfree |
-| [`llm.image/v1`](llm/image/v1/README.md) | Make pictures from a prompt, or change pictures you give it; they come back as files. | llm |  |  | @benallfree |
+| [`llm.image/v1`](llm/image/v1/README.md) | Make pictures from a prompt, and from reference pictures you give it; they come back as files. | llm |  |  | @benallfree |
 | [`llm.ledger/v1`](llm/ledger/v1/README.md) | What an app's model calls used and cost, from the ledger every llm.* call leaves, and how much of each limit is left. | llm |  |  | @benallfree |
 | [`llm.music/v1`](llm/music/v1/README.md) | Make music from a prompt and lyrics, as a job: start it, follow it, fetch its files (or wait for them). | llm |  |  | @benallfree |
 | [`llm.search/v1`](llm/search/v1/README.md) | RAG knowledge bases (buckets) with hybrid search: sources (files, folders, zips, pages, Git repositories, collections) kept current, one embedding model per app. | llm-search |  | llm-chat | @benallfree |
-| [`llm.speech/v1`](llm/speech/v1/README.md) | Read text aloud: text in, an audio file out, in a voice the model offers. | llm |  |  | @benallfree |
+| [`llm.speech/v1`](llm/speech/v1/README.md) | Read text aloud: text in, an audio file out, in a voice the model offers or one cloned from a clip. | llm |  |  | @benallfree |
 | [`llm.text/v1`](llm/text/v1/README.md) | Ask a language model: a prompt or a conversation in, text (or JSON matching a schema) out, whole or streamed. | llm | llm-chat |  | @benallfree |
 | [`llm.transcribe/v1`](llm/transcribe/v1/README.md) | Write down what's said in audio: an audio file in, text out. | llm |  |  | @benallfree |
 | [`llm.video/v1`](llm/video/v1/README.md) | Make video from a prompt (and a first frame), as a job: start it, follow it, fetch its files (or wait for them). | llm |  |  | @benallfree |

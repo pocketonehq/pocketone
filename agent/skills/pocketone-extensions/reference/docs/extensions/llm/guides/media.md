@@ -24,7 +24,20 @@ page.Set("picture", f)
 ```
 
 `n` asks for several, `size` (`"1024x768"`) or `aspectRatio` (`"16:9"`) shapes them, as the model allows.
-`$llm.image.editAsync({ model, prompt, images: [file] })` changes pictures you give it (on OpenRouter).
+`references: [file]` gives the model pictures to draw from: one to change as the prompt says, or one whose style and
+characters a new scene keeps. Paint an anchor picture first and pass it with every other picture, and they share one
+look:
+
+```ts
+const anchor = (await $llm.image.generateAsync({ model, prompt: "a red fox in a blue scarf, watercolor" })).files[0]
+const next = await $llm.image.generateAsync({ model, references: [anchor],
+  prompt: "Same style and characters as the reference. Show the fox asleep under the stars." })
+```
+
+Only models whose listing has the feature `reference images` take them (`$llm.image.modelsAsync()`, each model's
+`features`): on Vultr `qwen-image-2.1` (up to 10; evaluation only, under the Qwen Research License) and `minimax-h3`
+(up to 9, a still at a time), and OpenRouter's image models that read images. Cloudflare and other OpenAI-compatible
+APIs answer `not_supported`.
 
 ## Speech
 
@@ -35,6 +48,26 @@ page.set("narration", $llm.file(r.file))
 
 `$llm.speech.voicesAsync(model)` lists a model's voices, where the provider says. `format` picks `mp3` (the default), `wav`,
 `opus` or what else the model makes.
+
+### A voice of your own
+
+Some models read in the voice of a clip you give them (voice cloning). Record 10 to 30 seconds read the way the story
+should sound, store it in a file field, and send it as `reference` with what it says:
+
+```ts
+const clip = $app.findFirstRecordByData("voices", "name", "mine")
+const r = await $llm.speech.speakAsync({
+  model: "vultr/qwen3-tts-12hz-1.7b",
+  text: storyPage,
+  reference: { audio: $llm.fromRecord(clip, "audio"), text: clip.getString("passage") },
+})
+```
+
+`$llm.fromRecord(record, field)` reads a stored file with its bytes, ready to send to a model. Leave out `voice` and
+`instructions`: a cloned voice takes its delivery from the clip. A model clones when one of its voices from
+`voicesAsync` has `mode: "clone"`. Nothing is saved at the provider, so the clip goes along on every call. Vultr and
+OpenRouter clone; Cloudflare and other OpenAI-compatible APIs refuse a `reference` with `not_supported`. Clone only a
+voice you have the right to use.
 
 ## Transcription
 

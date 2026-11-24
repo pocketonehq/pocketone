@@ -33,7 +33,7 @@ type CallEvent struct {
 	Context context.Context
 
 	Kind string // "text", "image", "speech", "transcribe", "align", "music", "video" or "embed"
-	Op   string // the contract operation: "complete", "stream", "generate", "edit", "speak", ...
+	Op   string // the contract operation: "complete", "stream", "generate", "speak", ...
 	// Model is the call's "provider/model"; a handler may change it.
 	Model string
 	// Subject is whom the call is for (see WithSubject): "user:<collection>/<id>", "guest:<id>",

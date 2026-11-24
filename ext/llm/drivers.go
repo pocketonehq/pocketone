@@ -27,7 +27,7 @@ type driver interface {
 	models(ctx context.Context) ([]llmc.ModelInfo, error)
 	// complete answers; onDelta, when set, gets the text and reasoning as they're written (false stops it).
 	complete(ctx context.Context, model string, in textv1.CompleteInput, onDelta func(text, reasoning string) bool) (textv1.CompleteResult, error)
-	image(ctx context.Context, model string, in imagev1.GenerateInput, edit []llmc.File) (imagev1.Result, error)
+	image(ctx context.Context, model string, in imagev1.GenerateInput) (imagev1.Result, error)
 	speak(ctx context.Context, model string, in speechv1.SpeakInput) (speechv1.Result, error)
 	voices(ctx context.Context, model string) ([]speechv1.Voice, error)
 	transcribe(ctx context.Context, model string, in transcribev1.TranscribeInput) (transcribev1.Result, error)
@@ -78,7 +78,7 @@ func (u unsupported) no(what string) error {
 func (u unsupported) complete(context.Context, string, textv1.CompleteInput, func(string, string) bool) (textv1.CompleteResult, error) {
 	return textv1.CompleteResult{}, u.no("text")
 }
-func (u unsupported) image(context.Context, string, imagev1.GenerateInput, []llmc.File) (imagev1.Result, error) {
+func (u unsupported) image(context.Context, string, imagev1.GenerateInput) (imagev1.Result, error) {
 	return imagev1.Result{}, u.no("images")
 }
 func (u unsupported) speak(context.Context, string, speechv1.SpeakInput) (speechv1.Result, error) {
@@ -157,16 +157,25 @@ func reasoningEffort(level string) map[string]any {
 	return map[string]any{"reasoning_effort": level}
 }
 
-// chatComplete answers over c, streaming when onDelta is set.
-func chatComplete(ctx context.Context, c chatClient, req oai.ChatRequest, onDelta func(text, reasoning string) bool) (textv1.CompleteResult, error) {
-	var r oai.ChatResponse
-	var err error
+// chatComplete answers over c. It always streams from the provider, even when the caller wants no pieces (onDelta
+// nil), so idle ends an answer that stops arriving (see idleText) instead of waiting out the call's whole limit.
+func chatComplete(ctx context.Context, c chatClient, req oai.ChatRequest, idle time.Duration, onDelta func(text, reasoning string) bool) (textv1.CompleteResult, error) {
+	req.IdleTimeout = idle
+	var each func(oai.Delta) bool
 	if onDelta != nil {
-		req.Stream, req.StreamOptions = true, &oai.StreamOptions{IncludeUsage: true}
-		r, err = c.ChatStream(ctx, req, func(d oai.Delta) bool { return onDelta(d.Text, d.Reasoning) })
-	} else {
-		r, err = c.Chat(ctx, req)
+		each = func(d oai.Delta) bool { return onDelta(d.Text, d.Reasoning) }
 	}
+	r, err := c.ChatStream(ctx, req, each)
+	if err != nil {
+		return textv1.CompleteResult{}, err
+	}
+	return chatResult(r, req.ResponseFormat != nil)
+}
+
+// chatWhole answers over c without streaming, for a provider that can't stream this request; only the call's limit
+// bounds it.
+func chatWhole(ctx context.Context, c chatClient, req oai.ChatRequest) (textv1.CompleteResult, error) {
+	r, err := c.Chat(ctx, req)
 	if err != nil {
 		return textv1.CompleteResult{}, err
 	}
