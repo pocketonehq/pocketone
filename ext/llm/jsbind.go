@@ -35,7 +35,7 @@ import (
 // records) are plain. The Go side takes and answers JSON text; a small JS layer (jsPrelude) builds $llm over it and
 // runs each provider call with the engine's .async, off the VM.
 func (*Extension) BindJS(app core.App, rt js.Runtime) {
-	invokers := map[string]func(op string, raw json.RawMessage) (any, error){
+	invokers := map[string]func(ctx context.Context, op string, raw json.RawMessage) (any, error){
 		llmc.KindText:       invoker(app, textv1.Contract, textv1.W),
 		llmc.KindImage:      invoker(app, imagev1.Contract, imagev1.W),
 		llmc.KindSpeech:     invoker(app, speechv1.Contract, speechv1.W),
@@ -45,22 +45,23 @@ func (*Extension) BindJS(app core.App, rt js.Runtime) {
 		llmc.KindVideo:      invoker(app, videov1.Contract, videov1.W),
 		llmc.KindEmbed:      invoker(app, embedv1.Contract, embedv1.W),
 		// $llm.search: whoever provides llm.search/v1 (the llm-search extension); ext/llm imports only the contract
-		"search": func(op string, raw json.RawMessage) (any, error) {
+		"search": func(ctx context.Context, op string, raw json.RawMessage) (any, error) {
 			if _, ok := searchv1.Contract.Of(app); !ok {
 				return nil, searchv1.ErrNoSearch
 			}
-			return invoker(app, searchv1.Contract, searchv1.W)(op, raw)
+			return invoker(app, searchv1.Contract, searchv1.W)(ctx, op, raw)
 		},
 		"ledger": invoker(app, ledgerv1.Contract, ledgerv1.W),
 	}
 	n := rt.NewObject()
-	// call(kind, op, opts): any operation that answers JSON; the prelude calls it with .async
-	_ = n.Set("call", func(kind, op, opts string) (string, error) {
+	// call(ctx, kind, op, opts): any operation that answers JSON; the prelude calls it with .asyncWith, so the
+	// caller's AbortSignal cancels ctx and with it the provider's HTTP request. The engine supplies ctx.
+	_ = n.Set("call", func(ctx context.Context, kind, op, opts string) (string, error) {
 		inv, ok := invokers[kind]
 		if !ok {
 			return "", fmt.Errorf("$llm: no kind %q", kind)
 		}
-		res, err := inv(op, json.RawMessage(opts))
+		res, err := inv(ctx, op, json.RawMessage(opts))
 		if err != nil {
 			return "", err
 		}
@@ -123,8 +124,8 @@ func (*Extension) BindJS(app core.App, rt js.Runtime) {
 
 // invoker calls a contract's operation by name with JSON input, through the provider's guarded side (scope checks
 // and action hooks run as for any call).
-func invoker[T any](app core.App, c *extkit.Contract[T], w *extkit.Wire[T]) func(op string, raw json.RawMessage) (any, error) {
-	return func(op string, raw json.RawMessage) (any, error) {
+func invoker[T any](app core.App, c *extkit.Contract[T], w *extkit.Wire[T]) func(ctx context.Context, op string, raw json.RawMessage) (any, error) {
+	return func(ctx context.Context, op string, raw json.RawMessage) (any, error) {
 		impl, ok := c.Of(app)
 		if !ok {
 			return nil, llmc.ErrNotConfigured
@@ -137,23 +138,23 @@ func invoker[T any](app core.App, c *extkit.Contract[T], w *extkit.Wire[T]) func
 			if o.Method == "GET" {
 				req.JSON, req.Query = nil, queryOf(raw)
 			}
-			return o.Invoke(subjectCtx(raw), impl, extkit.Internal, req)
+			return o.Invoke(subjectCtx(ctx, raw), impl, extkit.Internal, req)
 		}
 		return nil, fmt.Errorf("$llm: %s has no operation %q", c.ID(), op)
 	}
 }
 
-// subjectCtx is a context carrying the subject $llm.for(e) put in a call's input as "__subject" (contract inputs
+// subjectCtx is ctx carrying the subject $llm.for(e) put in a call's input as "__subject" (contract inputs
 // ignore the key). Only page code calls $llm, and page code is the app's own, so the subject is trusted as given.
-func subjectCtx[B ~string | ~[]byte](raw B) context.Context {
+func subjectCtx[B ~string | ~[]byte](ctx context.Context, raw B) context.Context {
 	var v struct {
 		Subject string `json:"__subject"`
 	}
 	_ = json.Unmarshal([]byte(raw), &v)
 	if v.Subject == "" {
-		return context.Background()
+		return ctx
 	}
-	return llmc.WithSubject(context.Background(), v.Subject)
+	return llmc.WithSubject(ctx, v.Subject)
 }
 
 // queryOf is a GET operation's input (a JSON object) as query values.
@@ -188,8 +189,11 @@ var jsPrelude = `(() => {
   // build(sub) is $llm with every call made for subject sub ("" for nobody in particular): $llm.for(e) names it
   const build = (sub) => {
   const S = (o) => JSON.stringify(sub ? { ...(o ?? {}), __subject: sub } : (o ?? {}));
-  // a provider call, off the VM
-  const callAsync = async (kind, op, o) => { try { return J(await n.call.async(kind, op, S(o))); } catch (err) { throw clean(err); } };
+  // a provider call, off the VM; o.signal (an AbortSignal) cancels it, provider request included
+  const callAsync = async (kind, op, o) => {
+    const { signal, ...rest } = o ?? {};
+    try { return J(await n.call.asyncWith({ signal }, kind, op, S(rest))); } catch (err) { throw clean(err); }
+  };
   // enrich: the buckets, or { buckets, limit, query, viewer }; viewer is an auth record (ctx.auth) or null for a guest
   const enrichOf = (e) => {
     if (e == null || Array.isArray(e) || typeof e !== "object") return e;
@@ -244,7 +248,7 @@ var jsPrelude = `(() => {
   return Object.freeze({
     text: Object.freeze({
       completeAsync: (o) => callAsync("text", "complete", text(o)),
-      streamAsync: async (o, onText, onReasoning) => readStream(n.streamStart("text", S(text(o))), onText, onReasoning),
+      streamAsync: async (o, onText, onReasoning) => readStream("text", text(o), onText, onReasoning),
       count: (x) => sync("text", "count", S(count(x))).tokens,
       modelsAsync: modelsAsync("text"),
     }),

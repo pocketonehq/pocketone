@@ -143,7 +143,11 @@ one side of the tokens), cheapest first. `browser({ kinds?, kind? })` is the who
 
 **Errors** have a code: `not_configured` (no providers yet), `unknown_model` (no model named, or no provider by that
 name), `not_supported` (that provider type doesn't do this kind), `provider` (the provider's own error, its message
-kept, with the provider's name in front), `timeout`.
+kept, with the provider's name in front), `timeout` (the provider didn't answer in time; the request was cancelled).
+Text calls always stream from the provider, so a stalled answer fails after a few seconds of silence (10 s on Vultr and
+OpenRouter), and every call has an overall limit by kind. To give up sooner, pass `signal` (an `AbortSignal`) in any
+call's options, `{ signal: AbortSignal.timeout(30_000) }`: the promise rejects with its reason and the provider's request
+is cancelled ([Time limits](docs/index.md#time-limits)).
 
 **Over HTTP** each kind is a contract at `/api/_c/llm.<kind>/v1/` (`llm.text/v1/complete`, `llm.image/v1/generate`...),
 for superusers and for API tokens with the `llm` scope (`llm:read` for `models`, `voices`, `get` and `content`); see

@@ -17,6 +17,9 @@ PocketOne's JS engine for `pb_hooks` and `pb_migrations`. It runs the same JS AP
   promise, so one app serves other requests while it waits: `await $app.findRecordById.async("posts", id)`.
 - **Timers.** `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval` and `queueMicrotask`, as in browsers and
   Node.js. A timer set while serving a request is cleared once the request is answered or its client goes away.
+- **Cancellation.** `AbortController`, `AbortSignal` (`timeout`, `abort`, `any`) and `DOMException`, as in browsers.
+  `fn.asyncWith({ signal }, ...args)` is an `.async` call a signal can stop, and a Go function that takes a
+  `context.Context` sees it cancelled.
 - **Hard limits per app.** A memory cap (JS heap plus Go objects JS holds), a CPU and a wall-clock budget per task, and
   caps on queued tasks and async calls. A runaway script stops with an error; other apps in the process keep running.
 - **Real error positions.** Stack traces name `pb_hooks/<file>:<line>`.
@@ -100,6 +103,33 @@ routerAdd("GET", "/post/{slug}", async (e) => {
   second where `await sleep.async(100)` served 481 ([benchmark](https://pocketone.dev/docs/quickjs#how-it-performs)).
 - `process.env` and a small `Buffer` (`from`, `toString` with utf8, base64, hex) are there.
 
+### Cancelling Go calls
+
+A Go function whose first parameter is a `context.Context` gets one from the engine; JS passes only the other
+arguments (or a Go context of its own, such as `e.request.context()`, first). The context is cancelled when the
+request or hook the call runs for is given up (its client went away, `AwaitLimit` passed) and when the VM closes,
+so abandoned work stops instead of running on. Answering the request doesn't cancel it: background work keeps going.
+
+To bound or cancel one call, pass an `AbortSignal` to `asyncWith`:
+
+```js
+// a model call that gives up after a minute, even in background work after the response was sent
+const reply = await callModel.asyncWith({ signal: AbortSignal.timeout(60_000) }, prompt)
+
+// or cancel it yourself, or whichever comes first
+const c = new AbortController()
+const signal = AbortSignal.any([AbortSignal.timeout(60_000), c.signal])
+```
+
+When the signal aborts, the promise rejects at once with `signal.reason`: a `DOMException` named `"TimeoutError"`
+for `AbortSignal.timeout`, `"AbortError"` for `controller.abort()`, or the reason you gave `abort(reason)`. The Go
+function's context is cancelled with a cause that wraps `jsvm.ErrAborted`. A signal that has already aborted rejects
+without calling Go. A Go function that takes no context can't be stopped: its promise is let go and the call runs to
+its end (still counted against `MaxAsync`).
+
+`AbortSignal.timeout` runs on a Go timer that keeps going after the request is answered, where `setTimeout` is
+refused, and it is dropped when the call is given up. Like a timer, it counts against `MaxTimers` until it fires.
+
 ### Modules: import and require
 
 Name a file for what it is: `.mjs` is an ES module, `.cjs` is CommonJS. A plain `.js` file is CommonJS, so existing
@@ -158,9 +188,9 @@ When the app starts, `types.d.ts` in the project root (the folder holding `pb_ho
 `pocketone.yaml`) gets the declarations of the whole JS API, for your editor and `tsc`:
 
 - PocketBase's API generated from PocketOne's core (its extra hooks included), by PocketBase's own generator.
-- What this engine adds ([`pocketone.d.ts`](https://github.com/pocketonehq/pocketone/blob/main/ext/jsvm/pocketone.d.ts)): `.async` on every Go function, fully typed
-  (`await $app.findRecordById.async(...)` is a `Promise<core.Record>`), `require`, `process`, `Buffer`, `console`,
-  `import.meta`.
+- What this engine adds ([`pocketone.d.ts`](https://github.com/pocketonehq/pocketone/blob/main/ext/jsvm/pocketone.d.ts)): `.async` and `.asyncWith` on every Go function, fully
+  typed (`await $app.findRecordById.async(...)` is a `Promise<core.Record>`, and a `context.Context` first parameter
+  is left out), `AbortController`/`AbortSignal`, `require`, `process`, `Buffer`, `console`, `import.meta`.
 - Each extension's own API, for the extensions on in that app (`$mcp`, `$apiTokens`, `$bulkmail`, `onContracts` and
   the contracts' action hooks).
 
@@ -206,6 +236,21 @@ Extensions plug in through `Config.Extensions` with the engine-neutral types in
 - `OnLoad(rt, root, file, content)`: wrap loading each hook file.
 
 `js.Run(app, fn)` runs Go code on the app's VM; a `js.Func` kept from JS can be called from any goroutine.
+
+A binding whose calls should be cancellable takes `ctx context.Context` as its Go function's first parameter and
+hands the caller's `{ signal }` to `asyncWith` in its prelude. `asyncWith` reads only `options.signal`, and a missing
+one makes it a plain `.async`, so a wrapper can pass the caller's options object as is:
+
+```js
+// Go: n.Set("call", func(ctx context.Context, kind, op, opts string) (string, error) { ... })
+const callAsync = async (kind, op, o) => {
+  const { signal, ...rest } = o ?? {}
+  return JSON.parse(await n.call.asyncWith({ signal }, kind, op, JSON.stringify(rest)))
+}
+```
+
+The same function called without `.async` gets the handler's context, so one Go function serves both. Under goja
+(`jsvm: goja`) neither `asyncWith` nor the supplied context exists.
 
 [Bundle](https://pocketone.dev/docs/extensions/bundle) uses these to serve hooks and migrations embedded in the binary.
 

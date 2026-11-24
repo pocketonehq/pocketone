@@ -729,13 +729,46 @@ func avmGoCall(ctx *JSContext, h uint32, this JSValue, args []JSValue, ctor bool
 	return vm.goResults(out)
 }
 
+// goArgs converts JS arguments to ft's parameters; missing ones are zero values.
+//
+// A function whose first parameter is a context.Context gets the context of the call this code runs for
+// (ownerCtx: cancelled when the call is given up) unless JS passes a Go context itself; JS passes the other arguments.
 func (vm *VM) goArgs(ft reflect.Type, args []JSValue) ([]reflect.Value, error) {
+	if vm.suppliesCtx(ft, args) {
+		return vm.goArgsFrom(ft, 1, args, reflect.ValueOf(vm.ownerCtx(vm.cur)))
+	}
+	return vm.goArgsFrom(ft, 0, args)
+}
+
+var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
+
+// suppliesCtx reports whether the engine supplies ft's first argument: it is a context.Context and JS's first
+// argument isn't a Go context.
+func (vm *VM) suppliesCtx(ft reflect.Type, args []JSValue) bool {
+	if ft.NumIn() == 0 || ft.In(0) != contextType {
+		return false
+	}
+	return len(args) == 0 || !vm.isGoContext(args[0])
+}
+
+func (vm *VM) isGoContext(v JSValue) bool {
+	h := C.avm_handle_of(vm.a, v)
+	if h == 0 {
+		return false
+	}
+	gv := vm.handles[h].v
+	return gv.IsValid() && gv.Type().Implements(contextType)
+}
+
+// goArgsFrom converts args to ft's parameters from index skip on, after the values in pre (one per skipped one).
+func (vm *VM) goArgsFrom(ft reflect.Type, skip int, args []JSValue, pre ...reflect.Value) ([]reflect.Value, error) {
 	nIn := ft.NumIn()
-	var in []reflect.Value
-	for i := 0; i < nIn; i++ {
+	in := pre
+	for i := skip; i < nIn; i++ {
 		at := ft.In(i)
+		k := i - skip // the JS argument for parameter i
 		if ft.IsVariadic() && i == nIn-1 {
-			for j := i; j < len(args); j++ {
+			for j := k; j < len(args); j++ {
 				gv, err := vm.fromJS(args[j], at.Elem())
 				if err != nil {
 					return nil, fmt.Errorf("argument %d: %w", j, err)
@@ -744,10 +777,10 @@ func (vm *VM) goArgs(ft reflect.Type, args []JSValue) ([]reflect.Value, error) {
 			}
 			break
 		}
-		if i < len(args) {
-			gv, err := vm.fromJS(args[i], at)
+		if k < len(args) {
+			gv, err := vm.fromJS(args[k], at)
 			if err != nil {
-				return nil, fmt.Errorf("argument %d: %w", i, err)
+				return nil, fmt.Errorf("argument %d: %w", k, err)
 			}
 			in = append(in, gv)
 		} else {

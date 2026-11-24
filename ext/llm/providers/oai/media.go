@@ -148,7 +148,7 @@ func (c *Client) Speech(ctx context.Context, req SpeechRequest) (File, error) {
 func ReadFile(res *http.Response) (File, error) {
 	b, err := io.ReadAll(io.LimitReader(res.Body, 512<<20))
 	if err != nil {
-		return File{}, &Error{Status: res.StatusCode, Message: "reading the answer: " + err.Error()}
+		return File{}, &Error{Status: res.StatusCode, Message: "reading the answer: " + err.Error(), Err: err}
 	}
 	ct := res.Header.Get("Content-Type")
 	if mt, _, err := mime.ParseMediaType(ct); err == nil {
@@ -185,7 +185,7 @@ func (c *Client) Download(ctx context.Context, url string) (File, error) {
 	}
 	res, err := hc.Do(req)
 	if err != nil {
-		return File{}, &Error{Message: "download: " + err.Error()}
+		return File{}, &Error{Message: "download: " + err.Error(), Err: err}
 	}
 	defer res.Body.Close()
 	if res.StatusCode >= 300 {
@@ -193,7 +193,7 @@ func (c *Client) Download(ctx context.Context, url string) (File, error) {
 	}
 	b, err := io.ReadAll(io.LimitReader(res.Body, 2<<30))
 	if err != nil {
-		return File{}, &Error{Message: "download: " + err.Error()}
+		return File{}, &Error{Message: "download: " + err.Error(), Err: err}
 	}
 	ct := res.Header.Get("Content-Type")
 	if mt, _, err := mime.ParseMediaType(ct); err == nil {
@@ -250,7 +250,7 @@ func (c *Client) Transcribe(ctx context.Context, req TranscribeRequest) (Transcr
 	defer res.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 64<<20))
 	if err != nil {
-		return Transcript{}, &Error{Status: res.StatusCode, Message: "reading the answer: " + err.Error()}
+		return Transcript{}, &Error{Status: res.StatusCode, Message: "reading the answer: " + err.Error(), Err: err}
 	}
 	var v struct {
 		Text string `json:"text"`

@@ -153,7 +153,7 @@ func (d *vultrDriver) align(ctx context.Context, model string, in alignv1.AlignI
 }
 
 func (d *vultrDriver) complete(ctx context.Context, model string, in textv1.CompleteInput, onDelta func(string, string) bool) (textv1.CompleteResult, error) {
-	return chatComplete(ctx, d.c, chatRequest(model, in, reasoningEffort), onDelta)
+	return chatComplete(ctx, d.c, chatRequest(model, in, reasoningEffort), idleText(TypeVultr), onDelta)
 }
 
 func (d *vultrDriver) image(ctx context.Context, model string, in imagev1.GenerateInput) (imagev1.Result, error) {

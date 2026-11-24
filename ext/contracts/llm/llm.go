@@ -201,6 +201,11 @@ var (
 	// ErrLimit: a limit in Settings → LLM refused the call before it reached the provider. Each refusal says which
 	// limit and when its window resets ("try again after 00:00 UTC").
 	ErrLimit = &extkit.Error{Code: "limit", Status: 429, Message: "a limit in Settings → LLM refused this call"}
+	// ErrTimeout: the provider didn't answer in time and the request was cancelled. Its message names the model and
+	// what ran out: a streamed answer that went quiet ("the provider sent nothing for 10s"), or the call's time limit
+	// ("no answer in 3m0s"). Worth a retry, unlike a bad answer. A caller's own deadline or cancellation (a Go
+	// context, an AbortSignal in page code) ends the call as that caller's error instead.
+	ErrTimeout = &extkit.Error{Code: "timeout", Status: 504, Message: "the provider didn't answer in time"}
 )
 
 // Enrich adds passages from the app's search buckets (search/v1) to a call's prompt: the call searches Buckets with

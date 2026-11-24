@@ -62,7 +62,7 @@ func (d *openAIDriver) models(ctx context.Context) ([]llmc.ModelInfo, error) {
 }
 
 func (d *openAIDriver) complete(ctx context.Context, model string, in textv1.CompleteInput, onDelta func(string, string) bool) (textv1.CompleteResult, error) {
-	return chatComplete(ctx, d.c, chatRequest(model, in, reasoningEffort), onDelta)
+	return chatComplete(ctx, d.c, chatRequest(model, in, reasoningEffort), idleText(TypeOpenAI), onDelta)
 }
 
 func (d *openAIDriver) image(ctx context.Context, model string, in imagev1.GenerateInput) (imagev1.Result, error) {

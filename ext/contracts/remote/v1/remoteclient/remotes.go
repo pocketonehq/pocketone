@@ -6,7 +6,7 @@
 //	pocketone deploy prod
 //
 // Remote names and URLs live in the project's .pocketbase/remotes.json (commit it); secrets live in the user's
-// ~/.config/pocketone/credentials.json (0600), keyed by URL. CI sets P1_TOKEN or P1_TOKEN_<REMOTE>. The folder is
+// ~/.config/pocketone/credentials.json (0600), keyed by URL. P1_TOKEN overrides the saved login (CI sets it). The folder is
 // named after [extkit.Command] (~/.config/pockethost in that build); the variables are PocketOne's (P1_) in every
 // build.
 //
@@ -293,28 +293,13 @@ func (c *Credentials) Save() error {
 // Path is the store's file.
 func (c *Credentials) Path() string { return c.path }
 
-// EnvToken returns the CI token for a remote: P1_TOKEN_<NAME> (upper case, other characters as _), then P1_TOKEN.
-func EnvToken(remoteName string) (token, source string) {
-	if remoteName != "" && !strings.Contains(remoteName, "://") {
-		key := EnvVar("TOKEN_" + envSuffix(remoteName))
-		if v := strings.TrimSpace(os.Getenv(key)); v != "" {
-			return v, key
-		}
-	}
-	if key := EnvVar("TOKEN"); strings.TrimSpace(os.Getenv(key)) != "" {
-		return strings.TrimSpace(os.Getenv(key)), key
+// EnvToken returns the token in P1_TOKEN, which overrides the saved login for whatever remote a command uses, and
+// the variable's name as its source. Set it for one command (`P1_TOKEN=... pocketone deploy staging`) to use another
+// token for that command only.
+func EnvToken() (token, source string) {
+	key := EnvVar("TOKEN")
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v, key
 	}
 	return "", ""
-}
-
-func envSuffix(name string) string {
-	var b strings.Builder
-	for _, r := range strings.ToUpper(name) {
-		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
-		} else {
-			b.WriteByte('_')
-		}
-	}
-	return b.String()
 }

@@ -5,8 +5,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"strings"
+	"time"
 )
 
 // Message is one chat message. Content is a string or a list of content parts (text, image_url, input_audio...).
@@ -26,6 +29,18 @@ type ChatRequest struct {
 	Stream         bool            `json:"stream,omitempty"`
 	StreamOptions  *StreamOptions  `json:"stream_options,omitempty"`
 	Extra          map[string]any  `json:"-"`
+	// IdleTimeout, for ChatStream, ends the call when the provider sends nothing for this long: no headers after the
+	// request, then no line of the stream (a keep-alive comment counts). 0: no limit beyond the context's.
+	IdleTimeout time.Duration `json:"-"`
+}
+
+// IdleError is a stream that went quiet for longer than its ChatRequest.IdleTimeout; the request was cancelled.
+type IdleError struct {
+	After time.Duration
+}
+
+func (e *IdleError) Error() string {
+	return fmt.Sprintf("the provider sent nothing for %s", e.After)
 }
 
 // ResponseFormat asks for JSON: Type "json_object", or "json_schema" with JSONSchema.
@@ -144,7 +159,7 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (ChatResponse, error
 	defer res.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 64<<20))
 	if err != nil {
-		return ChatResponse{}, &Error{Status: res.StatusCode, Message: "reading the answer: " + err.Error()}
+		return ChatResponse{}, &Error{Status: res.StatusCode, Message: "reading the answer: " + err.Error(), Err: err}
 	}
 	var out ChatResponse
 	if err := json.Unmarshal(raw, &out); err != nil || len(out.Choices) == 0 {
@@ -169,14 +184,48 @@ func (c *Client) ChatStream(ctx context.Context, req ChatRequest, onDelta func(D
 	if err != nil {
 		return ChatResponse{}, err
 	}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	res, err := c.Request(ctx, "POST", "chat/completions", bytes.NewReader(body), "application/json")
-	if err != nil {
-		return ChatResponse{}, err
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	var touch func()
+	if req.IdleTimeout > 0 {
+		idle := &IdleError{After: req.IdleTimeout}
+		t := time.AfterFunc(req.IdleTimeout, func() { cancel(idle) })
+		defer t.Stop()
+		touch = func() { t.Reset(req.IdleTimeout) }
 	}
-	defer res.Body.Close()
-	return readStream(res.Body, onDelta)
+	res, err := c.Request(ctx, "POST", "chat/completions", bytes.NewReader(body), "application/json")
+	if err == nil {
+		defer res.Body.Close()
+		var r io.Reader = res.Body
+		if touch != nil {
+			touch()
+			r = &touchReader{r: r, touch: touch}
+		}
+		var out ChatResponse
+		out, err = readStream(r, onDelta)
+		if err == nil {
+			return out, nil
+		}
+	}
+	var idle *IdleError
+	if errors.As(context.Cause(ctx), &idle) {
+		return ChatResponse{}, idle
+	}
+	return ChatResponse{}, err
+}
+
+// touchReader calls touch whenever a read brings bytes, so an idle timer only fires while the stream is silent.
+type touchReader struct {
+	r     io.Reader
+	touch func()
+}
+
+func (t *touchReader) Read(p []byte) (int, error) {
+	n, err := t.r.Read(p)
+	if n > 0 {
+		t.touch()
+	}
+	return n, err
 }
 
 func readStream(r io.Reader, onDelta func(Delta) bool) (ChatResponse, error) {
@@ -252,7 +301,7 @@ func readStream(r io.Reader, onDelta func(Delta) bool) (ChatResponse, error) {
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return out, &Error{Message: "reading the stream: " + err.Error()}
+		return out, &Error{Message: "reading the stream: " + err.Error(), Err: err}
 	}
 	out.Choices = []Choice{{Message: AnswerMessage{Role: "assistant", Content: text.String(), Reasoning: reasoning.String()}, FinishReason: finish}}
 	return out, nil

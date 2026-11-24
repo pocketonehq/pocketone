@@ -3453,7 +3453,7 @@ pocketone logs                         # the last 100 lines, then follow
 3. Under **Scopes**, tick `deploy`. Add `remote` if CI will pass `--restart`.
 4. Click **Create token** and copy it. It's shown only once.
 
-In CI, set `P1_TOKEN` (or `P1_TOKEN_PROD` for the remote named `prod`) to that token, then run
+In CI, set `P1_TOKEN` to that token, then run
 `pocketone deploy --restart`.
 
 ## From an agent
@@ -3536,7 +3536,7 @@ How a command is named and read:
 - **Output:** JSON, so you can pipe it to `jq`. A stream (`remote logs`) prints one JSON line per entry until Ctrl-C.
 - **Errors:** if the app doesn't offer the contract, the command says so ("this remote doesn't offer restore/v1").
 
-In CI, set `P1_TOKEN` (or `P1_TOKEN_PROD` for one remote) to an [API token](https://pocketone.dev/docs/extensions/api-tokens) instead of
+In CI, set `P1_TOKEN` to an [API token](https://pocketone.dev/docs/extensions/api-tokens) instead of
 signing in. [Remotes](https://pocketone.dev/docs/extensions/remotes) covers remotes and saved logins.
 
 ## From a script: REST
@@ -14355,7 +14355,7 @@ What it adds to `pb_hooks` and page code: [API Tokens JavaScript API](https://po
 | [OAuth](https://pocketone.dev/docs/extensions/api-tokens/oauth) (in Tokens) | Its access tokens are API tokens, issued with the client's id, the granted scopes and, when asked for, an audience. They show up under Settings → API tokens and can be revoked there. The OAuth server needs Tokens on the app. |
 | [MCP](https://pocketone.dev/docs/extensions/mcp) | An agent's OAuth sign-in to `/mcp` is an API token bound to `/mcp` that never expires; revoke it to disconnect the agent. Tool calls run as the token's owner. A full-access token's calls hold every registered scope; a token limited to scopes on the consent page has its calls checked like requests with those scopes (`WithScopes`). |
 | [Deploy](https://pocketone.dev/docs/extensions/deploy) | Registers `deploy` and `deploy:read`; a `deploy` token is what CI uses. |
-| [Remotes](https://pocketone.dev/docs/extensions/remotes) | `pocketone login` takes a pasted API token when the remote has no OAuth server. In CI, put a token in `P1_TOKEN` (or `P1_TOKEN_<REMOTE>`). remote/v1's whoami (`/api/_c/remote/v1`) reports a token's id and scopes, whatever its scopes. |
+| [Remotes](https://pocketone.dev/docs/extensions/remotes) | `pocketone login` takes a pasted API token when the remote has no OAuth server. In CI, put a token in `P1_TOKEN`. remote/v1's whoami (`/api/_c/remote/v1`) reports a token's id and scopes, whatever its scopes. |
 | [Multisite](https://pocketone.dev/docs/extensions/multisite) | It's a standard member, so every instance gets its own tokens, routes and screen; reconfigure it on the host's set with `set.APITokens = apitokens.New(apitokens.Config{...})`. With Pocker, per instance, `extensions: {api-tokens: {enabled: false}}` turns it off and `collections: [...]` picks who may own tokens. |
 
 ### Building on Tokens
@@ -15976,7 +15976,7 @@ There is no `pocketone.yaml` section, flag or settings screen. Defaults on the r
   is safe (files already in the app's folder count as uploaded, so deploys still send only what changed).
 
 On your machine, the commands use the project's remotes and saved logins from [Remotes](https://pocketone.dev/docs/extensions/remotes). In CI,
-set `P1_TOKEN` (or `P1_TOKEN_<REMOTE>`) instead of signing in.
+set `P1_TOKEN` instead of signing in.
 
 ## Use
 
@@ -16460,6 +16460,9 @@ PocketOne's JS engine for `pb_hooks` and `pb_migrations`. It runs the same JS AP
   promise, so one app serves other requests while it waits: `await $app.findRecordById.async("posts", id)`.
 - **Timers.** `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval` and `queueMicrotask`, as in browsers and
   Node.js. A timer set while serving a request is cleared once the request is answered or its client goes away.
+- **Cancellation.** `AbortController`, `AbortSignal` (`timeout`, `abort`, `any`) and `DOMException`, as in browsers.
+  `fn.asyncWith({ signal }, ...args)` is an `.async` call a signal can stop, and a Go function that takes a
+  `context.Context` sees it cancelled.
 - **Hard limits per app.** A memory cap (JS heap plus Go objects JS holds), a CPU and a wall-clock budget per task, and
   caps on queued tasks and async calls. A runaway script stops with an error; other apps in the process keep running.
 - **Real error positions.** Stack traces name `pb_hooks/<file>:<line>`.
@@ -16543,6 +16546,33 @@ routerAdd("GET", "/post/{slug}", async (e) => {
   second where `await sleep.async(100)` served 481 ([benchmark](https://pocketone.dev/docs/quickjs#how-it-performs)).
 - `process.env` and a small `Buffer` (`from`, `toString` with utf8, base64, hex) are there.
 
+### Cancelling Go calls
+
+A Go function whose first parameter is a `context.Context` gets one from the engine; JS passes only the other
+arguments (or a Go context of its own, such as `e.request.context()`, first). The context is cancelled when the
+request or hook the call runs for is given up (its client went away, `AwaitLimit` passed) and when the VM closes,
+so abandoned work stops instead of running on. Answering the request doesn't cancel it: background work keeps going.
+
+To bound or cancel one call, pass an `AbortSignal` to `asyncWith`:
+
+```js
+// a model call that gives up after a minute, even in background work after the response was sent
+const reply = await callModel.asyncWith({ signal: AbortSignal.timeout(60_000) }, prompt)
+
+// or cancel it yourself, or whichever comes first
+const c = new AbortController()
+const signal = AbortSignal.any([AbortSignal.timeout(60_000), c.signal])
+```
+
+When the signal aborts, the promise rejects at once with `signal.reason`: a `DOMException` named `"TimeoutError"`
+for `AbortSignal.timeout`, `"AbortError"` for `controller.abort()`, or the reason you gave `abort(reason)`. The Go
+function's context is cancelled with a cause that wraps `jsvm.ErrAborted`. A signal that has already aborted rejects
+without calling Go. A Go function that takes no context can't be stopped: its promise is let go and the call runs to
+its end (still counted against `MaxAsync`).
+
+`AbortSignal.timeout` runs on a Go timer that keeps going after the request is answered, where `setTimeout` is
+refused, and it is dropped when the call is given up. Like a timer, it counts against `MaxTimers` until it fires.
+
 ### Modules: import and require
 
 Name a file for what it is: `.mjs` is an ES module, `.cjs` is CommonJS. A plain `.js` file is CommonJS, so existing
@@ -16601,9 +16631,9 @@ When the app starts, `types.d.ts` in the project root (the folder holding `pb_ho
 `pocketone.yaml`) gets the declarations of the whole JS API, for your editor and `tsc`:
 
 - PocketBase's API generated from PocketOne's core (its extra hooks included), by PocketBase's own generator.
-- What this engine adds ([`pocketone.d.ts`](https://github.com/pocketonehq/pocketone/blob/main/ext/jsvm/pocketone.d.ts)): `.async` on every Go function, fully typed
-  (`await $app.findRecordById.async(...)` is a `Promise<core.Record>`), `require`, `process`, `Buffer`, `console`,
-  `import.meta`.
+- What this engine adds ([`pocketone.d.ts`](https://github.com/pocketonehq/pocketone/blob/main/ext/jsvm/pocketone.d.ts)): `.async` and `.asyncWith` on every Go function, fully
+  typed (`await $app.findRecordById.async(...)` is a `Promise<core.Record>`, and a `context.Context` first parameter
+  is left out), `AbortController`/`AbortSignal`, `require`, `process`, `Buffer`, `console`, `import.meta`.
 - Each extension's own API, for the extensions on in that app (`$mcp`, `$apiTokens`, `$bulkmail`, `onContracts` and
   the contracts' action hooks).
 
@@ -16649,6 +16679,21 @@ Extensions plug in through `Config.Extensions` with the engine-neutral types in
 - `OnLoad(rt, root, file, content)`: wrap loading each hook file.
 
 `js.Run(app, fn)` runs Go code on the app's VM; a `js.Func` kept from JS can be called from any goroutine.
+
+A binding whose calls should be cancellable takes `ctx context.Context` as its Go function's first parameter and
+hands the caller's `{ signal }` to `asyncWith` in its prelude. `asyncWith` reads only `options.signal`, and a missing
+one makes it a plain `.async`, so a wrapper can pass the caller's options object as is:
+
+```js
+// Go: n.Set("call", func(ctx context.Context, kind, op, opts string) (string, error) { ... })
+const callAsync = async (kind, op, o) => {
+  const { signal, ...rest } = o ?? {}
+  return JSON.parse(await n.call.asyncWith({ signal }, kind, op, JSON.stringify(rest)))
+}
+```
+
+The same function called without `.async` gets the handler's context, so one Go function serves both. Under goja
+(`jsvm: goja`) neither `asyncWith` nor the supplied context exists.
 
 [Bundle](https://pocketone.dev/docs/extensions/bundle) uses these to serve hooks and migrations embedded in the binary.
 
@@ -19166,8 +19211,7 @@ Logins are saved per user, keyed by URL, in `~/.config/pocketone/credentials.jso
 
 | Variable | What it does |
 |---|---|
-| `P1_TOKEN_<REMOTE>` | A token for one remote, for CI. The name is upper case, other characters as `_` (`P1_TOKEN_PROD`). |
-| `P1_TOKEN` | A token for any remote. |
+| `P1_TOKEN` | A token that overrides the saved login, for CI or for one command (`P1_TOKEN=... pocketone deploy staging`). |
 | `P1_CONFIG_DIR` | Where saved logins are kept. |
 
 A token in the environment wins over a saved login. Every PocketOne variable starts with `P1_`, in every build (the
@@ -32464,7 +32508,7 @@ Package remotes gives the command named remotes: other PocketBase instances (or 
 	pocketone login prod
 	pocketone deploy prod
 
-Remote names and URLs live in the project's .pocketbase/remotes.json (commit it); secrets live in the user's ~/.config/pocketone/credentials.json (0600), keyed by URL. CI sets P1\_TOKEN or P1\_TOKEN\_\<REMOTE>. The folder is named after [extkit.Command](/pocketone.dev/ext/extkit#Command) (~/.config/pockethost in that build); the variables are PocketOne's (P1\_) in every build.
+Remote names and URLs live in the project's .pocketbase/remotes.json (commit it); secrets live in the user's ~/.config/pocketone/credentials.json (0600), keyed by URL. P1\_TOKEN overrides the saved login (CI sets it). The folder is named after [extkit.Command](/pocketone.dev/ext/extkit#Command) (~/.config/pockethost in that build); the variables are PocketOne's (P1\_) in every build.
 
 The server half is remote/v1's whoami (GET /api/\_c/remote/v1): who the request's token is, its scopes, and which contracts the app offers (deploy/v1, oauth/v1, api-tokens/v1, ...), so clients discover what a remote supports.
 
@@ -32606,10 +32650,10 @@ DecodeResponse turns a non-2xx response into an [APIError](#apierror) (PocketBas
 ### EnvToken
 
 ```go
-func EnvToken(remoteName string) (token, source string)
+func EnvToken() (token, source string)
 ```
 
-EnvToken returns the CI token for a remote: P1\_TOKEN\_\<NAME> (upper case, other characters as \_), then P1\_TOKEN.
+EnvToken returns the token in P1\_TOKEN, which overrides the saved login for whatever remote a command uses, and the variable's name as its source. Set it for one command (\`P1\_TOKEN=... pocketone deploy staging\`) to use another token for that command only.
 
 ### EnvVar
 

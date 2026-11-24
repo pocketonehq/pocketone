@@ -26,6 +26,9 @@ var (
 	ErrBusy    = errors.New("asyncvm: too many queued tasks")
 	ErrTimeout = errors.New("asyncvm: timed out waiting for JS")
 	ErrClosed  = errors.New("asyncvm: closed")
+	// ErrAborted is the cause of a Go function's context when JS aborted the call with an AbortSignal
+	// (context.Cause(ctx)); its message ends with the signal's reason.
+	ErrAborted = errors.New("jsvm: aborted by its AbortSignal")
 	// ErrTooBusy: the app already has MaxConcurrent calls in flight and no slot freed up in time.
 	ErrTooBusy = errors.New("too many concurrent JS calls for this app; retry shortly")
 )
@@ -60,6 +63,10 @@ type VM struct {
 	quit  chan struct{}
 	done  chan struct{}
 
+	// base is cancelled when the VM closes: every context the engine hands a Go function ends with it.
+	base     context.Context
+	stopBase context.CancelCauseFunc
+
 	// only touched on the loop thread
 	handles []entry
 	free    []uint32
@@ -78,6 +85,9 @@ type VM struct {
 
 	timers   map[int64]*jsTimer // setTimeout/setInterval, by id
 	timerSeq int64
+
+	asyncSeq     uint64
+	asyncCancels map[uint64]context.CancelCauseFunc // async Go calls an AbortSignal can cancel, by id
 
 	settleSeq   uint64
 	settles     map[uint64]chan settled
@@ -124,6 +134,9 @@ type owner struct {
 	// ended is set when the request the call served got its response: the call's timers are dropped then, since
 	// the response they would write to is finished (its async Go calls still settle, as for any detached promise).
 	ended atomic.Bool
+	// ctx is the call's context, made when a Go function first asks for one (ownerCtx); cancelled with the owner.
+	ctx  context.Context
+	stop context.CancelCauseFunc
 }
 
 // live reports whether the call's timers may still fire: it wasn't given up, and the request it served (if any)
@@ -140,7 +153,29 @@ func (o *owner) cancel(err error) {
 	if o.err == nil {
 		o.err = err
 	}
+	stop, cause := o.stop, o.err
 	o.mu.Unlock()
+	if stop != nil {
+		stop(cause) // Go functions running for the call stop too
+	}
+}
+
+// ownerCtx is the context a Go function called for o gets: cancelled when o is given up, and when the VM closes
+// for calls outside any handler (o nil). Not cancelled when o's request is answered: work it started runs on.
+func (vm *VM) ownerCtx(o *owner) context.Context {
+	if o == nil {
+		return vm.base
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.ctx == nil {
+		// not a child of vm.base: an owner that is never cancelled would stay in base's children for good
+		o.ctx, o.stop = context.WithCancelCause(context.Background())
+		if o.err != nil {
+			o.stop(o.err)
+		}
+	}
+	return o.ctx
 }
 
 // cause is why the owner was cancelled, nil while it is live.
@@ -202,8 +237,10 @@ func New(cfg VMConfig, setup func(vm *VM) error) (*VM, error) {
 		settleTypes: map[uint64]reflect.Type{},
 		refs:        map[*jsRef]struct{}{},
 		timers:      map[int64]*jsTimer{},
+		asyncCancels: map[uint64]context.CancelCauseFunc{},
 		Log:         func(args ...any) { fmt.Println(args...) },
 	}
+	vm.base, vm.stopBase = context.WithCancelCause(context.Background())
 	vm.self = registerVM(vm)
 	ready := make(chan error, 1)
 	go vm.loop(setup, ready)
@@ -259,6 +296,7 @@ func (vm *VM) Close() {
 	select {
 	case <-vm.quit:
 	default:
+		vm.stopBase(ErrClosed)
 		close(vm.quit)
 	}
 	<-vm.done

@@ -14,6 +14,8 @@ renames the section to that version ([Changelogs](../../docs/extensions.md#chang
 
 ### Added
 
+- Time limits: a provider that never answers no longer holds a call for 5 minutes. Text calls (`completeAsync` too, with or without `schema`) always stream from the provider and end after 10 s with nothing from Vultr or OpenRouter (30 s from Cloudflare, 2 minutes from other OpenAI-compatible APIs), and every call has an overall limit by kind (10 minutes for text, 3 for a picture, 1 for embeddings...). Either cancels the request and throws with code `timeout` (504), naming the model and what ran out (`llm.ErrTimeout`) ([Time limits](docs/index.md#time-limits)).
+- `signal` on every `$llm` call that reaches a provider (`completeAsync`, `streamAsync`, `generateAsync`, `chat.sendAsync`...): pass an `AbortSignal` (`AbortSignal.timeout(30_000)`, or an `AbortController`'s) and the call rejects with its reason when it fires, cancelling the provider's request ([Time limits](docs/index.md#time-limits)).
 - Reference images: `$llm.image.generateAsync({ ..., references: [file] })` draws from the pictures given, to change one or to keep a story's characters and style across its pictures. On Vultr (`qwen-image-2.1`, and `minimax-h3`, now listed as an image model too) and OpenRouter. Models that take them list the feature `reference images` (`llm.FeatureReferenceImages`), so an app offers references only then.
 - The dashboard's model dropdown (`window.pocketone.llm.select`) takes the work a model is picked for (`job`, in price units, and `per`) and shows what that work costs on each model, cheapest first; `llm.costFor(model, job)` works it out.
 - Limits in Settings → LLM, checked before every call: the whole app, each signed-in user, each guest, or all guests together, at most so many US dollars, output tokens, input tokens or calls a UTC day or month, optionally for one kind or one model. A used-up limit refuses the call with code `limit` (429), naming the limit and when it resets ([Limits](docs/guides/limits.md)).
@@ -38,6 +40,8 @@ renames the section to that version ([Changelogs](../../docs/extensions.md#chang
   `_params` row `llm` moves there by itself the first time the settings are read. Nothing to do.
 
 ### Fixed
+
+- A call that ran past a Go caller's context deadline threw `provider` ("no answer from ..."); it's `timeout` now. A streamed answer that keeps arriving is no longer cut off after 5 minutes.
 
 - A failed read of the guest signing key no longer makes and saves a new one (which gave every guest a new id): that
   request counts guests by IP and the stored key stays.

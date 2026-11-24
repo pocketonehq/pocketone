@@ -107,7 +107,7 @@ func (d *openRouterDriver) complete(ctx context.Context, model string, in textv1
 	if req.ResponseFormat != nil {
 		req.ResponseFormat.JSONSchema.Strict = true
 	}
-	return chatComplete(ctx, d.c, req, onDelta)
+	return chatComplete(ctx, d.c, req, idleText(TypeOpenRouter), onDelta)
 }
 
 func (d *openRouterDriver) image(ctx context.Context, model string, in imagev1.GenerateInput) (imagev1.Result, error) {

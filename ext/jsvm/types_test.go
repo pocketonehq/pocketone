@@ -72,7 +72,7 @@ func TestTypesFileWithExtensions(t *testing.T) {
 // top-level await, require, Buffer, process, import.meta, a PocketOne core hook and an extension's global. Skipped
 // when tsc isn't installed.
 func TestTypesCheckWithTSC(t *testing.T) {
-	ext := typerExt{"declare var $demo: { ping(): string };"}
+	ext := typerExt{"declare var $demo: { ping(): string; work(ctx: context.Context, n: number): string; any(v: any, n: number): number };"}
 	files := map[string]string{
 		"pb_hooks/lib/store.ts": `
 			export const state = { hits: 0 }
@@ -88,6 +88,16 @@ func TestTypesCheckWithTSC(t *testing.T) {
 				return e.json(200, { title, n: bump(), url: import.meta.url, col: posts.name, demo: $demo.ping() })
 			})
 			onFilesystemCreate((e) => { e.next() })
+			// a context.Context first parameter is the engine's to pass; a signal bounds the call
+			const c = new AbortController()
+			const signal = AbortSignal.any([AbortSignal.timeout(50), c.signal])
+			signal.onabort = () => c.abort("done")
+			signal.addEventListener("abort", (ev) => console.log(ev.target.reason))
+			const w: string = await $demo.work.async(5)
+			const w2: string = await $demo.work.asyncWith({ signal }, 5)
+			const w3: string = await $demo.work.async(new Context(), 5)
+			const n: number = await $demo.any.async("x", 1) // a first parameter typed any is still passed
+			try { signal.throwIfAborted() } catch (err) { if (err instanceof DOMException) console.log(err.name, err.code, w, w2, w3, n) }
 		`,
 		"pb_hooks/legacy.pb.cts": `
 			const lib = require("./lib/legacy.cjs")
@@ -105,6 +115,15 @@ func TestTypesCheckWithTSC(t *testing.T) {
 	out, err := runTSC(t, ext, files)
 	if err != nil {
 		t.Fatalf("tsc: %v\n%s", err, out)
+	}
+
+	// .async drops only a context.Context: the other arguments are still checked
+	files["pb_hooks/wrong.pb.ts"] = `
+		const s: string = await $demo.work.async("five")
+	`
+	out, err = runTSC(t, ext, files)
+	if err == nil || !strings.Contains(out, "wrong.pb.ts") {
+		t.Fatalf("tsc should reject a string for a number after the context:\n%s", out)
 	}
 
 	// .async is typed, not any: its promise isn't a Record
