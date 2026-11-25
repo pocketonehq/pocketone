@@ -4544,7 +4544,7 @@ pb.authStore.clear();
 
 ```
 {
-  "otpId": "WFPOxfloIV66Lb4"
+  "otpId": "ddGZAfIEKNLRdN9"
 }
 ```
 
@@ -12104,7 +12104,7 @@ isEqual := security.Equal(hash1, hash2)
 
 ```
 // must be random 32 characters string
-const key = "sCAiZC3go15ObxYQ1UQQ24fZEWh6r0Vo"
+const key = "yHXSCbISnRzLpUrGYAzuTmPQPXFCgZOB"
 
 encrypted, err := security.Encrypt([]byte("test"), key)
 if err != nil {
@@ -14199,7 +14199,7 @@ While this is not a security issue on its own (PocketBase applications live enti
 
 To store your PocketBase settings encrypted:
 
-1. Create a new environment variable and **set a random 32 characters** string as its value. e.g. add `export PB_ENCRYPTION_KEY="rWkcArrY7KUGNjaYIz9uKCyAoKYzJE9D"` in your shell profile file
+1. Create a new environment variable and **set a random 32 characters** string as its value. e.g. add `export PB_ENCRYPTION_KEY="ld4hioeBMv3RubqVsxjONYSqSPlHPZA0"` in your shell profile file
 2. Start the application with `--encryptionEnv=YOUR_ENV_VAR` flag. e.g. `pocketbase serve --encryptionEnv=PB_ENCRYPTION_KEY`
 
 
