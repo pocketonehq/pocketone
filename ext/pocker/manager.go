@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	lookupv1 "pocketone.dev/ext/contracts/instance/lookup/v1"
 	sourcev1 "pocketone.dev/ext/contracts/instance/source/v1"
+	runtimev1 "pocketone.dev/ext/contracts/runtime/v1"
 	"pocketone.dev/ext/multisite"
 
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
@@ -53,8 +55,11 @@ type Manager struct {
 
 	held map[string]chan struct{} // by ID: instances under maintenance; requests wait for the channel to close
 
-	mu   sync.RWMutex
-	apps map[string]*appSlot // by ID
+	mu         sync.RWMutex
+	apps       map[string]*appSlot // by ID
+	restarting map[string]bool     // by ID: the next stop is a restart (recycle), under mu
+
+	onExit atomic.Pointer[func(runtimev1.Exit)] // runtime/v1's exit signal, set by the host
 }
 
 var (
@@ -63,7 +68,45 @@ var (
 	_ multisite.Syncer     = (*Manager)(nil)
 	_ multisite.Shutdowner = (*Manager)(nil)
 	_ multisite.Statser    = (*Manager)(nil)
+
+	_ runtimev1.ExitNotifier  = (*Manager)(nil)
+	_ runtimev1.RunningLister = (*Manager)(nil)
 )
+
+// OnExit implements runtime/v1's ExitNotifier: fn hears every app that stops or fails to start.
+func (m *Manager) OnExit(fn func(runtimev1.Exit)) { m.onExit.Store(&fn) }
+
+func (m *Manager) exit(x runtimev1.Exit) {
+	if fn := m.onExit.Load(); fn != nil {
+		(*fn)(x)
+	}
+}
+
+// stopped is an app slot's stop: an exit, a restart when recycle asked for one.
+func (m *Manager) stopped(id string) {
+	m.mu.Lock()
+	restarting := m.restarting[id]
+	delete(m.restarting, id)
+	m.mu.Unlock()
+	m.exit(runtimev1.Exit{InstanceID: id, Restarting: restarting})
+}
+
+// RunningIDs implements runtime/v1's RunningLister: instances whose app is running.
+func (m *Manager) RunningIDs() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	ids := make([]string, 0, len(m.apps))
+	for id, s := range m.apps {
+		select {
+		case <-s.done:
+			if s.app != nil {
+				ids = append(ids, id)
+			}
+		default:
+		}
+	}
+	return ids
+}
 
 // appSlot holds one app: a start in progress (done not yet closed) or a finished start (app or err set).
 type appSlot struct {
@@ -75,6 +118,8 @@ type appSlot struct {
 	stopping bool           // set by stop: new requests get 503 instead of reaching an app that's going away
 	inflight sync.WaitGroup // requests the app is serving
 	stopOnce sync.Once
+
+	onStopped func() // called once its running app has stopped (the runtime's exit signal)
 }
 
 // enter counts a request in, unless the app is stopping.
@@ -104,6 +149,9 @@ func (s *appSlot) stop() {
 		}
 		if s.app != nil {
 			stopApp(s.app)
+			if s.onStopped != nil {
+				s.onStopped()
+			}
 		}
 	})
 }
@@ -259,7 +307,8 @@ func (m *Manager) slot(inst Instance) *appSlot {
 	m.mu.Lock()
 	slot, ok := m.apps[inst.ID]
 	if !ok {
-		slot = &appSlot{done: make(chan struct{})}
+		id := inst.ID
+		slot = &appSlot{done: make(chan struct{}), onStopped: func() { m.stopped(id) }}
 		m.apps[inst.ID] = slot
 		m.mu.Unlock()
 
@@ -275,6 +324,7 @@ func (m *Manager) slot(inst Instance) *appSlot {
 			m.log.Error("pocker: instance failed to start", "id", inst.ID, "error", slot.err)
 			openInstanceLog(instanceDir(m.opts, inst)).Write("stderr", "Instance failed to start: "+slot.err.Error())
 			m.emit(Event{Kind: EventFailed, InstanceID: inst.ID, Reason: slot.err.Error()})
+			m.exit(runtimev1.Exit{InstanceID: inst.ID, Err: slot.err})
 		} else {
 			m.catchRestart(inst.ID, slot)
 			m.watchHooks(inst, slot)
@@ -393,7 +443,16 @@ func (m *Manager) hooksChanged(id string) { go m.recycle(id, "pb_hooks changed")
 // fresh one starts with the current files and settings. An instance that isn't running is left alone. Requests that
 // reach it while it restarts fail; two apps never have its folder open.
 func (m *Manager) recycle(id, reason string) {
+	m.mu.Lock()
+	if m.restarting == nil {
+		m.restarting = map[string]bool{}
+	}
+	m.restarting[id] = true
+	m.mu.Unlock()
 	if !m.stopInstance(id) {
+		m.mu.Lock()
+		delete(m.restarting, id)
+		m.mu.Unlock()
 		return
 	}
 	m.log.Info("pocker: "+reason+", restarting", "id", id)
@@ -607,6 +666,7 @@ func (m *Manager) catchRestart(id string, slot *appSlot) {
 			m.mu.Unlock()
 			m.log.Info("pocker: instance restarting (app.Restart)", "id", id)
 			m.emit(Event{Kind: EventRestarted, InstanceID: id, Reason: "app restart"})
+			m.exit(runtimev1.Exit{InstanceID: id, Restarting: true})
 			return e.App.ResetBootstrapState()
 		},
 	})

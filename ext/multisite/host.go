@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	lookupv1 "pocketone.dev/ext/contracts/instance/lookup/v1"
+	runtimev1 "pocketone.dev/ext/contracts/runtime/v1"
 	"pocketone.dev/ext/extkit"
 	"time"
 )
@@ -16,8 +17,8 @@ import (
 // wrappers, and listens.
 // Build it from config ([FromConfig]), or fill it in (Use and Setup, or the fields directly), then call Run.
 type Host struct {
-	Source   InstanceSource // instance.source/v1 (required)
-	Runtime  Runtime        // runtime/v1: runs every instance (required)
+	Source  InstanceSource // instance.source/v1 (required)
+	Runtime Runtime        // runtime/v1: runs every instance (required)
 
 	// Scope is the host's contract scope: host extensions provide runtime/v1, gate/v1, tls/v1, http.wrap/v1 and
 	// instance.source/v1 on it ([Host.Use]); [Host.Setup] seals it. Its instances can be given contracts too
@@ -60,13 +61,24 @@ type Host struct {
 	Logger *slog.Logger
 
 	handler *Handler
+	status  *Supervisor
+}
+
+// Statuses is the host's supervisor (instance.status/v1), created on first use. [Host.Setup] provides it on the
+// host's scope by default.
+func (h *Host) Statuses() *Supervisor {
+	if h.status == nil {
+		h.status = NewSupervisor(h.Runtime, h.log())
+	}
+	return h.status
 }
 
 // Handler returns the request front (before the wrappers), built on first use.
 func (h *Host) Handler() *Handler {
 	if h.handler == nil {
 		h.handler = &Handler{Dir: h.dir(), Gate: ChainGates(h.Gates...), Runtime: h.Runtime, Forward: h.Forward,
-			InstanceRoutes: h.InstanceRoutes, Dev: h.Dev, Lookup: h.Lookup, HealthPath: h.HealthPath, Logger: h.log()}
+			InstanceRoutes: h.InstanceRoutes, Dev: h.Dev, Lookup: h.Lookup, HealthPath: h.HealthPath, Logger: h.log(),
+			Status: h.Statuses()}
 	}
 	return h.handler
 }
@@ -103,10 +115,19 @@ func (h *Host) Run(ctx context.Context) error {
 
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	sup := h.Statuses()
+	sup.rt = h.Runtime // the runtime Setup chose, if it changed after the supervisor was made
+	sup.Lookup = dir.Get
+	if en, ok := h.Runtime.(runtimev1.ExitNotifier); ok {
+		en.OnExit(sup.Exited)
+	}
 	if st, ok := h.Runtime.(RuntimeStarter); ok {
 		if err := st.Start(runCtx); err != nil {
 			return fmt.Errorf("host: runtime %s: %w", h.Runtime.Name(), err)
 		}
+	}
+	if rl, ok := h.Runtime.(runtimev1.RunningLister); ok {
+		sup.Adopted(rl.RunningIDs())
 	}
 	sourceErr := make(chan error, 1)
 	go func() { sourceErr <- dir.Run(runCtx, h.Source, h.First) }()

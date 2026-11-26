@@ -97,6 +97,7 @@ Every page below in one file: https://pocketone.dev/llms-full.txt
 - [instance.lookup/v1](https://pocketone.dev/docs/contracts/instance.lookup/v1): A multisite host asks what a hostname it doesn't know serves.
 - [instance.resolve/v1](https://pocketone.dev/docs/contracts/instance.resolve/v1): On a control plane: what a hostname serves for an edge, and the records the answer was built from.
 - [instance.source/v1](https://pocketone.dev/docs/contracts/instance.source/v1): The instance record a multisite host serves, and where the records come from.
+- [instance.status/v1](https://pocketone.dev/docs/contracts/instance.status/v1): A multisite host reports each instance's state (starting, running, idle, failed) as it changes.
 - [instance.tokens/v1](https://pocketone.dev/docs/contracts/instance.tokens/v1): A multisite host checks an API token one of its instances issued, to accept it on the routes it answers.
 - [instance.watch/v1](https://pocketone.dev/docs/contracts/instance.watch/v1): An edge follows a control plane lazily: one stream, hostnames watched as requests name them.
 - [kv/v1](https://pocketone.dev/docs/contracts/kv/v1): An app's key-value store: named JSON values with no collection or migration, kept in PocketBase's _params.
@@ -256,6 +257,7 @@ Every page below in one file: https://pocketone.dev/llms-full.txt
 - [instance/resolve/v1](https://pocketone.dev/docs/reference/go/instance/resolve/v1): Package resolvev1 is the instance.resolve/v1 contract: on a control plane (a mothership), what a hostname serves for a given edge, built from the control plane's own records, and which records each answer was built from.
 - [instance/source/v1](https://pocketone.dev/docs/reference/go/instance/source/v1): Package sourcev1 is the instance.source/v1 contract: the instance record a multisite host serves (its id, hostnames, version, folder, secrets, limits, ...) and where the records come from.
 - [instance/source/v1/sourcetest](https://pocketone.dev/docs/reference/go/instance/source/v1/sourcetest): Package sourcetest is an instance.source/v1 provider for tests: a fixed list of instances that a test can change while it runs, the way an edit to a host's instances file or a control plane's update would.
+- [instance/status/v1](https://pocketone.dev/docs/reference/go/instance/status/v1): Package statusv1 is the instance.status/v1 contract: what a multisite host knows about each instance it runs (starting, running, idle, failed), as it changes.
 - [instance/tokens/v1](https://pocketone.dev/docs/reference/go/instance/tokens/v1): Package tokensv1 is the instance.tokens/v1 contract: a multisite host checks an API token one of its instances issued, so it can accept the instance's own tokens on the routes it answers for that instance (deploy/v1, remote/v1).
 - [instance/watch/v1](https://pocketone.dev/docs/reference/go/instance/watch/v1): Package watchv1 is the instance.watch/v1 contract: an edge follows a control plane (a mothership) lazily.
 - [kv/v1](https://pocketone.dev/docs/reference/go/kv/v1): Package kvv1 is the kv/v1 contract: an app's key-value store.

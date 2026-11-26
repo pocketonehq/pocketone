@@ -55,5 +55,35 @@ type Statser interface {
 	RunningCount() int
 }
 
+// Exit is an instance's process ending. Err is nil for a stop the runtime chose (idle, powered off, removed,
+// restarting with new settings or files) and set when it ended on its own (crashed, exited during startup).
+type Exit struct {
+	InstanceID string
+	Err        error
+	// Restarting: the runtime starts the instance again right away (its pb_hooks or settings changed), so the host
+	// reports it as starting and asks its health endpoint again instead of reporting it idle.
+	Restarting bool
+}
+
+// ExitNotifier tells the host each time an instance stops running (or fails to start), so the host's supervisor knows
+// without polling. The host calls OnExit once, before Start. The runtime calls fn synchronously, in order, possibly
+// while it holds its own locks, so fn must return quickly and never call back into the runtime from that goroutine.
+type ExitNotifier interface {
+	OnExit(fn func(Exit))
+}
+
+// RunningLister lists the instances running now, including ones adopted at Start (containers that kept running across
+// a host restart), so the host's supervisor can confirm them.
+type RunningLister interface {
+	RunningIDs() []string
+}
+
+// HealthChecker tells the host's supervisor how to ask a started instance whether it's up: the path (default
+// /api/health) and whether any answer from the instance counts, not only 200 (releases without a health endpoint).
+// Without it the host asks /api/health and wants 200.
+type HealthChecker interface {
+	HealthCheck(instanceID string) (path string, anyStatus bool)
+}
+
 // Contract is runtime/v1, on a host's scope.
 var Contract = extkit.NewContract[Runtime]("runtime/v1", extkit.One)

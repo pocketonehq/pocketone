@@ -117,6 +117,20 @@ letters, digits, dots and dashes. Other fields: `version` and `runtime` (which r
 - `GET /.well-known/health` on any hostname reports the host's status, how many instances it knows and how many are
   running.
 
+### Instance status
+
+The host supervises every instance it runs and provides [instance.status/v1](https://pocketone.dev/docs/contracts/instance.status/v1)
+on its scope: each instance is `starting`, `running`, `idle` or `failed`, and subscribers hear every change at once.
+
+- The first request for an instance that isn't running makes it `starting`. The host also sends the instance a health
+  request through its runtime (`GET /api/health`, straight to the runtime, past the gates), which starts it if the
+  request hasn't yet, and repeats it until it answers 200 (`running`), the start timeout passes or the runtime reports
+  an exit (`failed`).
+- The runtime's exit signal (runtime/v1's `ExitNotifier`) makes a running instance `idle` when the runtime stopped it
+  (idle, powered off, removed), `failed` when it ended on its own, and `starting` again when the runtime restarts it
+  (its pb_hooks or settings changed).
+- Instances the runtime found running at startup (Docker's adopted containers) are `running`.
+
 ### Switching runtime
 
 Switching between pocker and docker is a config change (add or remove the `docker` section, or
@@ -224,6 +238,7 @@ func main() {
 | `Directory` | Instances by hostname and id, kept current from the source. |
 | `Handler` | Health path, peer check, hostname, blocked, then remote (the `Forward` hook) or local (the instance routes, then the runtime), with the gates. |
 | `Runtime` | runtime/v1: what runs instances. One per host. |
+| `Supervisor` | Instance states (instance.status/v1): starts and health checks, the runtime's exit signal. |
 | `Gate`, `ChainGates`, `HostGate` | Request gates (gate/v1). |
 | `Extension`, `Link`, `Host.Use`, `Host.Setup` | Host extensions and the host's contract scope. |
 | `Serve`, `TLSProvider` | Listeners: plain, TLS (a provider such as autotls, or cert files reloaded on change), redirect, graceful shutdown. |

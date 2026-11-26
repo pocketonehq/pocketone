@@ -41,6 +41,7 @@ The table is generated from each contract's README and every extension's `Contra
 | [`instance.lookup/v1`](/docs/contracts/instance.lookup/v1) | A multisite host asks what a hostname it doesn't know serves. | mothership |  |  | @benallfree |
 | [`instance.resolve/v1`](/docs/contracts/instance.resolve/v1) | On a control plane: what a hostname serves for an edge, and the records the answer was built from. | mothership (default) | mothership |  | @benallfree |
 | [`instance.source/v1`](/docs/contracts/instance.source/v1) | The instance record a multisite host serves, and where the records come from. | mothership | pocker |  | @benallfree |
+| [`instance.status/v1`](/docs/contracts/instance.status/v1) | A multisite host reports each instance's state (starting, running, idle, failed) as it changes. |  |  |  | @benallfree |
 | [`instance.tokens/v1`](/docs/contracts/instance.tokens/v1) | A multisite host checks an API token one of its instances issued, to accept it on the routes it answers. | pocker |  |  | @benallfree |
 | [`instance.watch/v1`](/docs/contracts/instance.watch/v1) | An edge follows a control plane lazily: one stream, hostnames watched as requests name them. | mothership |  |  | @benallfree |
 | [`kv/v1`](/docs/contracts/kv/v1) | An app's key-value store: named JSON values with no collection or migration, kept in PocketBase's _params. | kv (default) |  | api-tokens, bulkmail, llm, llm-search | @benallfree |

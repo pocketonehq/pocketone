@@ -20,6 +20,7 @@
 - [instance.lookup/v1](/docs/contracts/instance.lookup/v1)
 - [instance.resolve/v1](/docs/contracts/instance.resolve/v1)
 - [instance.source/v1](/docs/contracts/instance.source/v1)
+- [instance.status/v1](/docs/contracts/instance.status/v1)
 - [instance.tokens/v1](/docs/contracts/instance.tokens/v1)
 - [instance.watch/v1](/docs/contracts/instance.watch/v1)
 - [kv/v1](/docs/contracts/kv/v1)

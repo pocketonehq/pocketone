@@ -60,6 +60,7 @@
 - [instance/resolve/v1](/docs/reference/go/instance/resolve/v1)
 - [instance/source/v1](/docs/reference/go/instance/source/v1)
 - [instance/source/v1/sourcetest](/docs/reference/go/instance/source/v1/sourcetest)
+- [instance/status/v1](/docs/reference/go/instance/status/v1)
 - [instance/tokens/v1](/docs/reference/go/instance/tokens/v1)
 - [instance/watch/v1](/docs/reference/go/instance/watch/v1)
 - [kv/v1](/docs/reference/go/kv/v1)

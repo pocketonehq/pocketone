@@ -32,6 +32,7 @@ import (
 	"time"
 
 	remotev1 "pocketone.dev/ext/contracts/remote/v1"
+	runtimev1 "pocketone.dev/ext/contracts/runtime/v1"
 	"pocketone.dev/ext/multisite"
 )
 
@@ -126,6 +127,14 @@ type Runtime struct {
 
 	bg     context.Context
 	cancel context.CancelFunc
+
+	onExit atomic.Pointer[func(runtimev1.Exit)] // runtime/v1's exit signal, set by the host
+}
+
+// healthHint is how the host's supervisor asks an instance whether it's up (runtime/v1's HealthChecker).
+type healthHint struct {
+	path      string
+	anyStatus bool
 }
 
 type ctr struct {
@@ -145,6 +154,7 @@ type ctr struct {
 	portNow  atomic.Int64 // port, readable without mu (a request waiting out a restart stops if it changes)
 	inflight atomic.Int64
 	lastUsed atomic.Int64 // unix nanos
+	health   atomic.Pointer[healthHint]
 }
 
 var (
@@ -153,7 +163,72 @@ var (
 	_ multisite.Statser        = (*Runtime)(nil)
 	_ multisite.Shutdowner     = (*Runtime)(nil)
 	_ multisite.RuntimeStarter = (*Runtime)(nil)
+
+	_ runtimev1.ExitNotifier  = (*Runtime)(nil)
+	_ runtimev1.RunningLister = (*Runtime)(nil)
+	_ runtimev1.HealthChecker = (*Runtime)(nil)
 )
+
+// OnExit implements runtime/v1's ExitNotifier: fn hears every container that stops, ends on its own or fails to start.
+func (rt *Runtime) OnExit(fn func(runtimev1.Exit)) { rt.onExit.Store(&fn) }
+
+func (rt *Runtime) exit(x runtimev1.Exit) {
+	if fn := rt.onExit.Load(); fn != nil {
+		(*fn)(x)
+	}
+}
+
+// RunningIDs implements runtime/v1's RunningLister: instances with a running container (adopted ones included).
+func (rt *Runtime) RunningIDs() []string {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	ids := make([]string, 0, len(rt.ctrs))
+	for id, c := range rt.ctrs {
+		if c.running.Load() {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// HealthCheck implements runtime/v1's HealthChecker: the health path and rule its container started with (a release
+// without a health endpoint takes any answer). An adopted container, started by an earlier process, is up: any answer.
+func (rt *Runtime) HealthCheck(id string) (string, bool) {
+	rt.mu.Lock()
+	c, ok := rt.ctrs[id]
+	rt.mu.Unlock()
+	if !ok {
+		return "", false
+	}
+	if h := c.health.Load(); h != nil {
+		return h.path, h.anyStatus
+	}
+	if c.running.Load() {
+		return "", true
+	}
+	return "", false
+}
+
+// ended is a container that stopped on its own (its output stream ended): it's dropped and the host hears an exit.
+// A stop the runtime made itself clears the container first, so it isn't reported twice.
+func (rt *Runtime) ended(instID, containerID string) {
+	if rt.bg.Err() != nil { // shutting down: containers keep running for the next process
+		return
+	}
+	c := rt.get(instID)
+	c.mu.Lock()
+	if c.container != containerID {
+		c.mu.Unlock()
+		return
+	}
+	c.container, c.port, c.hash, c.dirty = "", 0, "", false
+	c.portNow.Store(0)
+	c.running.Store(false)
+	rt.watch.Remove(instID)
+	c.mu.Unlock()
+	rt.log.Info("docker: instance stopped on its own", "instance", instID)
+	rt.exit(runtimev1.Exit{InstanceID: instID, Err: errors.New("the instance stopped on its own (see its log)")})
+}
 
 // New returns a runtime for cfg. Call Start before serving.
 func New(cfg Config) (*Runtime, error) {
@@ -388,6 +463,7 @@ func (rt *Runtime) adopt(ctx context.Context) error {
 		c.started.Store(time.Now().UnixNano())
 		c.running.Store(true)
 		c.lastUsed.Store(time.Now().UnixNano())
+		c.health.Store(&healthHint{anyStatus: true})
 		go rt.follow(c.inst, s.ID, time.Now())
 		rt.watchScripts(id, filepath.Join(rt.cfg.DataRoot, id))
 		n++
@@ -549,10 +625,11 @@ func PoweredBy(key string) string {
 func (rt *Runtime) forget(c *ctr, port int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.port == port {
+	if c.port == port && c.container != "" {
 		c.container, c.port, c.hash = "", 0, ""
 		c.portNow.Store(0)
 		c.running.Store(false)
+		rt.exit(runtimev1.Exit{InstanceID: c.inst, Err: errors.New("the instance stopped answering")})
 	}
 }
 
@@ -573,7 +650,7 @@ func (rt *Runtime) ensure(ctx context.Context, c *ctr, inst multisite.Instance) 
 			return c.port, nil
 		}
 		rt.log.Info("docker: instance changed, restarting", "instance", inst.ID)
-		rt.stopLocked(ctx, c)
+		rt.stopLocked(ctx, c, true)
 	}
 	return rt.startLocked(ctx, c, inst, cfg, version)
 }
@@ -612,17 +689,17 @@ func (rt *Runtime) scriptsChanged(id string) {
 	rt.log.Info("docker: pb_hooks changed, restarting", "instance", id)
 	ctx := rt.bg
 	if c.last == nil {
-		rt.stopLocked(ctx, c)
+		rt.stopLocked(ctx, c, false)
 		return
 	}
 	inst := *c.last
 	cfg, version, err := rt.containerConfig(ctx, inst)
 	if err != nil {
 		rt.log.Warn("docker: restart after pb_hooks change", "instance", id, "error", err)
-		rt.stopLocked(ctx, c)
+		rt.stopLocked(ctx, c, false)
 		return
 	}
-	rt.stopLocked(ctx, c)
+	rt.stopLocked(ctx, c, true)
 	if _, err := rt.startLocked(ctx, c, inst, cfg, version); err != nil {
 		rt.log.Warn("docker: restart after pb_hooks change", "instance", id, "error", err)
 	}
@@ -725,7 +802,12 @@ func (rt *Runtime) containerConfig(ctx context.Context, inst multisite.Instance)
 	return cfg, version, nil
 }
 
-func (rt *Runtime) startLocked(ctx context.Context, c *ctr, inst multisite.Instance, cfg containerConfig, version string) (int, error) {
+func (rt *Runtime) startLocked(ctx context.Context, c *ctr, inst multisite.Instance, cfg containerConfig, version string) (port int, err error) {
+	defer func() {
+		if err != nil && ctx.Err() == nil { // a start that failed (not one whose request went away): the host hears it
+			rt.exit(runtimev1.Exit{InstanceID: inst.ID, Err: err})
+		}
+	}()
 	select {
 	case rt.sem <- struct{}{}:
 	case <-ctx.Done():
@@ -754,6 +836,7 @@ func (rt *Runtime) startLocked(ctx context.Context, c *ctr, inst multisite.Insta
 			defer close(piped)
 			defer out.Close()
 			readMux(out, rt.output(inst.ID))
+			rt.ended(inst.ID, id) // a no-op when the runtime stopped it, or it never came up
 		}()
 	} else {
 		rt.log.Warn("docker: attach before start; following logs after start instead", "instance", inst.ID, "error", aerr)
@@ -780,7 +863,7 @@ func (rt *Runtime) startLocked(ctx context.Context, c *ctr, inst multisite.Insta
 		failed()
 		return 0, fmt.Errorf("no published port (running %v, ports %v, err %v)", info.State.Running, info.NetworkSettings.Ports, err)
 	}
-	port := info.hostPort()
+	port = info.hostPort()
 	if err := rt.waitHealthy(ctx, id, port, cfg.healthPath, cfg.healthAny); err != nil {
 		failed()
 		return 0, err
@@ -789,6 +872,7 @@ func (rt *Runtime) startLocked(ctx context.Context, c *ctr, inst multisite.Insta
 	c.portNow.Store(int64(port))
 	c.poweredBy.Store(PoweredBy(version))
 	c.started.Store(time.Now().UnixNano())
+	c.health.Store(&healthHint{path: cfg.healthPath, anyStatus: cfg.healthAny})
 	c.running.Store(true)
 	started := inst
 	c.last = &started
@@ -833,6 +917,7 @@ func (rt *Runtime) waitHealthy(ctx context.Context, id string, port int, path st
 // runtime starts are attached before they start instead (startLocked), so a fast crash can't lose its output.
 func (rt *Runtime) follow(instID, containerID string, since time.Time) {
 	_ = rt.e.logs(rt.bg, containerID, rt.output(instID))
+	rt.ended(instID, containerID) // its logs end when it stops
 }
 
 // output is the line sink for an instance's container output: its log ring, then OnLog (else the debug log).
@@ -852,10 +937,12 @@ func (rt *Runtime) output(instID string) func(stream int, text string) {
 	}
 }
 
-func (rt *Runtime) stopLocked(ctx context.Context, c *ctr) {
+// stopLocked stops the instance's container; restarting: the caller starts it again right away. The host hears an exit.
+func (rt *Runtime) stopLocked(ctx context.Context, c *ctr, restarting bool) {
 	if c.container == "" {
 		return
 	}
+	defer rt.exit(runtimev1.Exit{InstanceID: c.inst, Restarting: restarting})
 	if err := rt.e.stop(ctx, c.container, rt.cfg.StopGrace); err != nil {
 		rt.log.Warn("docker: stop", "instance", c.inst, "error", err)
 	}
@@ -871,7 +958,7 @@ func (rt *Runtime) Stop(ctx context.Context, id string) {
 	c := rt.get(id)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	rt.stopLocked(ctx, c)
+	rt.stopLocked(ctx, c, false)
 }
 
 // Running reports whether an instance's container is running.
@@ -930,7 +1017,7 @@ func (rt *Runtime) reap() {
 			c.mu.Lock()
 			if c.running.Load() && c.inflight.Load() == 0 && time.Since(time.Unix(0, c.lastUsed.Load())) >= rt.cfg.IdleTTL {
 				rt.log.Info("docker: instance idle, stopping", "instance", c.inst)
-				rt.stopLocked(rt.bg, c)
+				rt.stopLocked(rt.bg, c, false)
 			}
 			c.mu.Unlock()
 		}
