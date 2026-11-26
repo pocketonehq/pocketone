@@ -46,7 +46,7 @@ isEqual := security.Equal(hash1, hash2)
 
 ```
 // must be random 32 characters string
-const key = "yHXSCbISnRzLpUrGYAzuTmPQPXFCgZOB"
+const key = "NyIo3oEQxMGsaNsABxGagC70iOMdGl6t"
 
 encrypted, err := security.Encrypt([]byte("test"), key)
 if err != nil {
