@@ -11,6 +11,7 @@ import (
 	wrapv1 "pocketone.dev/ext/contracts/http/wrap/v1"
 	lookupv1 "pocketone.dev/ext/contracts/instance/lookup/v1"
 	sourcev1 "pocketone.dev/ext/contracts/instance/source/v1"
+	statusv1 "pocketone.dev/ext/contracts/instance/status/v1"
 	runtimev1 "pocketone.dev/ext/contracts/runtime/v1"
 	tlsv1 "pocketone.dev/ext/contracts/tls/v1"
 	"pocketone.dev/ext/extkit"
@@ -73,6 +74,9 @@ func (h *Host) Setup(choices extkit.Choices) ([]string, error) {
 		sourcev1.Contract.ProvideDefaultIn(s, h.Source)
 		s.Registering(prev)
 	}
+	prev := s.Registering("multisite")
+	statusv1.Contract.ProvideDefaultIn(s, h.Statuses())
+	s.Registering(prev)
 	if err := s.Seal(choices); err != nil {
 		return nil, err
 	}

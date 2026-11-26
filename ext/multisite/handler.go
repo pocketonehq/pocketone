@@ -3,13 +3,13 @@ package multisite
 import (
 	"context"
 	"encoding/json"
-	lookupv1 "pocketone.dev/ext/contracts/instance/lookup/v1"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/netip"
 	"net/url"
+	lookupv1 "pocketone.dev/ext/contracts/instance/lookup/v1"
 	"sync"
 	"time"
 )
@@ -22,9 +22,9 @@ const DefaultHealthPath = "/.well-known/health"
 // blocked → owned by another edge? admit and forward : precheck, admit, the instance routes, then the instance's
 // runtime.
 type Handler struct {
-	Dir      *Directory
-	Gate     Gate      // nil = admit everything
-	Runtime  Runtime // runtime/v1: runs every instance this host serves
+	Dir     *Directory
+	Gate    Gate    // nil = admit everything
+	Runtime Runtime // runtime/v1: runs every instance this host serves
 
 	// Forward serves a request for an instance another edge runs ([Instance.Remote] set), after the gates. Nil = a
 	// plain reverse proxy to Remote as a URL.
@@ -45,6 +45,10 @@ type Handler struct {
 
 	HealthPath string // "" = DefaultHealthPath
 	Logger     *slog.Logger
+
+	// Status, when set, is told about every request handed to the runtime, so it launches and watches instances that
+	// aren't running yet (instance.status/v1).
+	Status *Supervisor
 
 	routesOnce sync.Once
 	routes     http.Handler
@@ -129,6 +133,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if cr, ok := h.Gate.(ClientIPResolver); ok {
 		r = withClientAddr(r, cr.ClientIP(r))
+	}
+	if h.Status != nil {
+		h.Status.Observe(inst)
 	}
 	if len(h.InstanceRoutes) == 0 {
 		rt.ServeInstance(w, r, inst)
