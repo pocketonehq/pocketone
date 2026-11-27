@@ -1,0 +1,50 @@
+# Deploys each Pages starter kit (ext/pages/starters/<kit>) to its live demo, the PocketHost instance
+# pocketpages-<kit> (https://pocketpages-<kit>.pockethost.io), linked from the starter READMEs and the Starter kits page.
+# A push to main that touches the starters deploys every kit; a kit with no changes answers "Up to date". Run it by
+# hand to deploy them all.
+# The deploy (pocketone deploy, from the newest PocketOne release) needs the POCKETHOST_TOKEN repository secret, a
+# PocketHost API token that can deploy to every pocketpages-* instance; without it the job says so and skips.
+# Kits without a demo instance (ask, tsx) aren't listed.
+name: starters
+
+on:
+  push:
+    branches: [main]
+    paths: ['ext/pages/starters/**', '.github/workflows/starters.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        kit: [auth, daisyui, daisyui-docs, datastar, htmx, minimal, mvp]
+    concurrency:
+      group: starter-deploy-${{ matrix.kit }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install pocketone (newest release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release list -R pocketonehq/pocketone --limit 1 --json tagName -q '.[0].tagName')
+          echo "pocketone $tag"
+          gh release download "$tag" -R pocketonehq/pocketone -p "pocketone_${tag#v}_linux_amd64.zip" -O "$RUNNER_TEMP/pocketone.zip"
+          unzip -q "$RUNNER_TEMP/pocketone.zip" pocketone -d "$RUNNER_TEMP/pocketone"
+          echo "$RUNNER_TEMP/pocketone" >> "$GITHUB_PATH"
+      - name: Deploy ${{ matrix.kit }} to pocketpages-${{ matrix.kit }}.pockethost.io
+        working-directory: ext/pages/starters/${{ matrix.kit }}
+        env:
+          P1_TOKEN: ${{ secrets.POCKETHOST_TOKEN }}
+        run: |
+          if [ -z "$P1_TOKEN" ]; then
+            echo "::notice::POCKETHOST_TOKEN is not set; skipping the ${{ matrix.kit }} demo deploy"
+            exit 0
+          fi
+          pocketone deploy "https://pocketpages-${{ matrix.kit }}.pockethost.io" --no-node-modules
