@@ -1,6 +1,6 @@
 ---
 owners: ["@octavonu"]
-version: 0.0.2
+version: 0.0.3
 title: "WASM"
 group: binary
 summary: "Bring your own WASM: Go, Rust or Zig modules called from page code, each a closed box."

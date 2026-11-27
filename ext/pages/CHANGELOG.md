@@ -7,6 +7,8 @@ Sections named after a PocketOne release are from before extensions had versions
 
 ## Unreleased
 
+## 0.2.1 (2026-11-27)
+
 ### Fixed
 
 - `ctx.realtime.send(topic, data, { filter })` (and Datastar's realtime helpers) no longer fail with a 500 when

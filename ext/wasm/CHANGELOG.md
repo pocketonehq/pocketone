@@ -6,6 +6,8 @@ section to that version ([Changelogs](../../docs/extensions.md#changelogs)).
 
 ## Unreleased
 
+## 0.0.3 (2026-11-27)
+
 ### Fixed
 
 - Compiled modules are cached in the app's `pb_cache/wasm` by default instead of the user's cache folder, so the

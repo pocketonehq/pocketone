@@ -18111,7 +18111,7 @@ Source: https://pocketone.dev/docs/extensions/pages/extension
 
 # Pages
 
-Version 0.2.0 · Owners: [@benallfree](https://github.com/benallfree)
+Version 0.2.1 · Owners: [@benallfree](https://github.com/benallfree)
 
 > Walkthrough for app owners: [PocketOne apps](https://pocketone.dev/docs/features/sites). This page is the technical reference.
 
@@ -20464,7 +20464,7 @@ Source: https://pocketone.dev/docs/extensions/wasm/extension
 
 # WASM
 
-Version 0.0.2 · Owners: [@octavonu](https://github.com/octavonu)
+Version 0.0.3 · Owners: [@octavonu](https://github.com/octavonu)
 
 **Bring your own WASM (BYOW).** Call code written in Go, Rust, Zig or anything else that builds for WASI from
 your page code, when you need a library from another language or more speed than JS gives you. A module is a small program
@@ -20950,7 +20950,7 @@ Source: https://pocketone.dev/docs/extensions/docker
 
 # Docker
 
-Version 0.0.4 · Owners: [@benallfree](https://github.com/benallfree)
+Version 0.0.5 · Owners: [@benallfree](https://github.com/benallfree)
 
 Run every instance on a host in its own container, with the official PocketBase or PocketOne binary of the version
 the instance asks for. One host can serve PocketBase 0.23 and 0.36 and PocketOne side by side.
@@ -21719,7 +21719,7 @@ Source: https://pocketone.dev/docs/extensions/multisite
 
 # Multisite
 
-Version 0.1.1 · Owners: [@benallfree](https://github.com/benallfree)
+Version 0.1.2 · Owners: [@benallfree](https://github.com/benallfree)
 
 > Walkthrough: [PocketBase isolates](https://pocketone.dev/docs/features/isolates). This page is the technical reference.
 
@@ -21973,7 +21973,7 @@ Source: https://pocketone.dev/docs/extensions/pocker
 
 # Pocker
 
-Version 0.1.3 · Owners: [@benallfree](https://github.com/benallfree)
+Version 0.1.4 · Owners: [@benallfree](https://github.com/benallfree)
 
 > Walkthrough: [PocketBase isolates](https://pocketone.dev/docs/features/isolates). This page is the technical reference.
 

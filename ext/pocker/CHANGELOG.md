@@ -7,6 +7,8 @@ Sections named after a PocketOne release are from before extensions had versions
 
 ## Unreleased
 
+## 0.1.4 (2026-11-27)
+
 ### Added
 
 - The runtime reports every app that stops, restarts or fails to start (runtime/v1's exit signal) and lists its running instances, so the host's instance status is right.

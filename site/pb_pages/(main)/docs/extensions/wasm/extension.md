@@ -7,7 +7,7 @@ source: "ext/wasm/README.md"
 
 # WASM
 
-Version 0.0.2 · Owners: [@octavonu](https://github.com/octavonu)
+Version 0.0.3 · Owners: [@octavonu](https://github.com/octavonu)
 
 **Bring your own WASM (BYOW).** Call code written in Go, Rust, Zig or anything else that builds for WASI from
 your page code, when you need a library from another language or more speed than JS gives you. A module is a small program
