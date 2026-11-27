@@ -35,11 +35,14 @@ func TestStreamFromTimer(t *testing.T) {
 		defer close(done)
 		h.ServeHTTP(rec, httptest.NewRequest("GET", "/stream", nil).WithContext(ctx))
 	}()
-	time.Sleep(120 * time.Millisecond)
-	start := time.Now()
-	if n := count(); n == "0" {
-		t.Fatalf("the stream's interval hasn't run: %s", n)
+	// wait for the first tick (a slow runner under -race takes a while to start the stream), then time one request
+	for deadline := time.Now().Add(2 * time.Second); count() == "0"; time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the stream's interval hasn't run after 2s")
+		}
 	}
+	start := time.Now()
+	count()
 	if d := time.Since(start); d > 200*time.Millisecond {
 		t.Fatalf("another request waited %s behind the open stream", d)
 	}

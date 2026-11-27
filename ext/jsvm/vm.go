@@ -58,6 +58,10 @@ type VM struct {
 	ctx  *JSContext
 	self uintptr // id in vmRegistry
 
+	// loopID is the loop goroutine's id while the loop runs (0 before and after), so onLoop can tell from any
+	// goroutine without reading a, which only the loop touches (teardown frees it while other goroutines call Do).
+	loopID atomic.Uint64
+
 	jobs  chan *task
 	posts chan func() // completions from async Go calls; never refused
 	quit  chan struct{}
@@ -254,6 +258,7 @@ func New(cfg VMConfig, setup func(vm *VM) error) (*VM, error) {
 func (vm *VM) loop(setup func(*VM) error, ready chan error) {
 	defer close(vm.done)
 	vm.a = C.avm_new(vm.self, uint64(vm.cfg.MemoryLimit), uint64(vm.cfg.StackSize))
+	vm.loopID.Store(curGoroutineID())
 	vm.ctx = vm.a.ctx
 	err := vm.installPrelude()
 	if err == nil && setup != nil {
@@ -279,6 +284,7 @@ func (vm *VM) loop(setup func(*VM) error, ready chan error) {
 }
 
 func (vm *VM) teardown() {
+	vm.loopID.Store(0)
 	vm.clearTimers(func(*jsTimer) bool { return true })
 	vm.free_(vm.sliceProto)
 	vm.free_(vm.objProto)
@@ -362,7 +368,12 @@ func (vm *VM) runJobs() {
 	}
 }
 
-func (vm *VM) onLoop() bool { return vm.a != nil && C.avm_on_thread(vm.a) != 0 }
+// onLoop reports whether the caller is the loop goroutine (and the VM is open). It never reads vm.a: other goroutines
+// call it (Do) while the loop frees a in teardown.
+func (vm *VM) onLoop() bool {
+	id := vm.loopID.Load()
+	return id != 0 && curGoroutineID() == id
+}
 
 // Do runs f on the loop and waits. On the loop already (re-entrant), f runs inline.
 func (vm *VM) Do(f func()) error {

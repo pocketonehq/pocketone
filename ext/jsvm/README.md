@@ -1,6 +1,6 @@
 ---
 owners: ["@benallfree"]
-version: 0.1.3
+version: 0.1.4
 title: "JSVM"
 group: binary
 summary: "PocketOne's JS engine: one QuickJS VM per app, real globals, async handlers, hard limits."
