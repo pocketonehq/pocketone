@@ -15,9 +15,11 @@ import (
 	"sync"
 	"time"
 
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	"github.com/tetratelabs/wazero/sys"
+	"pocketone.dev/ext/extkit"
 )
 
 // A module is a WASI program (wasip1), the kind any language with a WASI target builds from a plain main: its input
@@ -30,7 +32,7 @@ import (
 // machine code between calls. A module's first call compiles it (~1 s for a Go module, ~30 ms for Rust or Zig) and
 // writes the result; later calls, in this process or after a restart, load it from the file (~40 ms for Go, 1–5 ms for
 // Rust, Zig, C or TinyGo). The cache is keyed by the module's bytes, so a changed module compiles again and identical
-// modules share one entry, across every app and instance in the process.
+// modules in one cache folder share one entry.
 
 // cacheMaxAge is how old a cache file may get before it's deleted, when the process first opens the cache: wazero
 // never deletes its entries, and every version of every module adds one. A module still in use compiles again then,
@@ -75,12 +77,11 @@ func pruneCache(dir string, maxAge time.Duration) {
 	})
 }
 
-// defaultCacheDir is where Config.CacheDir points when it isn't set: pocketone/wasm in the user's cache folder. The
-// tests point it at a temporary folder (export_test.go).
-var defaultCacheDir = func() (string, error) {
-	base, err := os.UserCacheDir()
-	return filepath.Join(base, "pocketone", "wasm"), err
-}
+// defaultCacheDir is where Config.CacheDir points when it isn't set: the app's pb_cache/wasm. The tests point it at
+// one temporary folder for the whole run (export_test.go).
+var defaultCacheDir = appCacheDir
+
+func appCacheDir(app core.App) (string, error) { return extkit.CacheDir(app, "wasm") }
 
 // newRuntime builds a runtime for one call: the memory cap, WASI, and a run that stops when its context ends. With a
 // cache, the call must close its compiled module when it's done: the cache's engine outlives the runtime, and would

@@ -87,7 +87,7 @@ The defaults suit most apps. To change them, pass them to `wasm.New` (`set.WASM 
 | `MaxConcurrent` | 8 | Calls running at once in the app. More wait, up to `Timeout`, then fail as `busy`. |
 | `MaxModulesMB` | 10 | MB of modules running at once: the `.wasm` sizes of the calls running, added up (file sizes, not memory). More wait, as above. It's also the largest module that runs. |
 | `MaxPayload` | 4 MB | Largest input or output of a call. |
-| `CacheDir` | `pocketone/wasm` in the user's cache folder (`~/.cache` on Linux, `~/Library/Caches` on macOS) | Where compiled modules are kept between calls and restarts (see How it works). `"off"` compiles every call. Keep it where only the server's process writes: it holds machine code the process runs. |
+| `CacheDir` | the app's `pb_cache/wasm` | Where compiled modules are kept between calls and restarts (see How it works). `"off"` compiles every call. Keep it where only the server's process writes: it holds machine code the process runs. |
 
 Its `pocketone.yaml` section has only `enabled`: `wasm: {enabled: false}` turns `$wasm` off on a single app. With Pocker, each instance can override all of these but `CacheDir`, which is the host's (see Integrations).
 
@@ -461,8 +461,8 @@ stays with `$http.send` in your JS.
   read, whatever happens to the file meanwhile. Compiling counts toward `MaxConcurrent` and `MaxModulesMB`, so the
   memory it takes stays bounded too.
 - Compiled modules are kept on disk, in wazero's compilation cache (`CacheDir`), keyed by each module's bytes: a
-  changed module compiles again on its next call, and identical modules share one entry, across every app and
-  instance in the process and across restarts. Loading from it is 20 to 30 times faster than compiling. Calls of the
+  changed module compiles again on its next call, and the cache lasts across restarts. Each app has its own, in its
+  `pb_cache/wasm` (under Pocker, outside the instance's folder, where the instance can't write). Loading from it is 20 to 30 times faster than compiling. Calls of the
   same module compile one at a time (wazero can't load one module twice at once safely); calls of other modules
   never wait for it, and a call whose caller gives up stops waiting (`busy`). When the process first opens the cache, it
   deletes entries older than 30 days, since nothing else does: a module still in use compiles once more then. The
