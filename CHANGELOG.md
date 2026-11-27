@@ -54,6 +54,7 @@ every extension that got a new version, with a link to its changes. Upstream Poc
 ### Extensions
 
 - [Docker](ext/docker/CHANGELOG.md#005-2026-11-27) 0.0.4 → 0.0.5
+- [JSVM](ext/jsvm/CHANGELOG.md#014-2026-11-27) 0.1.3 → 0.1.4
 - [Multisite](ext/multisite/CHANGELOG.md#012-2026-11-27) 0.1.1 → 0.1.2
 - [Pages](ext/pages/CHANGELOG.md#021-2026-11-27) 0.2.0 → 0.2.1
 - [Pocker](ext/pocker/CHANGELOG.md#014-2026-11-27) 0.1.3 → 0.1.4

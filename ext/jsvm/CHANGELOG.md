@@ -7,6 +7,12 @@ Sections named after a PocketOne release are from before extensions had versions
 
 ## Unreleased
 
+## 0.1.4 (2026-11-27)
+
+### Fixed
+
+- A call into the VM from another goroutine while the VM closes (a request still running when the app shuts down) no longer races the VM's teardown, which could read freed memory.
+
 ## 0.1.3 (2026-11-24)
 
 ### Added

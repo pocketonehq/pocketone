@@ -16538,7 +16538,7 @@ Source: https://pocketone.dev/docs/extensions/jsvm
 
 # JSVM
 
-Version 0.1.3 · Owners: [@benallfree](https://github.com/benallfree)
+Version 0.1.4 · Owners: [@benallfree](https://github.com/benallfree)
 
 PocketOne's JS engine for `pb_hooks` and `pb_migrations`. It runs the same JS API as PocketBase (`$app`, `onX`,
 `routerAdd`, `cronAdd`, `$http`, `$security`, ...) on QuickJS, with one VM per app:
