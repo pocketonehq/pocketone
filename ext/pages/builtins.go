@@ -137,8 +137,9 @@ func toSeconds(v any) time.Duration {
 // ---- realtime (ctx.realtime, built by the driver) ----
 
 // realtimeClients are the clients subscribed to topic, for a send with a filter (the driver calls the filter).
+// Never nil: page code gets an empty array, not null, when nobody is subscribed.
 func (r *request) realtimeClients(topic string) []subscriptions.Client {
-	var out []subscriptions.Client
+	out := []subscriptions.Client{}
 	for _, c := range r.p.app.SubscriptionsBroker().Clients() {
 		if c.HasSubscription(topic) {
 			out = append(out, c)

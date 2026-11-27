@@ -280,6 +280,20 @@ func TestRealtimeSend(t *testing.T) {
 	}
 }
 
+// A filtered send to a topic nobody is subscribed to sends nothing and the page carries on.
+func TestRealtimeSendNoClients(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"+config.js": "module.exports = { plugins: ['realtime'] }",
+		"send.ts":    "module.exports = { post(ctx) { ctx.realtime.send('chat', '<p>hi</p>', { filter: () => true }); return ctx.res.json({ ok: true }) } }",
+	})
+	h, _ := newServer(t, dir)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/send", nil))
+	if rec.Code != 200 {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+}
+
 // Messages a page sends reach each client in the order it sent them.
 func TestRealtimeSendKeepsOrder(t *testing.T) {
 	dir := writeTree(t, map[string]string{

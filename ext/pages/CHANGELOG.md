@@ -7,6 +7,11 @@ Sections named after a PocketOne release are from before extensions had versions
 
 ## Unreleased
 
+### Fixed
+
+- `ctx.realtime.send(topic, data, { filter })` (and Datastar's realtime helpers) no longer fail with a 500 when
+  nobody is subscribed to the topic; it sends nothing.
+
 ## 0.2.0 (2026-11-24)
 
 ### Added
