@@ -43,6 +43,22 @@ every extension that got a new version, with a link to its changes. Upstream Poc
 
 ## Unreleased
 
+## v0.0.1-alpha.14 (2026-11-27)
+
+### Highlights
+
+- **WASM modules stay compiled on servers without `$HOME`.** Compiled modules are now cached in the app's `pb_cache/wasm`, so a server run as a systemd service no longer compiles a module on every call (about a second for a Go module). `pocketone cache clear` empties it ([WASM](ext/wasm/CHANGELOG.md)).
+- **Two Pages fixes.** A filtered `ctx.realtime.send` with nobody subscribed sends nothing instead of failing with a 500, and an array read back with `ctx.store(name)` is a JS array again, so `push` works after the first request. Together they fix the Datastar starter's chat ([Pages](ext/pages/CHANGELOG.md)).
+- **Multisite hosts know how each instance is doing.** The host provides [instance.status/v1](ext/contracts/instance/status/v1/README.md): each instance is `starting` until `/api/health` answers, then `running`, and `idle` or `failed` when it ends, with every change sent to subscribers ([Multisite](ext/multisite/CHANGELOG.md)).
+
+### Extensions
+
+- [Docker](ext/docker/CHANGELOG.md#005-2026-11-27) 0.0.4 → 0.0.5
+- [Multisite](ext/multisite/CHANGELOG.md#012-2026-11-27) 0.1.1 → 0.1.2
+- [Pages](ext/pages/CHANGELOG.md#021-2026-11-27) 0.2.0 → 0.2.1
+- [Pocker](ext/pocker/CHANGELOG.md#014-2026-11-27) 0.1.3 → 0.1.4
+- [WASM](ext/wasm/CHANGELOG.md#003-2026-11-27) 0.0.2 → 0.0.3
+
 ## v0.0.1-alpha.13 (2026-11-24)
 
 ### Highlights

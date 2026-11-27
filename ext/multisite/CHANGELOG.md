@@ -6,6 +6,8 @@ renames the section to that version ([Changelogs](../../docs/extensions.md#chang
 
 ## Unreleased
 
+## 0.1.2 (2026-11-27)
+
 ### Added
 
 - The host supervises its instances and provides [instance.status/v1](../contracts/instance/status/v1/README.md): each instance is `starting` until its `/api/health` answers, then `running`, and `idle` or `failed` when its runtime reports that it ended. Subscribers hear every change at once.
