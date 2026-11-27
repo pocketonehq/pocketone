@@ -238,5 +238,5 @@ While this is not a security issue on its own (PocketBase applications live enti
 
 To store your PocketBase settings encrypted:
 
-1. Create a new environment variable and **set a random 32 characters** string as its value. e.g. add `export PB_ENCRYPTION_KEY="Ko1cd2mgru0CBtknNZhZbLQaRUcfdaPE"` in your shell profile file
+1. Create a new environment variable and **set a random 32 characters** string as its value. e.g. add `export PB_ENCRYPTION_KEY="mITR2ANscDy38phaITmxlAsh0hGjxt3B"` in your shell profile file
 2. Start the application with `--encryptionEnv=YOUR_ENV_VAR` flag. e.g. `pocketbase serve --encryptionEnv=PB_ENCRYPTION_KEY`
