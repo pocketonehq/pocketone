@@ -11,7 +11,7 @@ module.exports = {
       messages = ctx.store(`room_${roomName}`) || []
       const text = String(message || '').trim().slice(0, 500)
       if (text.length > 0) {
-        messages.push({ from, message: text })
+        messages = [...messages, { from, message: text }]
         ctx.store(`room_${roomName}`, messages)
       }
     })

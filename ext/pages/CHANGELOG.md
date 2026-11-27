@@ -11,6 +11,8 @@ Sections named after a PocketOne release are from before extensions had versions
 
 - `ctx.realtime.send(topic, data, { filter })` (and Datastar's realtime helpers) no longer fail with a 500 when
   nobody is subscribed to the topic; it sends nothing.
+- An array read back with `ctx.store(name)` is a JS array again, so `push` works on it after the first request (it
+  failed with `cannot set index 1 on []interface {}`). The Datastar starter's chat broke on a room's second message.
 
 ## 0.2.0 (2026-11-24)
 

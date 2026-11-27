@@ -510,7 +510,11 @@
       throw new Error('resolve: unknown mode ' + JSON.stringify(String(mode)))
     }
     ctx.store = function (name, value) {
-      if (value === undefined) return $app.store().get(name)
+      if (value === undefined) {
+        // A stored array comes back from Go as a fixed-length slice; page code gets a JS array it can push to.
+        var stored = $app.store().get(name)
+        return Array.isArray(stored) ? Array.prototype.slice.call(stored) : stored
+      }
       $app.store().set(name, value)
       return value
     }

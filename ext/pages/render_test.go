@@ -280,6 +280,21 @@ func TestRealtimeSend(t *testing.T) {
 	}
 }
 
+// An array read back from ctx.store is a JS array page code can push to, on every request, not only the first.
+func TestStoreArrayGrows(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"add.ts": "module.exports = { post(ctx) { const list = ctx.store('list') || []; list.push(list.length + 1); ctx.store('list', list); return ctx.res.json(list) } }",
+	})
+	h, _ := newServer(t, dir)
+	for i, want := range []string{"[1]", "[1,2]", "[1,2,3]"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("POST", "/add", nil))
+		if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != want {
+			t.Fatalf("request %d: %d %s, want %s", i+1, rec.Code, rec.Body.String(), want)
+		}
+	}
+}
+
 // A filtered send to a topic nobody is subscribed to sends nothing and the page carries on.
 func TestRealtimeSendNoClients(t *testing.T) {
 	dir := writeTree(t, map[string]string{
