@@ -6,6 +6,12 @@ section to that version ([Changelogs](../../docs/extensions.md#changelogs)).
 
 ## Unreleased
 
+### Fixed
+
+- Compiled modules are cached in the app's `pb_cache/wasm` by default instead of the user's cache folder, so the
+  cache works when the server runs without `$HOME` (a systemd service, such as a PocketHost edge); before, every
+  call there compiled its module. `pocketone cache clear` empties it.
+
 ## 0.0.2 (2026-11-18)
 
 ### Added

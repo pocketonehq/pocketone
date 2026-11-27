@@ -76,8 +76,8 @@ type Config struct {
 	// MaxPayload is the largest input or output of a call, in bytes (default 4 MB).
 	MaxPayload int
 
-	// CacheDir is where compiled modules are kept between calls and restarts (default pocketone/wasm in the user's
-	// cache folder: ~/.cache on Linux, ~/Library/Caches on macOS). A module's first call compiles it; later calls load
+	// CacheDir is where compiled modules are kept between calls and restarts (default the app's pb_cache/wasm, which
+	// a multisite host such as Pocker keeps outside the instance's folder). A module's first call compiles it; later calls load
 	// the machine code from there, 20 to 30 times faster. Every app and instance naming the same folder shares it,
 	// keyed by each module's bytes. "off" compiles every call. The process runs what's in this folder as machine
 	// code, so keep it where only the process writes: never in a folder an app's users or tenants can write to
@@ -180,8 +180,8 @@ func Register(app core.App, cfg Config) (*Host, error) {
 	cfg.Dir = dir
 	h := &Host{app: app, cfg: cfg, checked: map[string]checked{}, freed: make(chan struct{})}
 	if cfg.CacheDir == "" {
-		if d, err := defaultCacheDir(); err != nil {
-			h.cacheErr = fmt.Errorf("no user cache folder (%w): set CacheDir", err)
+		if d, err := defaultCacheDir(app); err != nil {
+			h.cacheErr = fmt.Errorf("no cache folder (%w): set CacheDir", err)
 		} else {
 			h.cfg.CacheDir = d
 		}

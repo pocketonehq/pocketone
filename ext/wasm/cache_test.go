@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	"pocketone.dev/ext/extkit"
 	"pocketone.dev/ext/wasm"
 )
 
@@ -98,5 +99,23 @@ func TestPruneCache(t *testing.T) {
 	}
 	if _, err := os.Stat(fresh); err != nil {
 		t.Fatalf("fresh file deleted: %v", err)
+	}
+}
+
+// TestDefaultCacheDir: CacheDir defaults to the app's pb_cache/wasm, never a folder that needs $HOME: next to pb_data
+// for a single app, and for an instance of a multisite host with a cache root (Pocker) outside the instance's folder.
+func TestDefaultCacheDir(t *testing.T) {
+	t.Parallel()
+	single := core.NewBaseApp(core.BaseAppConfig{DataDir: filepath.Join(t.TempDir(), "pb_data")})
+	if d, err := wasm.AppCacheDir(single); err != nil || d != filepath.Join(filepath.Dir(single.DataDir()), "pb_cache", "wasm") {
+		t.Fatalf("single app: %q, %v", d, err)
+	}
+	root := t.TempDir()
+	host := extkit.NewScope("multisite")
+	host.SetCacheRoot(filepath.Join(root, "pb_cache"))
+	inst := core.NewBaseApp(core.BaseAppConfig{DataDir: filepath.Join(root, "i1", "pb_data")})
+	extkit.AttachHost(inst, host, "i1")
+	if d, err := wasm.AppCacheDir(inst); err != nil || d != filepath.Join(root, "pb_cache", "instances", "i1", "wasm") {
+		t.Fatalf("instance: %q, %v", d, err)
 	}
 }
